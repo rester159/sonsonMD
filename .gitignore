@@ -1,0 +1,13 @@
+# build artifacts
+/out/
+*.o
+*.lst
+*.map
+*.bin
+# rescomp-generated headers/blobs (regenerated from res/*.res at build)
+res/*.h
+res/*.rs
+# arcade ROMs (copyrighted; kept on disk as conversion source, not versioned)
+/arcade/
+# scratch
+/tmp/

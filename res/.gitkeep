@@ -1,0 +1,1 @@
+# SGDK resources (.res) go here; rescomp compiles them into res/*.h at build time.
