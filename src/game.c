@@ -203,7 +203,7 @@ static void level_select(u8 round)
  *  start pose. Used by game_init (first round) and the round advance (each new
  *  round runs THIS round's level -- level_select picked it). Does NOT touch
  *  score / lives / round / flow -- those are the caller's policy. */
-static void level_restart(void)
+static void level_restart(bool keepPose)
 {
     /* Select the level for the CURRENT round (loads its tiles at base 135, sets
      * g_curLevel + g_levelW). game_init sets round=1 first; round_advance bumps it
@@ -222,29 +222,35 @@ static void level_restart(void)
     g_game.loadedMinCol = 0;
     g_game.loadedMaxCol = PLANE_COLS - 1;
 
-    /* Spawn the player standing on the bottom lane (lane 0), pinned at the left
-     * edge of the arcade screen band -- the SonSon hero starts low-left and runs
-     * right into the scrolling level. */
     {
         Player *p = &g_game.player;
-        p->lane      = 0;
-        p->y         = LANE_BASE_Y;                /* lane 0 world Y            */
-        p->x         = BAND_LEFT;                  /* pinned at the band's left */
-        p->xSub      = 0;
-        p->vx        = 0;
-        p->laneTimer = 0;
-        p->climbing  = 0;
-        p->facing    = FACING_RIGHT;
-        p->anim      = 0;
-        p->animTimer = PLAYER_ANIM_PERIOD;
-        p->firePrev  = 0;
-        p->fireAnim  = 0;
-        anim_restart(&p->av, SS_ANIM_PLAYER_RUN);   /* start in the run cycle */
-        p->tile      = PLAYER_TILE;
+        /* The hero is always band-pinned, so re-pin his world X to the band's left
+         * edge as the scroll resets to the new level's start (cameraX = 0 below). */
+        p->x    = BAND_LEFT;
+        p->xSub = 0;
+        p->vx   = 0;
+        if (!keepPose)
+        {
+            /* FRESH game (game_init): full cold-start pose -- the SonSon hero starts
+             * low-left on lane 0, facing right, in the run cycle. */
+            p->lane      = 0;
+            p->y         = LANE_BASE_Y;                /* lane 0 world Y            */
+            p->laneTimer = 0;
+            p->climbing  = 0;
+            p->facing    = FACING_RIGHT;
+            p->anim      = 0;
+            p->animTimer = PLAYER_ANIM_PERIOD;
+            p->firePrev  = 0;
+            p->fireAnim  = 0;
+            anim_restart(&p->av, SS_ANIM_PLAYER_RUN);   /* start in the run cycle  */
+            p->tile      = PLAYER_TILE;
+        }
+        /* keepPose (round_advance): the hero KEEPS his lane / facing / anim across
+         * the scenery swap -- the arcade's continuous scroll never re-poses him at a
+         * segment boundary, so the climb carries over to the next level seamlessly. */
     }
 
     g_game.cameraX  = 0;
-    g_game.endDwell = 0;
 }
 
 /* ---------------------------------------------------------------------------
@@ -305,12 +311,14 @@ void game_init(void)
      * (level_restart -> level_select), and entity.c's per-round difficulty ramp.
      * Set it BEFORE level_restart so the right level (level 1) is loaded. */
     g_game.round = 1;
+    g_game.stage = 0;                 /* difficulty counter ($005A) starts at 0     */
 
     /* Build the level window + place the player at the start (shared with the
      * round advance -- see level_restart). level_restart selects round 1's level
      * (loads its tiles at base 135 + sets g_levelW), cold-fills Plane A from its
-     * map, resets the stream range + camera, and spawns the hero low-left. */
-    level_restart();
+     * map, resets the stream range + camera, and spawns the hero low-left. FALSE =
+     * full cold-start pose (round_advance passes TRUE to keep the pose across a swap). */
+    level_restart(FALSE);
 
     g_game.score   = 0;
 
@@ -370,33 +378,43 @@ static void player_respawn(void)
 }
 
 /* ---------------------------------------------------------------------------
- *  round_advance -- start the NEXT round after a round-clear beat.
+ *  round_advance -- swap in the NEXT scenery after the auto-scroll reaches the end.
  *
  *  The native engine ships SS_LEVEL_COUNT DISTINCT captured levels (ss_levels[],
- *  baked from real arcade gameplay). Advancing a round: bump the round counter,
- *  then rebuild via level_restart -- which calls level_select(round) to load the
- *  NEW round's level (round 1->level1, 2->level2, 3->level3, then it cycles), cold-
- *  fill Plane A from that level's map, and re-place the player at the start. We
- *  also clear + re-seed the entity pool (entity_init re-runs the spawn wave; the
- *  fresh enemies pick up the new round's difficulty at spawn) and replay the
- *  round-intro music cue. The caller (game_update) then flips the flow back to
- *  ALIVE so play resumes at the (new) level start.
+ *  baked from real arcade gameplay). Advancing: bump the round counter (selects the
+ *  next scenery) AND tick the saturating stage counter (difficulty), then rebuild
+ *  via level_restart(TRUE) -- which calls level_select(round) to load the NEW
+ *  round's level (round 1->level1 ... then it cycles), cold-fill Plane A from that
+ *  level's map, and re-pin the hero at the band start WITHOUT re-posing him (his
+ *  lane / facing / anim carry over -- the arcade scroll never re-poses at a segment
+ *  boundary). We also clear + re-seed the entity pool (entity_init re-runs the spawn
+ *  wave; the fresh enemies pick up the new STAGE's difficulty at spawn) and replay
+ *  the boundary music cue. The caller (game_update) flips the flow back to ALIVE.
  *
- *  All 8 arcade levels are now captured + baked into ss_levels[] (SS_LEVEL_COUNT
- *  = 8; gen_level.py --multi level1..level8 from real md=02 gameplay). Rounds
- *  cycle round1->level1 ... round8->level8, then wrap. The only per-round VRAM
- *  resident set is the active level's tiles (max 91, base 135) -- see level_select.
- *  TODO(remaining): the per-level vertical "climb to advance" end sections (the
- *  arcade's tower finish) are not yet captured. */
+ *  All 8 arcade levels are captured + baked into ss_levels[] (SS_LEVEL_COUNT = 8;
+ *  gen_level.py --multi level1..level8 from real md=02 gameplay); rounds cycle
+ *  round1->level1 ... round8->level8 then wrap. The only per-round VRAM resident set
+ *  is the active level's tiles (max 91, base 135) -- see level_select.
+ *
+ *  FAITHFULNESS NOTE: the RE proved SonSon has NO discrete level-end / "climb to
+ *  advance" tower finish -- it is one endless LOOPING auto-scroll ribbon whose
+ *  saturating $005A stage counter ramps difficulty as you travel (tools/
+ *  LEVEL_END_SPEC.md). This re-expresses that over the 8 baked sceneries: the creep
+ *  carries the hero forward (no wall to push) and a brief transition swaps scenery.
+ *  TODO(seamless ribbon): a future step can concatenate the 8 maps into one
+ *  continuously-streamed looping ribbon (no per-level cold-fill) for a truly seam-
+ *  free scroll -- needs an all-levels-resident tileset (tile rebasing) or seam
+ *  reloads; deferred as its own milestone (the s16 coordinate model stays as-is). */
 static void round_advance(void)
 {
-    if (g_game.round < 255) g_game.round++;       /* next round (HUD + difficulty) */
+    if (g_game.round < 255)       g_game.round++; /* next scenery + HUD pass       */
+    if (g_game.stage < STAGE_MAX) g_game.stage++; /* saturating difficulty ($005A) */
 
-    level_restart();                              /* select+rebuild next level + player */
+    level_restart(TRUE);                          /* swap scenery, KEEP the pose   */
     entity_init();                                /* clear + re-seed the wave      */
 
-    /* Round-intro music cue (arcade 0x16 then 0x10 at a round start). Re-armed
-     * for the new round, exactly like the round-1 cue in game_init. */
+    /* Boundary music cue (arcade fires a sound command at segment boundaries;
+     * 0x16 then 0x10 -- the round flourish). Re-armed for the new scenery. */
     snd_play_round();
 }
 
@@ -481,25 +499,27 @@ static void player_control(u16 pad)
     /* ----- CAMERA + horizontal screen-band clamp (arcade sub_AB52).
      * The hero is pinned to the band [BAND_LEFT..BAND_RIGHT] in SCREEN space;
      * the world scrolls to keep him there. We move the camera so screenX stays
-     * inside the band, then clamp the camera to the level and re-clamp the
-     * player's *world* X to the band edge when the camera can't scroll further
-     * (level start / end) -- exactly the arcade's "push worldX back to the
-     * clamp" behaviour. ----- */
+     * inside the band, clamp ONLY the LEFT edge (the level start), and re-pin the
+     * player's *world* X to the band there.
+     *
+     * FAITHFUL AUTO-SCROLL -- no right wall: the camera follows the hero (carried by
+     * the perpetual creep) WITHOUT clamping at the level's right edge. game_update
+     * advances to the next scenery the frame the creep reaches the end (cameraX >=
+     * maxCam), which resets cameraX to 0, so it never needs a right clamp and never
+     * overshoots by more than one frame's creep before the swap. This removes the
+     * old "run into the finish wall and push" interaction the arcade never had. ----- */
     {
-        s16 maxCam  = (s16)((s16)g_levelW - SCREEN_W);  /* current level width (Phase 5) */
         s16 screenX;
-        if (maxCam < 0) maxCam = 0;                 /* level no wider than screen */
 
         /* scroll the camera to keep the player inside the band */
         screenX = (s16)(p->x - g_game.cameraX);
         if (screenX < BAND_LEFT)        g_game.cameraX = (s16)(p->x - BAND_LEFT);
         else if (screenX > BAND_RIGHT)  g_game.cameraX = (s16)(p->x - BAND_RIGHT);
 
-        if (g_game.cameraX < 0)      g_game.cameraX = 0;
-        if (g_game.cameraX > maxCam) g_game.cameraX = maxCam;
+        if (g_game.cameraX < 0) g_game.cameraX = 0;   /* clamp ONLY the left edge   */
 
-        /* with the camera clamped, re-pin the player's world X to the band so he
-         * never escapes the visible window at the level edges */
+        /* re-pin the player's world X to the band so he never escapes the visible
+         * window at the level START (cameraX==0); the right edge no longer walls. */
         screenX = (s16)(p->x - g_game.cameraX);
         if (screenX < BAND_LEFT)
         {
@@ -679,39 +699,24 @@ bool game_update(void)
                     g_game.flow      = FLOW_DYING;
                     g_game.flowTimer = DEATH_FRAMES;
                 }
-                g_game.endDwell = 0;              /* dying cancels any finish dwell */
                 break;
             }
 
-            /* ROUND-CLEAR detection: the player has reached the LEVEL END. The
-             * camera clamps at maxCam and player_control then re-pins the hero's
-             * world X to the right band edge there, so "at the finish" == the
-             * camera is maxed AND screenX is at (or past) BAND_RIGHT. We require a
-             * short sustained PUSH into that wall (ROUND_CLEAR_DWELL) so only an
-             * intentional run to the end clears the round -- a glancing touch
-             * resets the dwell. Only checked while ALIVE, so a death/respawn beat
-             * can never be mistaken for a clear. */
+            /* FAITHFUL ADVANCE: the perpetual creep has carried the camera to the
+             * level end -- NO wall to push, NO dwell. The scroll itself is the
+             * advance (LEVEL_END_SPEC.md: SonSon has no finish line). maxCam is the
+             * scroll position showing the level's last screen; the moment cameraX
+             * reaches it, trip the BRIEF transition that swaps in the next baked
+             * scenery + ticks the saturating stage. Only checked while ALIVE, so a
+             * death / respawn beat can never be mistaken for an advance. */
             {
-                s16 maxCam = (s16)((s16)g_levelW - SCREEN_W);  /* current level width (Phase 5) */
-                s16 screenX;
+                s16 maxCam = (s16)((s16)g_levelW - SCREEN_W);  /* current level width */
                 if (maxCam < 0) maxCam = 0;
-                screenX = (s16)(g_game.player.x - g_game.cameraX);
-
-                if (g_game.cameraX >= maxCam && screenX >= BAND_RIGHT)
+                if (g_game.cameraX >= maxCam)
                 {
-                    if (++g_game.endDwell >= ROUND_CLEAR_DWELL)
-                    {
-                        /* enter the ROUND CLEAR beat: freeze input, show the
-                         * banner, play the round/clear music, then advance. */
-                        g_game.flow      = FLOW_ROUND_CLEAR;
-                        g_game.flowTimer = ROUND_CLEAR_FRAMES;
-                        g_game.endDwell  = 0;
-                        snd_play_round();         /* round/clear music (0x16+0x10) */
-                    }
-                }
-                else
-                {
-                    g_game.endDwell = 0;          /* not at the finish -> reset    */
+                    g_game.flow      = FLOW_ROUND_CLEAR;
+                    g_game.flowTimer = ROUND_CLEAR_FRAMES;
+                    snd_play_round();             /* boundary cue (0x16+0x10)      */
                 }
             }
             break;
@@ -736,15 +741,16 @@ bool game_update(void)
             break;
 
         case FLOW_ROUND_CLEAR:
-            /* "ROUND CLEAR" beat: input is frozen (player_control got a 0 pad
-             * above), the banner + round number show (game_render), the round/
-             * clear music plays. On timeout, advance to the next round (bump the
-             * counter, rebuild the level + re-seed entities at the new difficulty,
-             * re-arm the round music) and resume play at the level start. */
+            /* BRIEF scenery transition (~0.6s): input is frozen (player_control got
+             * a 0 pad above) just long enough to mask the next level's one-frame
+             * cold-fill; a short STAGE flash shows (game_render). On timeout,
+             * round_advance() swaps the scenery (keeping the hero's pose), ticks the
+             * saturating stage, re-seeds entities at the new stage, and resumes play
+             * -- the auto-scroll carries straight on into the next ribbon section. */
             if (--g_game.flowTimer == 0)
             {
                 round_advance();
-                g_game.flow = FLOW_ALIVE;         /* next round begins           */
+                g_game.flow = FLOW_ALIVE;         /* next scenery begins         */
             }
             break;
 
@@ -765,17 +771,21 @@ bool game_update(void)
      * every frame (score only grows during ALIVE play, so this is safe anywhere). */
     check_extra_life();
     /*
-     * ROUND PROGRESSION is implemented above: the FLOW_ALIVE case detects the
-     * level-end finish (camera maxed + the hero pushing the right wall for
-     * ROUND_CLEAR_DWELL frames) -> FLOW_ROUND_CLEAR; that beat shows the ROUND
-     * CLEAR banner + plays the round music, then round_advance() bumps the round,
-     * rebuilds the level, re-seeds entities at the new difficulty, and resumes
-     * ALIVE -- so the game is an ongoing round loop.
+     * AUTO-SCROLL PROGRESSION is implemented above: the FLOW_ALIVE case advances
+     * the moment the perpetual creep carries the camera to the level end (cameraX
+     * >= maxCam -- NO wall to push, NO dwell) -> FLOW_ROUND_CLEAR; that BRIEF
+     * transition masks the scenery cold-fill, then round_advance() bumps the round
+     * (next scenery) + the saturating stage (difficulty), swaps the level keeping
+     * the hero's pose, re-seeds entities at the new stage, and resumes ALIVE -- so
+     * the game is an endless forced auto-scroll, faithful to the arcade ribbon.
      *
-     * Distinct per-round level data is DONE: all 8 arcade levels are captured +
-     * baked into ss_levels[] (SS_LEVEL_COUNT = 8) and round_advance() cycles them
-     * (round1->level1 ... round8->level8, then wrap) with the per-round difficulty
-     * ramp on top. See round_advance() / level_select(). */
+     * All 8 arcade levels are captured + baked into ss_levels[] (SS_LEVEL_COUNT =
+     * 8) and round_advance() cycles them (round1->level1 ... round8->level8, then
+     * wrap) with the saturating per-stage difficulty ramp on top. The arcade's
+     * single seamless LOOPING ribbon is re-expressed here as these 8 sceneries
+     * chained by a brief transition; a future step can concatenate them into one
+     * continuously-streamed ribbon (round_advance() TODO). See round_advance() /
+     * level_select() / tools/LEVEL_END_SPEC.md. */
     return FALSE;
 }
 
@@ -960,29 +970,28 @@ void game_render(void)
     if (g_game.flow == FLOW_GAME_OVER)
         VDP_drawText("GAME OVER", 11, 13);   /* H32: (32-9)/2 ~= 11 -> centered  */
 
-    /* --- ROUND CLEAR banner (Plane B, centered) ---
-     * Shown for the whole FLOW_ROUND_CLEAR beat over the (frozen-input) level.
-     * Two centered lines: "ROUND CLEAR" and the round just finished ("ROUND n").
-     * g_game.round is still the cleared round during the beat (round_advance bumps
-     * it only when the beat ends), so the number reads as the round the player
-     * just completed. We blank the two banner rows ONCE on the frame the beat
-     * ends (prevFlow tracks the transition) so the text never lingers into the
-     * next round's play -- the beat -> round_advance path doesn't repaint these
-     * rows, and clearing every frame would be wasted VRAM writes. */
+    /* --- AREA-TRANSITION banner (Plane B, centered) ---
+     * A brief (~0.6s) flash during the FLOW_ROUND_CLEAR scenery transition. SonSon
+     * has no "round clear" (the scroll is continuous -- tools/LEVEL_END_SPEC.md), so
+     * this is a light "entering the next area" cue while the next level's one-frame
+     * cold-fill is masked -- faithful to the arcade's brief round/area intros, NOT a
+     * finish-line banner. g_game.round is still the just-traversed pass during the
+     * beat (round_advance bumps it at the end), so we show round+1 = the area being
+     * entered. Blanked ONCE on the frame the beat ends (prevFlow tracks the edge) so
+     * the text never lingers into the next area's play. */
     {
         static u8 prevFlow = FLOW_ALIVE;
         if (g_game.flow == FLOW_ROUND_CLEAR)
         {
             char buf[12];
-            VDP_drawText("ROUND CLEAR", 10, 12);  /* H32: (32-11)/2 ~= 10 centered */
-            intToStr((s32)g_game.round, buf, 2);
-            VDP_drawText("ROUND", 13, 14);        /* "ROUND nn" line               */
-            VDP_drawText(buf, 19, 14);
+            u16 nextRound = (u16)(g_game.round < 255 ? g_game.round + 1 : 255);
+            intToStr((s32)nextRound, buf, 2);
+            VDP_drawText("ROUND", 13, 13);        /* single centered "ROUND nn" line */
+            VDP_drawText(buf, 19, 13);
         }
         else if (prevFlow == FLOW_ROUND_CLEAR)
         {
-            VDP_clearText(10, 12, 12);            /* clear "ROUND CLEAR" once       */
-            VDP_clearText(13, 14, 8);             /* clear "ROUND nn" once          */
+            VDP_clearText(13, 13, 8);             /* clear "ROUND nn" once           */
         }
         prevFlow = g_game.flow;
     }

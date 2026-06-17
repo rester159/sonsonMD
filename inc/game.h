@@ -167,32 +167,40 @@ extern u16 g_levelW;                              /* current level pixel width  
 #define LIFE_MAX            9       /* cap on lives in hand (HUD is one digit)        */
 
 /* ===========================================================================
- *  ROUND-PROGRESSION CONSTANTS -- the round-clear beat + per-round difficulty.
+ *  ROUND / STAGE PROGRESSION -- faithful auto-scroll advance + difficulty ramp.
  * ===========================================================================
- *  SonSon is a round-based climber: clear a round and the next one begins (the
- *  arcade shows a "LET'S GO TENJIKU" round intro and plays the round music --
- *  0x16 then 0x10 -- see project memory's mode model + snd_play_round). The
- *  native engine currently streams ONE wide level (ss_level); we make the game an
- *  ongoing LOOP by re-running that level each round with a subtle per-round
- *  difficulty ramp, until distinct per-round level data is captured (TODO).
+ *  SonSon has NO discrete level-end: it is one endless forced auto-scroller whose
+ *  world creeps right forever while a SATURATING stage counter ($005A, cap 0x1C)
+ *  ramps the difficulty as you travel (RE proof: tools/LEVEL_END_SPEC.md). There
+ *  is no goal, boss, temple, or finish wall -- the perpetual forward creep
+ *  (RUN_DRIFT_SUBPX, applied every frame in player_control) IS the advance.
  *
- *  ROUND-CLEAR CONDITION: the player reaches the level end. The camera clamps at
- *  maxCam = LEVEL_W - SCREEN_W and the player's world X re-pins to the right band
- *  edge there (player_control's edge clamp), so "at the end" == camera maxed AND
- *  the hero is pushing into the right wall. We require a short DWELL there
- *  (ROUND_CLEAR_DWELL frames of holding into the edge) so a glancing touch of the
- *  wall doesn't trip it -- the player must actually run to and into the finish. */
-#define ROUND_CLEAR_FRAMES  120     /* ~2.0s "ROUND CLEAR" beat before next round */
-#define ROUND_CLEAR_DWELL   18      /* frames pushing the level-end wall to clear */
+ *  The native engine re-expresses that over its 8 baked sceneries: the creep
+ *  carries the hero to the end of the current level (no wall to push, no dwell --
+ *  just travel), then a BRIEF transition swaps in the next baked scenery (round R
+ *  -> ss_levels[(R-1)%8]) and the stage counter ticks up. The transition is short
+ *  (it only masks the one-frame scenery cold-fill), NOT the old 2-second banner
+ *  that required pushing into a finish wall -- an interaction the arcade never had.
+ *
+ *  ADVANCE CONDITION: the camera has been carried to the level end
+ *  (cameraX >= maxCam = LEVEL_W - SCREEN_W). No player push, no dwell -- the creep
+ *  alone trips it, exactly the arcade's "the scroll carries you forward." */
+#define ROUND_CLEAR_FRAMES  36      /* ~0.6s transition mask (scenery cold-fill)   */
 
-/* Per-round difficulty ramp. Each cleared round nudges the enemies up a notch on
- * TOP of the g_config.difficulty base (kept subtle/faithful: a single chaser must
- * still stay out-paceable). entity.c reads g_game.round and adds ROUND_SPEED_STEP
- * (1/256-px/frame) per round past 1 to the march speed, capped so it never
- * exceeds the player's ~2px/frame run; it also tightens the flyer dive telegraph
- * slightly per round. The cap (ROUND_SPEED_MAX_BONUS) bounds the ramp. */
-#define ROUND_SPEED_STEP        0x0020  /* +0.125 px/frame enemy speed per round   */
-#define ROUND_SPEED_MAX_BONUS   0x00C0  /* cap the cumulative round speed bonus    */
+/* STAGE difficulty: the arcade's $005A counter increments once per advance and
+ * SATURATES at 0x1C (28) -- difficulty ramps then plateaus, it never runs away.
+ * (Mirrored to $0096, whose hi-nibble the wave spawner reads; see entity.c.) */
+#define STAGE_MAX           28      /* arcade $005A cap (0x1C)                      */
+
+/* Per-STAGE difficulty ramp. Each stage nudges the enemies up a notch on TOP of
+ * the g_config.difficulty base (kept subtle/faithful: a single chaser must still
+ * stay out-paceable). entity.c reads g_game.stage and adds ROUND_SPEED_STEP
+ * (1/256-px/frame) per stage to the march speed, capped so it never exceeds the
+ * player's ~2px/frame run; it also tightens the flyer dive telegraph slightly per
+ * stage. Because stage SATURATES at STAGE_MAX the ramp plateaus (arcade-faithful);
+ * ROUND_SPEED_MAX_BONUS bounds it regardless. */
+#define ROUND_SPEED_STEP        0x0020  /* +0.125 px/frame enemy speed per stage   */
+#define ROUND_SPEED_MAX_BONUS   0x00C0  /* cap the cumulative stage speed bonus    */
 
 /* Game-flow phase: the player's life-cycle state machine driven each frame in
  * game_update. ALIVE is normal play; DYING runs the death beat; RESPAWNING is
@@ -204,7 +212,7 @@ typedef enum
     FLOW_DYING,
     FLOW_RESPAWNING,
     FLOW_GAME_OVER,
-    FLOW_ROUND_CLEAR    /* level cleared: "ROUND CLEAR" beat, then next round    */
+    FLOW_ROUND_CLEAR    /* level traversed: brief transition, then next scenery  */
 } GameFlow;
 
 /* Facing flags (maps straight to the SAT flipH bit). */
@@ -261,16 +269,18 @@ typedef struct
     u8     bonusNextIdx;
     u8     flow;       /* GameFlow                                            */
     u16    flowTimer;  /* frames left in the current DYING/RESPAWNING/GAMEOVER */
-    /* --- round progression (Phase 5 round structure) ---
-     * round    = current round number, 1-based. Starts at 1 on a new game (from
-     *            the selector); incremented as each round is cleared. The HUD shows
-     *            it and entity.c ramps difficulty off it (per-round speed bonus).
-     * endDwell = frames the player has been pushing the level-end wall. Counts up
-     *            while the camera is maxed AND the hero is pinned at the right band
-     *            edge; at ROUND_CLEAR_DWELL it triggers the round-clear beat. Reset
-     *            whenever he's not at the finish (so only a sustained push clears). */
+    /* --- round / stage progression (Phase 5 + faithful auto-scroll) ---
+     * round    = current LEVEL pass, 1-based. Starts at 1; bumped each time the
+     *            auto-scroll carries the hero to the level end. Selects the baked
+     *            scenery (round R -> ss_levels[(R-1)%8]) + the HUD readout.
+     * stage    = the arcade's saturating difficulty counter ($005A, cap 0x1C=28).
+     *            Increments once per level-advance and SATURATES at STAGE_MAX, so
+     *            difficulty ramps then plateaus exactly like the arcade -- it never
+     *            climbs forever. entity.c reads this for the speed/wave/cadence ramp.
+     *            Faithful model: SonSon advances by traversed scroll, NOT a finish
+     *            line -- see tools/LEVEL_END_SPEC.md (the perpetual creep IS it). */
     u8     round;
-    u8     endDwell;
+    u8     stage;
     s16    cameraX;    /* world x at the left edge of the screen (px)        */
     /* --- column-streaming window state ---
      * The 64-col Plane A is a ring buffer over the wide level. loadedMinCol /

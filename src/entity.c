@@ -332,18 +332,18 @@ static const u16 k_enemy_speed_by_diff[4] =
     (u16)(ENEMY_SPEED * 3 / 2)      /* Very Hard ~1.50 px/frame                 */
 };
 
-/* ---- Per-ROUND difficulty ramp (Phase 5 round progression) ----------------
- * Each cleared round nudges the enemies up a notch on TOP of the difficulty
- * base, so a round loop gets subtly harder. We add ROUND_SPEED_STEP (1/256-px/
- * frame) per round past round 1 to the march speed, capped at ROUND_SPEED_MAX_
- * BONUS so even a deep run keeps the chasers under the player's ~2px/frame run
- * (he can always out-pace a single one). Round 1 adds nothing (the base feel). */
+/* ---- Per-STAGE difficulty ramp (arcade $005A, saturating) -----------------
+ * Each stage nudges the enemies up a notch on TOP of the difficulty base, so the
+ * game gets subtly harder as you travel. We add ROUND_SPEED_STEP (1/256-px/frame)
+ * per stage to the march speed, capped at ROUND_SPEED_MAX_BONUS so even a deep run
+ * keeps the chasers under the player's ~2px/frame run (he can always out-pace a
+ * single one). stage 0 adds nothing (the base feel). Because g_game.stage SATURATES
+ * at STAGE_MAX (game.c), the ramp plateaus exactly like the arcade -- it never runs
+ * away no matter how long you survive. */
 static u16 round_speed_bonus(void)
 {
-    u16 r = g_game.round;
-    u16 bonus;
-    if (r <= 1) return 0;
-    bonus = (u16)((r - 1) * ROUND_SPEED_STEP);
+    u16 s = g_game.stage;                 /* saturating $005A (0..STAGE_MAX)        */
+    u16 bonus = (u16)(s * ROUND_SPEED_STEP);
     if (bonus > ROUND_SPEED_MAX_BONUS) bonus = ROUND_SPEED_MAX_BONUS;
     return bonus;
 }
@@ -358,14 +358,15 @@ static u16 enemy_march_speed(void)
     return (u16)(k_enemy_speed_by_diff[d] + round_speed_bonus());
 }
 
-/* Thrower fire cadence shortens slightly per round (more frequent lobs = the
- * thrower's per-round difficulty ramp; its threat is the projectiles, not its
- * march). 4 frames quicker per round past 1, floored so it never machine-guns. */
+/* Thrower fire cadence shortens slightly per stage (more frequent lobs = the
+ * thrower's difficulty ramp; its threat is the projectiles, not its march). 4
+ * frames quicker per stage, floored so it never machine-guns. stage saturates at
+ * STAGE_MAX so the cadence plateaus (arcade-faithful, never runs away). */
 #define THROWER_FIRE_PERIOD_MIN  34         /* never lob faster than this (frames) */
 static u8 thrower_fire_period(void)
 {
-    u16 r = g_game.round;
-    s16 p = (s16)(THROWER_FIRE_PERIOD - (s16)((r > 1 ? r - 1 : 0) * 4));
+    u16 s = g_game.stage;                 /* saturating $005A                       */
+    s16 p = (s16)(THROWER_FIRE_PERIOD - (s16)(s * 4));
     if (p < THROWER_FIRE_PERIOD_MIN) p = THROWER_FIRE_PERIOD_MIN;
     return (u8)p;
 }
@@ -705,15 +706,17 @@ static u8 sched_type_to_et(u8 t)
     }
 }
 
-/* Round -> stage-group, faithful to the arcade's ((stage&0x30)>>1) derivation:
- * the stage byte $005A increments per round from 0, so round R (1-based) ~ stage
- * (R-1). (stage&0x30)>>1 then selects the group: stages 0x00-0x0F -> g0,
- * 0x10-0x1F -> g1, 0x20-0x2F -> g2, 0x30+ -> g3. With 8 distinct rounds before
- * the level set cycles, early rounds are g0, and deeper loops escalate the
- * variant exactly as the arcade does. */
+/* stage -> ground-wave group, faithful to the arcade's ((stage&0x30)>>1) deriv.
+ * The stage byte $005A (mirrored to the wave selector $0096) selects the group:
+ * stages 0x00-0x0F -> g0, 0x10-0x1F -> g1, 0x20-0x2F -> g2, 0x30+ -> g3. Because
+ * $005A SATURATES at 0x1C (28; STAGE_MAX), only g0 (0x00-0x0F) and g1 (0x10-0x1C)
+ * are EVER reachable in normal play -- exactly the arcade (its $0096 also caps at
+ * 0x1C, so the tougher g2/g3 ground variants never appear from forward scroll; the
+ * captures confirm the tough composite is special-context only). Reads g_game.stage
+ * directly now (it IS the arcade $005A), not the unbounded round. */
 static u8 sched_group_for_round(void)
 {
-    u16 stage = (u16)(g_game.round - 1);   /* round 1 -> stage 0                */
+    u16 stage = g_game.stage;              /* arcade $0096 = $005A (saturating)     */
     u8  g = (u8)(((stage & 0x30) >> 1) / 8);
     if (g > 3) g = 3;
     return g;
