@@ -1,0 +1,19 @@
+fr=1200 round=1 cam=327 sched=3 total=11
+fr=1440 round=1 cam=939 sched=3 total=11
+fr=1680 round=2 cam=0 sched=0 total=6
+fr=1920 round=2 cam=223 sched=1 total=10
+fr=2160 round=2 cam=757 sched=5 total=12
+fr=2400 round=2 cam=1192 sched=4 total=9
+fr=2640 round=3 cam=200 sched=2 total=6
+fr=2880 round=3 cam=528 sched=4 total=13
+fr=3120 round=3 cam=1140 sched=4 total=13
+fr=3360 round=4 cam=55 sched=1 total=9
+fr=3600 round=4 cam=288 sched=2 total=6
+fr=3840 round=4 cam=288 sched=2 total=6
+fr=4080 round=4 cam=288 sched=2 total=6
+
+=== WORST 1s busy+scrolling FPS per round reached (pure-right clears) ===
+round 1 : maxTotal=15  worstBusyScrollFPS=60.00
+round 2 : maxTotal=15  worstBusyScrollFPS=60.00
+round 3 : maxTotal=15  worstBusyScrollFPS=60.00
+round 4 : maxTotal=12  worstBusyScrollFPS=60.00

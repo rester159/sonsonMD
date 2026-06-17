@@ -153,11 +153,16 @@ extern Entity g_entities[ENTITY_MAX];
  * tools/spawn_sched.json (the static RE of $F0C9, validated by live md=02
  * capture: arcade on-screen enemies avg ~2.6, peak 10).
  *
- * On-screen simultaneous cap for SCHEDULED wave enemies. The arcade hard cap is
- * the 16-slot pool ($00A6 != 0x10 gate); live md=02 play peaks at ~10. We cap at
- * 12 -- comfortably inside the arcade's real on-screen load, and far below the
- * old recycler's unbounded pile-up -- so the busy scene matches the arcade. */
-#define SPAWN_ONSCREEN_CAP  12
+ * On-screen simultaneous cap for SCHEDULED wave enemy BODIES. The arcade hard cap
+ * is the 16-slot pool ($00A6 != 0x10 gate); live md=02 play PEAKS at exactly 10
+ * (tools/arch_census.txt + spawn_cap_L0.txt). We cap at 10 -- the arcade's true
+ * observed maximum, so the busy scene matches the arcade AND the co-resident body
+ * count (bodies + their lobbed projectiles + the player's shots) stays inside the
+ * VDP per-scanline sprite budget at the dense flyer/hopper/projectile worst case
+ * (a clean 60fps -- a cap of 12 grazed 59 in a transient burst; see arch_deepfps).
+ * The lobbed projectiles the creatures/throwers fire are NOT scheduled bodies, so
+ * they don't count against this cap (they are children, like the arcade $0DA8). */
+#define SPAWN_ONSCREEN_CAP  10
 
 void entity_schedule_init(void);              /* (re)arm the scheduler for the   *
                                                * current round (game.c round set)*/

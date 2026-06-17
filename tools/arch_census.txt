@@ -1,0 +1,191 @@
+fr=1080 stage96=00 gfx67=00 | enemyMain=6{1,1,1,1,1,1}
+fr=1140 stage96=00 gfx67=00 | enemyMain=6{1,1,1,1,1,1}
+fr=1200 stage96=00 gfx67=00 | enemyMain=6{1,1,1,1,1,1}
+fr=1260 stage96=00 gfx67=00 | enemyMain=6{1,1,1,1,1,1}
+fr=1320 stage96=00 gfx67=00 | enemyMain=7{1,1,1,2,2,2,0}
+fr=1380 stage96=00 gfx67=00 | enemyMain=7{1,1,1,2,2,2,0}
+fr=1440 stage96=04 gfx67=00 | enemyMain=10{1,1,1,2,2,2,0,0,0,0}
+fr=1500 stage96=04 gfx67=00 | enemyMain=10{1,1,1,2,2,2,0,0,0,0}
+fr=1560 stage96=04 gfx67=00 | 
+fr=1620 stage96=04 gfx67=00 | 
+fr=1680 stage96=04 gfx67=00 | 
+fr=1740 stage96=04 gfx67=00 | 
+fr=1800 stage96=04 gfx67=00 | 
+fr=1860 stage96=04 gfx67=00 | 
+fr=1920 stage96=04 gfx67=00 | 
+fr=1980 stage96=04 gfx67=00 | 
+fr=2040 stage96=04 gfx67=00 | classH=6{2,2,2,2,2,2}
+fr=2100 stage96=04 gfx67=00 | classH=6{4,4,4,2,5,5}
+fr=2160 stage96=04 gfx67=00 | classH=5{2,2,6,6,2}
+fr=2220 stage96=04 gfx67=00 | classH=3{2,2,2} classI=3{1,1,1}
+fr=2280 stage96=04 gfx67=00 | classH=3{4,4,4} classI=4{2,2,2,1}
+fr=2340 stage96=05 gfx67=00 | classH=3{2,2,2} classI=4{1,1,4,2}
+fr=2400 stage96=05 gfx67=00 | classH=1{2} classI=3{2,2,1}
+fr=2460 stage96=05 gfx67=00 | classH=1{2} classI=3{1,1,2}
+fr=2520 stage96=05 gfx67=00 | classI=3{2,4,1}
+fr=2580 stage96=05 gfx67=00 | classI=1{2}
+fr=2640 stage96=05 gfx67=00 | classH=6{4,2,2,2,1,1}
+fr=2700 stage96=05 gfx67=00 | classH=6{2,4,4,6,5,5}
+fr=2760 stage96=05 gfx67=00 | classH=4{4,2,6,2}
+fr=2820 stage96=05 gfx67=00 | classH=3{4,2,2}
+fr=2880 stage96=05 gfx67=00 | classH=2{4,2}
+fr=2940 stage96=05 gfx67=00 | classH=2{2,5} classI=4{4,1,1,1}
+fr=3000 stage96=05 gfx67=00 | classH=2{2,4} classI=3{2,2,2}
+fr=3060 stage96=05 gfx67=00 | classH=2{2,5} classI=3{1,1,1}
+fr=3120 stage96=05 gfx67=00 | classH=2{4,2} classI=3{2,2,2}
+fr=3180 stage96=05 gfx67=00 | classH=2{2,4} classI=3{1,1,1}
+fr=3240 stage96=05 gfx67=00 | classH=2{2,5} classI=3{2,2,2}
+fr=3300 stage96=06 gfx67=01 | classH=2{5,2}
+fr=3360 stage96=06 gfx67=01 | classH=2{4,2}
+fr=3420 stage96=06 gfx67=01 | classH=2{2,4}
+fr=3480 stage96=06 gfx67=01 | classH=2{4,4}
+fr=3540 stage96=06 gfx67=01 | classF=4{1,1,0,0} classH=2{2,5}
+fr=3600 stage96=07 gfx67=01 | classF=1{1} classH=2{2,2}
+fr=3660 stage96=07 gfx67=01 | classH=2{4,2}
+fr=3720 stage96=07 gfx67=01 | classH=2{2,4}
+fr=3780 stage96=07 gfx67=01 | classH=2{2,2}
+fr=3840 stage96=07 gfx67=01 | classH=2{2,2}
+fr=3900 stage96=07 gfx67=01 | classF=4{1,3,0,0} classH=2{2,5}
+fr=3960 stage96=07 gfx67=01 | classF=3{3,3,3} classH=2{4,4}
+fr=4020 stage96=07 gfx67=01 | classF=3{3,3,3} classH=2{2,4}
+fr=4080 stage96=07 gfx67=01 | classF=3{3,3,3} classH=2{2,2}
+fr=4140 stage96=07 gfx67=01 | classF=1{3} classH=2{2,2}
+fr=4200 stage96=07 gfx67=01 | classH=2{4,2}
+fr=4260 stage96=07 gfx67=01 | classH=2{2,4}
+fr=4320 stage96=07 gfx67=01 | classH=2{2,2}
+fr=4380 stage96=07 gfx67=01 | classH=2{5,2}
+fr=4440 stage96=07 gfx67=01 | classF=4{1,1,0,0} classH=2{2,4}
+fr=4500 stage96=07 gfx67=01 | classF=2{3,3} classH=2{2,2}
+fr=4560 stage96=07 gfx67=01 | classF=2{3,3} classH=2{2,4}
+fr=4620 stage96=07 gfx67=01 | classF=2{3,3} classH=2{5,2}
+fr=4680 stage96=07 gfx67=01 | classF=1{3} classH=2{5,5}
+fr=4740 stage96=07 gfx67=01 | classH=2{2,5}
+fr=4800 stage96=07 gfx67=01 | classH=2{4,2}
+fr=4860 stage96=07 gfx67=01 | classH=2{4,2} classI=1{1} objSingle=1{1}
+fr=4920 stage96=07 gfx67=01 | classH=2{2,5} classI=1{1} objSingle=1{1}
+fr=4980 stage96=07 gfx67=01 | classH=2{5,2} classI=1{1} objSingle=1{1}
+fr=5040 stage96=07 gfx67=01 | classH=2{2,2} classI=1{1} objSingle=1{1}
+fr=5100 stage96=07 gfx67=01 | classH=2{2,2} classI=1{1} objSingle=1{1}
+fr=5160 stage96=07 gfx67=01 | classH=2{2,2} classI=1{1} objSingle=1{1}
+fr=5220 stage96=07 gfx67=01 | classH=2{2,2} classI=1{1} objSingle=1{1}
+fr=5280 stage96=07 gfx67=01 | classH=2{2,2} classI=1{1} objSingle=1{1}
+fr=5340 stage96=07 gfx67=01 | classH=2{2,2} classI=1{1} objSingle=1{1}
+fr=5400 stage96=07 gfx67=01 | classH=2{2,2} classI=1{1} objSingle=1{1}
+fr=5460 stage96=09 gfx67=01 | classH=2{2,2} classI=1{1} objSingle=1{1}
+fr=5520 stage96=09 gfx67=01 | classH=2{2,2} classI=1{1} objSingle=1{1}
+fr=5580 stage96=09 gfx67=01 | classH=2{2,2} classI=1{1} objSingle=1{1}
+fr=5640 stage96=09 gfx67=01 | classH=2{2,2} classI=1{1} objSingle=1{1}
+fr=5700 stage96=09 gfx67=01 | classH=2{2,2} classI=1{1} objSingle=1{1}
+fr=5760 stage96=09 gfx67=01 | classH=2{2,2} classI=1{1} objSingle=1{1}
+fr=5820 stage96=09 gfx67=01 | classH=2{2,2} classI=1{1} objSingle=1{1}
+fr=5880 stage96=09 gfx67=01 | classH=2{2,2} classI=1{1} objSingle=1{1}
+fr=5940 stage96=09 gfx67=01 | classH=2{2,2} classI=1{1} objSingle=1{1}
+fr=6000 stage96=00 gfx67=00 | enemyMain=6{1,1,1,2,2,2}
+fr=6060 stage96=00 gfx67=00 | enemyMain=6{1,1,1,2,2,2}
+fr=6120 stage96=00 gfx67=00 | enemyMain=6{1,1,1,2,2,2}
+fr=6180 stage96=00 gfx67=00 | 
+fr=6240 stage96=00 gfx67=00 | 
+fr=6300 stage96=00 gfx67=00 | 
+fr=6360 stage96=00 gfx67=00 | 
+fr=6420 stage96=00 gfx67=00 | 
+fr=6480 stage96=00 gfx67=00 | 
+fr=6540 stage96=01 gfx67=00 | 
+fr=6600 stage96=01 gfx67=00 | 
+fr=6660 stage96=01 gfx67=00 | classH=6{2,2,2,2,2,2}
+fr=6720 stage96=01 gfx67=00 | classH=6{4,4,4,5,6,5}
+fr=6780 stage96=01 gfx67=00 | classH=5{5,5,2,5,5} classI=1{1}
+fr=6840 stage96=01 gfx67=00 | classH=5{2,2,2,2,2} classI=4{2,1,1,1}
+fr=6900 stage96=01 gfx67=00 | classH=4{2,4,2,4} classI=4{1,2,2,2}
+fr=6960 stage96=02 gfx67=00 | classH=4{2,2,2,5} classI=4{4,1,1,1}
+fr=7020 stage96=02 gfx67=00 | classH=4{2,2,2,2} classI=3{2,2,2}
+fr=7080 stage96=02 gfx67=00 | classH=1{2} classI=3{1,1,1}
+fr=7140 stage96=02 gfx67=00 | classI=3{4,2,2}
+fr=7200 stage96=02 gfx67=00 | 
+fr=7260 stage96=02 gfx67=00 | classH=6{1,1,1,1,1,1}
+fr=7320 stage96=02 gfx67=00 | classH=5{4,4,5,4,2}
+fr=7380 stage96=02 gfx67=00 | classH=5{2,2,2,2,2}
+fr=7440 stage96=02 gfx67=00 | classH=5{2,5,2,6,2}
+fr=7500 stage96=02 gfx67=00 | classH=4{2,2,5,2} classI=3{1,1,1}
+fr=7560 stage96=02 gfx67=00 | classH=4{2,2,2,2} classI=4{2,2,2,1}
+fr=7620 stage96=02 gfx67=00 | classH=2{4,4} classI=4{1,1,3,2}
+fr=7680 stage96=02 gfx67=00 | classH=1{2} classI=4{2,2,1,1}
+fr=7740 stage96=02 gfx67=00 | classI=4{1,1,2,2}
+fr=7800 stage96=02 gfx67=00 | classI=4{2,2,1,1}
+fr=7860 stage96=01 gfx67=01 | classH=6{1,1,2,1,1,1} classI=1{2}
+fr=7920 stage96=01 gfx67=01 | classH=6{2,2,2,2,2,1}
+fr=7980 stage96=01 gfx67=01 | classH=6{2,2,2,2,2,1}
+fr=8040 stage96=01 gfx67=01 | classH=6{2,2,2,2,2,1}
+fr=8100 stage96=01 gfx67=01 | classH=6{2,2,2,2,2,1}
+fr=8160 stage96=01 gfx67=01 | classH=6{2,2,2,2,2,1}
+fr=8220 stage96=01 gfx67=01 | classH=6{2,2,2,2,2,1}
+fr=8280 stage96=01 gfx67=01 | classH=6{2,2,2,2,2,1}
+fr=8340 stage96=01 gfx67=01 | classH=6{2,2,2,2,2,1}
+fr=8400 stage96=01 gfx67=01 | classH=6{2,2,2,2,2,1}
+fr=8460 stage96=01 gfx67=01 | classH=6{2,2,2,2,2,1}
+fr=8520 stage96=02 gfx67=01 | classH=6{2,2,2,2,2,1}
+fr=8580 stage96=02 gfx67=01 | classH=6{2,2,2,2,2,1}
+fr=8640 stage96=02 gfx67=01 | classH=6{2,2,2,2,2,1}
+fr=8700 stage96=02 gfx67=01 | classH=6{2,2,2,2,2,1}
+fr=8760 stage96=02 gfx67=01 | classH=6{2,2,2,2,2,1}
+fr=8820 stage96=02 gfx67=01 | classH=6{2,2,2,2,2,1}
+fr=8880 stage96=02 gfx67=01 | classH=6{2,2,2,2,2,1}
+fr=8940 stage96=02 gfx67=01 | classH=6{2,2,2,2,2,1}
+fr=9000 stage96=00 gfx67=00 | enemyMain=6{1,1,1,2,2,2}
+fr=9060 stage96=00 gfx67=00 | enemyMain=6{1,1,1,2,2,2}
+fr=9120 stage96=00 gfx67=00 | enemyMain=6{1,1,1,2,2,2}
+fr=9180 stage96=00 gfx67=00 | 
+fr=9240 stage96=00 gfx67=00 | 
+fr=9300 stage96=00 gfx67=00 | 
+fr=9360 stage96=00 gfx67=00 | 
+fr=9420 stage96=00 gfx67=00 | 
+fr=9480 stage96=00 gfx67=00 | 
+fr=9540 stage96=02 gfx67=00 | 
+fr=9600 stage96=02 gfx67=00 | 
+fr=9660 stage96=02 gfx67=00 | classH=6{2,2,2,2,2,2}
+fr=9720 stage96=02 gfx67=00 | classH=6{4,4,4,5,6,5}
+fr=9780 stage96=02 gfx67=00 | classH=5{2,2,2,2,2} classI=1{1}
+fr=9840 stage96=02 gfx67=00 | classH=5{2,2,2,2,2} classI=4{2,1,1,1}
+fr=9900 stage96=02 gfx67=00 | classH=5{6,4,4,4,4} classI=4{1,2,2,2}
+fr=9960 stage96=02 gfx67=00 | classH=4{2,2,2,2} classI=4{4,1,1,1}
+fr=10020 stage96=02 gfx67=00 | classH=4{2,2,2,2} classI=3{2,2,2}
+
+=== STAGE PROGRESSION (stage96 changes) ===
+fr=1078 stage96=00 5A=00 gfx67=00
+fr=1395 stage96=04 5A=04 gfx67=00
+fr=2324 stage96=05 5A=04 gfx67=00
+fr=3280 stage96=06 5A=05 gfx67=01
+fr=3586 stage96=07 5A=05 gfx67=01
+fr=5431 stage96=08 5A=05 gfx67=01
+fr=5432 stage96=09 5A=05 gfx67=01
+fr=5974 stage96=00 5A=00 gfx67=00
+fr=6528 stage96=01 5A=00 gfx67=00
+fr=6931 stage96=02 5A=00 gfx67=00
+fr=7839 stage96=01 5A=01 gfx67=01
+fr=8468 stage96=02 5A=01 gfx67=01
+fr=8982 stage96=00 5A=00 gfx67=00
+fr=9536 stage96=01 5A=00 gfx67=00
+fr=9537 stage96=02 5A=00 gfx67=00
+
+=== PER-STAGE POOLS POPULATED (max simultaneous) ===
+stage 00 : enemyMain=7  classH=6  classI=1  objSingle=1
+stage 01 : classH=6  classI=4
+stage 02 : classH=6  classI=4
+stage 04 : enemyMain=10  classH=6  classI=4
+stage 05 : classH=6  classI=4
+stage 06 : classF=4  classH=2  classI=2
+stage 07 : classF=4  classH=2  classI=1  objSingle=1
+stage 08 : classH=2  classI=1  objSingle=1
+stage 09 : classH=2  classI=1  objSingle=1
+
+=== GLOBAL MAX per pool ===
+  enemyMain  max=10
+  classC     max=0
+  classD     max=0
+  classE     max=0
+  classF     max=4
+  classG     max=0
+  classH     max=6
+  classI     max=4
+  objSingle  max=1
+  obj16x16   max=0
+  classK     max=0

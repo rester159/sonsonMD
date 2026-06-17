@@ -1,0 +1,62 @@
+fr=1080 stage=30 gfx67=00 | enemyMain=6{1,1,1,1,1,1}
+fr=1140 stage=30 gfx67=00 | enemyMain=6{1,1,1,1,1,1}
+fr=1200 stage=30 gfx67=00 | enemyMain=6{1,1,1,1,1,1}
+fr=1260 stage=30 gfx67=00 | enemyMain=6{1,1,1,1,1,1}
+fr=1320 stage=30 gfx67=00 | enemyMain=7{1,1,1,2,2,2,0}
+fr=1380 stage=30 gfx67=00 | enemyMain=7{1,1,1,2,2,2,0}
+fr=1440 stage=30 gfx67=00 | enemyMain=10{1,1,1,2,2,2,0,0,0,0}
+fr=1500 stage=30 gfx67=00 | enemyMain=10{1,1,1,2,2,2,0,0,0,0}
+fr=1560 stage=30 gfx67=00 | 
+fr=1620 stage=30 gfx67=00 | 
+fr=1680 stage=30 gfx67=00 | 
+fr=1740 stage=30 gfx67=00 | 
+fr=1800 stage=30 gfx67=00 | 
+fr=1860 stage=30 gfx67=00 | 
+fr=1920 stage=30 gfx67=00 | 
+fr=1980 stage=30 gfx67=00 | 
+fr=2040 stage=30 gfx67=00 | classH=6{2,2,2,2,2,2}
+fr=2100 stage=30 gfx67=00 | classH=6{4,4,4,2,5,5}
+fr=2160 stage=30 gfx67=00 | classH=5{2,2,6,6,2}
+fr=2220 stage=30 gfx67=00 | classH=3{2,2,2} classI=3{1,1,1}
+fr=2280 stage=30 gfx67=00 | classH=3{4,4,4} classI=4{2,2,2,1}
+fr=2340 stage=30 gfx67=00 | classH=3{2,2,2} classI=4{1,1,4,2}
+fr=2400 stage=30 gfx67=00 | classH=1{2} classI=3{2,2,1}
+fr=2460 stage=30 gfx67=00 | classH=1{2} classI=3{1,1,2}
+fr=2520 stage=30 gfx67=00 | classI=3{2,4,1}
+fr=2580 stage=30 gfx67=00 | classI=1{2}
+fr=2640 stage=30 gfx67=00 | classH=6{4,2,2,2,1,1}
+fr=2700 stage=30 gfx67=00 | classH=6{2,4,4,6,5,5}
+fr=2760 stage=30 gfx67=00 | classH=4{4,2,6,2}
+fr=2820 stage=30 gfx67=00 | classH=3{4,2,2}
+fr=2880 stage=30 gfx67=00 | classH=2{4,2}
+fr=2940 stage=30 gfx67=00 | classH=2{2,5} classI=4{4,1,1,1}
+fr=3000 stage=30 gfx67=00 | classH=2{2,4} classI=3{2,2,2}
+fr=3060 stage=30 gfx67=00 | classH=2{2,5} classI=3{1,1,1}
+fr=3120 stage=30 gfx67=00 | classH=2{4,2} classI=3{2,2,2}
+fr=3180 stage=30 gfx67=00 | classH=2{2,4} classI=3{1,1,1}
+fr=3240 stage=30 gfx67=00 | classH=2{2,5} classI=3{2,2,2}
+fr=3300 stage=30 gfx67=01 | classH=2{5,2}
+fr=3360 stage=30 gfx67=01 | classH=2{4,2}
+fr=3420 stage=30 gfx67=01 | classH=2{2,4}
+fr=3480 stage=30 gfx67=01 | classH=2{4,4}
+fr=3540 stage=30 gfx67=01 | classF=4{3,2,0,0} classH=2{2,5}
+fr=3600 stage=30 gfx67=01 | classF=4{3,3,3,3} classH=2{2,2}
+fr=3660 stage=30 gfx67=01 | classF=4{3,3,3,3} classH=2{4,2}
+fr=3720 stage=30 gfx67=01 | classF=4{3,3,3,3} classH=2{2,4}
+fr=3780 stage=30 gfx67=01 | classF=4{3,3,3,3} classH=2{2,2}
+fr=3840 stage=30 gfx67=01 | classF=4{3,3,3,3} classH=1{2}
+fr=3900 stage=30 gfx67=01 | classF=4{3,3,3,3} classH=1{2}
+fr=3960 stage=30 gfx67=01 | classF=4{3,3,3,3} classH=1{2}
+fr=4020 stage=30 gfx67=01 | classF=4{3,3,3,3} classH=1{2}
+
+=== STAGE 30 GLOBAL MAX per pool ===
+  enemyMain  max=10
+  classC     max=0
+  classD     max=0
+  classE     max=0
+  classF     max=4
+  classG     max=0
+  classH     max=6
+  classI     max=4
+  objSingle  max=0
+  obj16x16   max=0
