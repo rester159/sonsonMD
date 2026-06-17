@@ -4,6 +4,7 @@
 #include "ss_gfx.h"
 #include "ss_level.h"
 #include "ss_anim.h"     /* baked player/enemy animation frames + table */
+#include "sound.h"       /* faithful arcade BGM + SFX (Z80/V-Int-driven)  */
 
 /* ===========================================================================
  *  SON SON  --  NATIVE engine, Phase 4 (wide SCROLLING level)
@@ -202,6 +203,15 @@ void game_init(void)
 
     /* Spawn the Phase-4 entity wave (ground enemies + a couple of fruit). */
     entity_init();
+
+    /* AUDIO: bring the sound subsystem up HERE -- after the CAPCOM splash (which
+     * drives + resets the YM directly and returns the Z80 to SGDK's halt) and the
+     * front-end, so snd_init re-parks the Z80 with the bus held + re-installs the
+     * V-Blank replay tick.  Then start the main in-game BGM (arcade cmd 0x18).
+     * The replay is advanced from the HW V-Blank (snd.c), so the music keeps
+     * tempo no matter how busy the scene gets -- decoupled from this game loop. */
+    snd_init();
+    snd_play_bgm();
 }
 
 /* ---------------------------------------------------------------------------
@@ -376,6 +386,10 @@ static void player_control(u16 pad)
         {
             /* mid-body launch point (sprite is 16x16) */
             entity_player_fire((s16)(p->x + 4), (s16)(p->y + 4), p->facing);
+            /* play the arcade player-shot SFX (verified cmd 0x0B). It plays on
+             * the YM2612 SFX voice, mixed over the PSG music -- one shot per press
+             * edge, exactly like the arcade fire-once gate. */
+            snd_sfx_fire();
             /* show the fire/recoil pose for the anim's full length */
             p->fireAnim = (u8)(ss_anims[SS_ANIM_PLAYER_FIRE].frames[0].dur +
                                ss_anims[SS_ANIM_PLAYER_FIRE].frames[1].dur);
@@ -738,4 +752,10 @@ void game_run(void)
         SYS_doVBlankProcess();
         if (done) break;           /* GAME OVER finished -> back to the selector */
     }
+
+    /* AUDIO teardown: stop the music/SFX, silence the chips, and DETACH the
+     * V-Blank replay tick so the front-end (selector / SEGA / CAPCOM splashes)
+     * owns the sound hardware again on the way back.  Without this, snd_vblank
+     * would keep firing during those stages and fight their direct YM use. */
+    snd_shutdown();
 }
