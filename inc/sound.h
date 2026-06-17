@@ -31,14 +31,35 @@
  *  nothing per frame for audio beyond the cheap V-Int tick.
  *
  * ===========================================================================
- *  COMMAND NUMBERS (verified by tapping the arcade $3010 latch in MAME, 2026-06)
+ *  COMMAND NUMBERS (verified by tapping the arcade sound-command latch in MAME)
  * ===========================================================================
- *  0x18  main in-game / level BGM      (start-of-game; arcade load_A18_jmp_6341)
+ *  The maincpu latches a 1-byte command that the sound 6809 reads; in MAME's
+ *  `sonson` driver the latch is the :soundlatch device (read via the lua
+ *  save-item API; the RE's $3010/$A000 are the port's abstraction of it). Each
+ *  number below was VERIFIED by tapping that latch live and correlating it with
+ *  the on-screen event (tools/mame/ss_*.lua):
+ *
+ *  0x18  main in-game / level BGM      (start-of-game; held through play)
  *  0x0B  player FIRE / shot SFX         (1:1 with each fire press, isolated)
  *  0x01  coin
  *  0x16+0x10  round / "GET READY" music (plays right after 0x18 on game start)
- *  (0x02 / 0x06 / 0x08 / 0x0C observed during combat = enemy/impact/item SFX --
- *   not yet individually isolated; see sound.c TODO.)
+ *
+ *  0x08  ENEMY-DEFEAT SFX  -- VERIFIED 2026-06-17: across the attract demo, 0x08
+ *        is latched for 201 frames WHILE an enemy death-animation (sprite codes
+ *        307..310) is on screen vs only 68 frames when none is (75% co-occurrence;
+ *        every other command is the opposite). Confirmed again by the latch-change
+ *        ordering: 0x08 fires right at each enemy-death onset. (ss_corr08 / ss_seq)
+ *  0x14  PLAYER-DEATH SFX  -- VERIFIED 2026-06-17: forcing the hero to die in the
+ *        live game (walk into enemies, no fire), 0x14 is the command sustained
+ *        through every player death and appears ONLY at death -- never in the
+ *        combat vocabulary. (ss_pdeath2)
+ *  0x02  ITEM/PICKUP SFX  -- BEST CANDIDATE (less rigorously isolated than 0x08/
+ *        0x14): 0x02 fires repeatedly between fire shots during the hero's
+ *        run-and-collect locomotion, is in the audio-agent candidate set, and is
+ *        NOT the death burst. Items don't reliably spawn in the attract demo or a
+ *        driven path, so a clean isolation wasn't possible; wired as the pickup
+ *        SFX pending a fuller item-spawn capture. (0x06 / 0x0C are the remaining
+ *        combat SFX -- impact/bump, not individually nailed.)
  */
 #ifndef SONSON_NATIVE_SOUND_H
 #define SONSON_NATIVE_SOUND_H
@@ -49,6 +70,9 @@
 #define SND_CMD_STOP        0x00    /* halt + silence (arcade pairs 00+song)     */
 #define SND_CMD_COIN        0x01    /* coin insert jingle                        */
 #define SND_CMD_FIRE        0x0B    /* player shot SFX  (CONFIRMED)              */
+#define SND_CMD_ENEMY       0x08    /* enemy-defeat SFX (VERIFIED 2026-06-17)    */
+#define SND_CMD_ITEM        0x02    /* item/pickup SFX  (best candidate)         */
+#define SND_CMD_DEATH       0x14    /* player-death SFX (VERIFIED 2026-06-17)    */
 #define SND_CMD_BGM_GAME    0x18    /* main in-game level BGM (CONFIRMED)       */
 #define SND_CMD_ROUND_A     0x16    /* round-intro music part A                  */
 #define SND_CMD_ROUND_B     0x10    /* round-intro music part B (round selector) */
@@ -72,8 +96,14 @@ void snd_shutdown(void);
 void snd_command(u8 cmd);
 
 /* Convenience wrappers for the wired game events (clearer call sites). */
-static inline void snd_play_bgm(void) { snd_command(SND_CMD_BGM_GAME); }
-static inline void snd_sfx_fire(void) { snd_command(SND_CMD_FIRE); }
-static inline void snd_stop(void)     { snd_command(SND_CMD_STOP); }
+static inline void snd_play_bgm(void)  { snd_command(SND_CMD_BGM_GAME); }
+static inline void snd_sfx_fire(void)  { snd_command(SND_CMD_FIRE); }
+static inline void snd_sfx_enemy(void) { snd_command(SND_CMD_ENEMY); }  /* enemy defeat */
+static inline void snd_sfx_item(void)  { snd_command(SND_CMD_ITEM); }   /* item collect */
+static inline void snd_sfx_death(void) { snd_command(SND_CMD_DEATH); }  /* player death */
+static inline void snd_stop(void)      { snd_command(SND_CMD_STOP); }
+
+/* Round-intro music (arcade plays 0x16 then 0x10 at a round/level start). */
+static inline void snd_play_round(void) { snd_command(SND_CMD_ROUND_A); snd_command(SND_CMD_ROUND_B); }
 
 #endif /* SONSON_NATIVE_SOUND_H */

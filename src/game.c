@@ -212,6 +212,11 @@ void game_init(void)
      * tempo no matter how busy the scene gets -- decoupled from this game loop. */
     snd_init();
     snd_play_bgm();
+    /* Round-intro music cue (arcade plays 0x16 then 0x10 at a round start). This
+     * is the "round 1 begins" flourish layered over the main BGM start; both are
+     * verified command numbers. (Routed to the music slot, so it does not disturb
+     * the SFX channel.) See the TODO in game_update for full per-round progression. */
+    snd_play_round();
 }
 
 /* ---------------------------------------------------------------------------
@@ -500,6 +505,11 @@ bool game_update(void)
             {
                 g_player_dead_request = 0;
                 if (g_game.lives > 0) g_game.lives--;
+
+                /* play the arcade player-death SFX (verified cmd 0x14) on the
+                 * lethal contact -- fires once as the hero enters the death beat,
+                 * whether this is a respawn-death or the final (game-over) life. */
+                snd_sfx_death();
 
                 if (g_game.lives == 0)
                 {

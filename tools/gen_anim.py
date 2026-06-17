@@ -41,6 +41,23 @@ PROVENANCE OF THE FRAME SEQUENCES (authoritative = the arcade):
             corpse/explosion held ~22 frames) -- observed terminal burst before
             the slot recycled.
 
+  TWO MORE ARCHETYPES (the native-enrichment task). The attract DEMO only ever
+  exercises the ground walker, so the flyer (classF $DF18) + thrower (enemyMain
+  $BAB3) + lobbed projectile (classI $D352) never appear in ss_anim_cap_raw.txt.
+  Their FRAMES are therefore taken directly from the authentic arcade SPRITE
+  SHEET (bank 2, the enemy palette -- the same sheet the walker lives on; codes
+  eyeball-verified distinct + non-blank via tools/cand2.png), and the AI is the
+  faithful behavioural RE (see entity.c headers + ../sonson/port/src):
+    FLYER_FLY  : 296 -> 297  (the orange spread-arm flyer; 2-frame wing-flap,
+                 a clean glide-flap loop -- distinct from the red walker)
+    THROWER_*  : 320 -> 321  (the blue/purple humanoid; THROWER_IDLE is the
+                 standing/approach cell pair, THROWER_THROW a brief 321 lunge
+                 on the lob -- a short non-looping stab like the player FIRE)
+    ESHOT      : 70 -> 71    (the small orange fireball; 2-frame flicker -- the
+                 lobbed projectile / enemy shot, tiny + round)
+  These drive the SAME native anim runtime (anim_tick / sub_9617 cadence) so the
+  flyer flaps, the thrower's throw plays, and the fireball flickers in flight.
+
 DETERMINISTIC, Python 3 stdlib only. Emits src/ss_anim.c + inc/ss_anim.h.
 
 USAGE:
@@ -88,6 +105,26 @@ ANIMS = [
     # despawns at the end of the last (held) frame.
     ("ENEMY_DEATH",  False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
                              (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
+
+    # ---- FLYER (classF $DF18/$DF90): a 2-frame wing-flap glide loop. The flyer
+    # glides its arc/path then dives; both phases share this flap (the arcade
+    # swaps the anim SCRIPT on the dive, but the on-screen cell set is this pair).
+    ("FLYER_FLY",    True,  [(296, ENEMY_BANK, 5), (297, ENEMY_BANK, 5)]),
+    # Flyer death reuses the generic enemy burst poses (shared corpse FX).
+    ("FLYER_DEATH",  False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
+                             (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
+
+    # ---- THROWER (enemyMain idx4 $BAB3): IDLE = the standing/approach pair the
+    # walker-class thrower shows while closing on the player; THROW = a brief
+    # one-shot lunge (321 held) on the lob, mirroring the player FIRE stab. ----
+    ("THROWER_IDLE", True,  [(320, ENEMY_BANK, 6), (321, ENEMY_BANK, 6)]),
+    ("THROWER_THROW",False, [(321, ENEMY_BANK, 8), (320, ENEMY_BANK, 6)]),
+    ("THROWER_DEATH",False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
+                             (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
+
+    # ---- ENEMY SHOT / lobbed projectile (classI $D352): a small fireball that
+    # flickers between two cells as it arcs (2-frame loop). ----
+    ("ESHOT_FLY",    True,  [(70, ENEMY_BANK, 4), (71, ENEMY_BANK, 4)]),
 ]
 
 

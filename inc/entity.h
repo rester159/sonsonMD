@@ -30,16 +30,20 @@
 #include "anim_rt.h"     /* shared animation runtime (consumes baked ss_anim.h) */
 
 /* ---- Entity types --------------------------------------------------------
- * Only the Phase-4 vertical-slice set. The arcade has ~55 archetypes (census);
- * more drop in as new ET_* cases in entity_update_one / the spawn table.
- * TODO(more-archetypes): flyer (classF DF18), thrower (enemyMain BAB3),
- *   lobbed projectile (classI D352), fruit/item pickups. */
+ * The arcade has ~55 archetypes (census); these are the implemented native set.
+ * Each ET_* re-expresses the SEMANTICS of an arcade handler (the oracle), not a
+ * transliteration -- see the per-type AI in entity.c + the $-handler references.
+ * TODO(more-archetypes): classG ground-thrower (C7F2), classC creature-flyer
+ *   (BC6C), classE large composite (F2B3), fruit/item variety. */
 typedef enum
 {
     ET_NONE = 0,    /* empty slot                                            */
     ET_ENEMY_A,     /* ground enemy -- marches left toward the player        */
     ET_SHOT,        /* player projectile -- travels in the facing direction  */
-    ET_ITEM         /* collectible fruit (bonus score on player touch)       */
+    ET_ITEM,        /* collectible fruit (bonus score on player touch)       */
+    ET_FLYER,       /* flyer (classF $DF18/$DF90): glides an arc, then dives  */
+    ET_THROWER,     /* thrower (enemyMain $BAB3): marches, lobs projectiles   */
+    ET_ENEMY_SHOT   /* lobbed projectile (classI $D352): parabolic arc, hurts */
 } EntityType;
 
 /* ---- Entity record (CLEAN native, packed) --------------------------------
@@ -62,6 +66,9 @@ typedef struct
     u8  facing;     /* 0 = faces/moves right, 1 = faces/moves left (flipH)   */
     u8  anim;       /* legacy anim-cell index (kept; AI state still uses it)  */
     u8  animTimer;  /* legacy counts down to the next anim step               */
+    u8  phase;      /* free phase accumulator (FLYER vertical-bob sine index) */
+    u8  fireTimer;  /* THROWER: frames left in the current throw-lunge pose   */
+    s16 launchY;    /* ENEMY_SHOT: world-Y it was lobbed from (arc land test) */
     Anim av;        /* faithful animation cursor (walk / death) -- enemyA     */
     u16 tile;       /* absolute VRAM base tile (SPRITE_SIZE(2,2))            */
 } Entity;
