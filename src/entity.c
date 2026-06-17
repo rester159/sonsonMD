@@ -3,6 +3,7 @@
 #include "entity.h"
 #include "ss_gfx.h"
 #include "ss_anim.h"     /* baked player/enemy animation frames + table */
+#include "ss_collision.h"/* SS_TIER_Y[6] -- the 6 terrain tiers (native sub_A847) */
 #include "sound.h"       /* snd_sfx_enemy / snd_sfx_item (verified $3010 cmds) */
 
 /* ===========================================================================
@@ -190,12 +191,12 @@ u8 g_player_dead_request = 0;   /* set here on a lethal contact, cleared by game
 #define CREG_THROW_ANIM     12          /* frames the throw-lunge pose shows        */
 
 /* ---- CREATURE_C (classC $BC6C family / $BC74 walk) tunables -----------------
- * A creature-family walker: seeks the player on the ground like enemyA but with
- * a gentle vertical WANDER (a small sine bob on top of the lane-homing) so it
- * reads as a distinct, slightly erratic creature. One shot kills it. */
+ * A creature-family walker: tracks the player on X on the ground like enemyA and
+ * rides its spawn tier (the arcade classC walker sub_BC74 has no player-Y term --
+ * see the seat_on_tier RE; the old vertical "wander" was unfaithful, removed).
+ * One shot kills it. */
 #define CREC_HP             1
 #define CREC_SPEED          0x0110      /* ~1.06 px/frame seek                      */
-#define CREC_BOB_AMP        0x0090      /* gentle vertical wander amplitude          */
 
 /* ---- COMPOSITE_E (classE $C35E walker) tunables ----------------------------
  * The TOUGHER archetype: a brisk lane walker that takes TWO shots (the arcade's
@@ -242,8 +243,8 @@ u8 g_player_dead_request = 0;   /* set here on a lethal contact, cleared by game
  * Kept visually distinct from the collectible fruit by this motion (it is never
  * collected -- it hurts). One shot kills it. */
 #define ORB_HP              1
-#define ORB_SPEED           0x0080      /* ~0.5 px/frame slow drift toward player    */
-#define ORB_BOB_AMP         0x0120      /* gentle vertical hover-bob amplitude        */
+#define ORB_SPEED           0x0080      /* ~0.5 px/frame slow leftward drift (scroll)*/
+#define ORB_BOB_PIX         10          /* +-px of the sine hover-bob around spawn Y  */
 
 /* ---- FRUIT (ET_ITEM) point values -- the SonSon SIGNATURE scoring ----------
  * EATING FRUIT is SonSon's headline mechanic. One round fruit shape recoloured
@@ -546,6 +547,7 @@ Entity *entity_spawn(u8 type, s16 x, s16 y)
                 e->facing = 1;
                 e->state  = 0;             /* 0 = hover, 1 = dying                  */
                 e->vx     = (s16)(-ORB_SPEED);
+                e->launchY= y;             /* spawn row -- bob around it (no chase) */
                 anim_restart(&e->av, SS_ANIM_ORB_FLOAT);
                 e->tile   = ORB_TILE;
                 break;
@@ -1003,6 +1005,48 @@ static inline void integrate(s16 *pos, u16 *sub, s16 vel)
     *sub    = (u16)(acc & 0xFF);
 }
 
+/* ---- TIER SEATING -- the arcade ground-enemy vertical model (sub_A847) ------
+ * RE VERDICT (cited): the arcade GROUND enemies do NOT chase the player's tier.
+ * Their VERTICAL position is governed by SCRIPTED motion + terrain SEATING via
+ * sub_A847 ($A847) -- NOT a player-Y homing term. The decode:
+ *   - enemyMain/$0828 walkers + thrower share the mover sub_BB46 ($BB46): it adds
+ *     a per-state velocity VECTOR [dx@$1,dy@$3] read from a 5-byte-stride table
+ *     indexed by the state/direction byte -$6,x. The DIRECTION (-$6,x) is chosen
+ *     ONLY from the player's X -- sub_DC7D ($DC7D: cmpd $4,u player-X) and the
+ *     classH tracker sub_D083 ($D091: cmpd -$B,u player-X) pick left/right. The
+ *     dy component is a FIXED script value per state, never derived from player Y.
+ *   - classG sub_C744 ($C744) does `dec -$8,x` (climb up 1px) then sub_C734
+ *     ($C734) calls sub_A847: carry-clear (no tier) => set a fall velocity $0400;
+ *     carry-set (solid) => SEAT (b + -$8,x, b = A847's push-out). classH sub_CFA8
+ *     / sub_D06B / leap sub_D0B5 ($D0D9) do the same gravity + A847 land-seat.
+ *   - The ONLY player-Y reference in any ground handler is the CONTACT-overlap
+ *     TEST sub_DCAC ($DCC?-: -$8,u - -$8,x, +-8px window) -- a hit test, never a
+ *     move. A grep of the whole port src for a player-Y read driving a velocity
+ *     finds NONE. (census_semantic.toml labels D02D "tracking walker" and BA89
+ *     "lane-shift", but the code tracks the player on X; the vertical is scripted
+ *     bob + terrain seat.)
+ * So a faithful native ground marcher STAYS on the tier it entered on (the arcade
+ * tier bands are universally solid -> A847 keeps a flat marcher seated on its
+ * row). seat_on_tier() snaps Y to the nearest of the 6 SS_TIER_Y bands -- the
+ * native equivalent of the A847 reseat -- so a marcher rides its spawn tier
+ * exactly (and never drifts between tiers). It does NOT move toward the player. */
+static inline void seat_on_tier(Entity *e)
+{
+    /* nearest SS_TIER_Y band to the entity's current Y (the A847 push-out). The 6
+     * tiers are {200,168,136,104,72,40}; pick the closest and snap to it. */
+    u8  best = 0;
+    s16 bestD = 0x7FFF;
+    u8  t;
+    for (t = 0; t < SS_COLLISION_TIERS; t++)
+    {
+        s16 d = (s16)(e->y - SS_TIER_Y[t]);
+        if (d < 0) d = (s16)(-d);
+        if (d < bestD) { bestD = d; best = t; }
+    }
+    e->y    = SS_TIER_Y[best];
+    e->ySub = 0;
+}
+
 /* Advance the anim-cell cadence (arcade sub_9617: countdown then step). */
 static inline void anim_step(Entity *e, u8 period)
 {
@@ -1109,10 +1153,12 @@ static void entity_update_one(Entity *e, const Player *p)
             else             { e->facing = 0; if (e->vx < 0) e->vx = -e->vx; }
             integrate(&e->x, &e->xSub, e->vx);
 
-            /* home onto the player's lane Y one step at a time (lane-tracking
-             * approach -- the arcade enemy shifts toward the player's tier). */
-            if      (e->y < p->y) e->y += 1;
-            else if (e->y > p->y) e->y -= 1;
+            /* VERTICAL: ride the spawn tier (arcade sub_A847 reseat). The arcade
+             * enemyMain walker (mover sub_BB46) tracks the player on X only -- its
+             * Y is the scripted-vector dy + terrain seating, NOT a player-Y chase.
+             * On the universally-solid tier bands a flat marcher stays on its row,
+             * so we just keep it seated on its entry tier. (See seat_on_tier RE.) */
+            seat_on_tier(e);
 
             /* faithful walk cycle (captured arcade cadence) */
             anim_set(&e->av, SS_ANIM_ENEMY_WALK);
@@ -1236,9 +1282,11 @@ static void entity_update_one(Entity *e, const Player *p)
                 e->state = 0;
                 integrate(&e->x, &e->xSub,
                           e->facing ? (s16)(-THROWER_SPEED) : (s16)THROWER_SPEED);
-                /* home onto the player's lane Y one step at a time */
-                if      (e->y < p->y) e->y += 1;
-                else if (e->y > p->y) e->y -= 1;
+                /* VERTICAL: ride the spawn tier. The arcade thrower (enemyMain
+                 * idx4, mover sub_BB46) marches toward the player on X and clamps
+                 * the approach by X distance (sub_BAC3/BAE5 cmpd) -- no player-Y
+                 * pursuit. It threatens with its lobbed arc, not by changing tier. */
+                seat_on_tier(e);
                 anim_set(&e->av, SS_ANIM_THROWER_IDLE);
             }
             else                               /* FIRE-STANCE: in range -> lob    */
@@ -1319,9 +1367,11 @@ static void entity_update_one(Entity *e, const Player *p)
             if (p->x < e->x) { e->facing = 1; if (e->vx > 0) e->vx = -e->vx; }
             else             { e->facing = 0; if (e->vx < 0) e->vx = -e->vx; }
             integrate(&e->x, &e->xSub, e->vx);
-            /* home onto the player's lane Y one step at a time */
-            if      (e->y < p->y) e->y += 1;
-            else if (e->y > p->y) e->y -= 1;
+            /* VERTICAL: ride the spawn tier. classG walk/patrol (sub_C744) climbs
+             * + seats via sub_A847 (sub_C734) -- gravity/terrain, not a player-Y
+             * chase; it tracks the player on X (sub_C726 edge-turn). Keep it on its
+             * row (the native flat tiers = the arcade's seated march). */
+            seat_on_tier(e);
 
             /* throw a lobbed projectile when within range, on a cadence */
             gap = (s16)((p->x < e->x) ? (e->x - p->x) : (p->x - e->x));
@@ -1367,11 +1417,12 @@ static void entity_update_one(Entity *e, const Player *p)
             else             { e->facing = 0; if (e->vx < 0) e->vx = -e->vx; }
             integrate(&e->x, &e->xSub, e->vx);
 
-            /* lane-home + a gentle vertical wander (the creature's erratic drift) */
-            if      (e->y < p->y) e->y += 1;
-            else if (e->y > p->y) e->y -= 1;
-            e->phase++;
-            integrate(&e->y, &e->ySub, flyer_bob_vy_amp(e->phase, CREC_BOB_AMP));
+            /* VERTICAL: ride the spawn tier. classC (walker sub_BC74) is a plain
+             * ground walker tracking the player on X -- no player-Y pursuit. Keep
+             * it seated on its entry tier (was a player-Y home + sine wander; both
+             * removed -- the arcade walker neither chases the player's tier nor
+             * wanders vertically off its row). */
+            seat_on_tier(e);
 
             anim_set(&e->av, SS_ANIM_CREC_WALK);
             e->tile = anim_tick(&e->av);
@@ -1404,8 +1455,11 @@ static void entity_update_one(Entity *e, const Player *p)
             if (p->x < e->x) { e->facing = 1; if (e->vx > 0) e->vx = -e->vx; }
             else             { e->facing = 0; if (e->vx < 0) e->vx = -e->vx; }
             integrate(&e->x, &e->xSub, e->vx);
-            if      (e->y < p->y) e->y += 1;
-            else if (e->y > p->y) e->y -= 1;
+            /* VERTICAL: ride the spawn tier. classE walker (sub_C35E) loads a
+             * horizontal lane velocity on a parity gate -- no player-Y term. Keep
+             * it seated on its entry tier (the arcade large/composite walker marches
+             * its row; the multi-sprite body is a separate TODO). */
+            seat_on_tier(e);
 
             anim_set(&e->av, SS_ANIM_CMPE_WALK);
             e->tile = anim_tick(&e->av);
@@ -1512,9 +1566,11 @@ static void entity_update_one(Entity *e, const Player *p)
             /* but always bias toward the player so it presses the attack */
             if (p->x < e->x) e->facing = 1; else e->facing = 0;
             integrate(&e->x, &e->xSub, e->vx);
-            /* home onto the player's lane Y one step at a time (heavy approach) */
-            if      (e->y < p->y) e->y += 1;
-            else if (e->y > p->y) e->y -= 1;
+            /* VERTICAL: ride the spawn tier. obj16x16 (move sub_D5F3) reloads a
+             * periodic velocity VECTOR from the $DB4B table (the direction flip we
+             * model) -- a scripted patrol, not a player-Y chase. Keep it seated on
+             * its entry tier. */
+            seat_on_tier(e);
 
             anim_set(&e->av, SS_ANIM_LARGE_WALK);
             e->tile = anim_tick(&e->av);
@@ -1585,9 +1641,11 @@ static void entity_update_one(Entity *e, const Player *p)
 
         /* ----- ORB (objSingle $E1C4/$E1F5): slow hovering lethal hazard --------
          * RE: a parent-linked unique object that settles relative to the scroll +
-         * runs its own anim script. We re-express a slow drift toward the player
-         * with a vertical hover-bob (kept distinct from the COLLECTIBLE fruit by
-         * its motion -- it is lethal, never collected). Death (state 1) = burst. */
+         * runs its own anim script (objSingle idx4 sub_E710 = "settle to floor").
+         * It does NOT chase the player's tier. We re-express a slow leftward drift
+         * (it enters from the right with the scroll) + a gentle vertical hover-bob
+         * AROUND ITS SPAWN ROW (launchY) -- kept distinct from the COLLECTIBLE fruit
+         * by its motion; it is lethal, never collected. Death (state 1) = burst. */
         case ET_ORB:
         {
             if (e->state == 1)                 /* dying */
@@ -1598,15 +1656,17 @@ static void entity_update_one(Entity *e, const Player *p)
                 break;
             }
 
-            if (p->x < e->x) { e->facing = 1; if (e->vx > 0) e->vx = -e->vx; }
-            else             { e->facing = 0; if (e->vx < 0) e->vx = -e->vx; }
-            integrate(&e->x, &e->xSub, e->vx);
+            e->facing = (p->x < e->x) ? 1 : 0;
+            integrate(&e->x, &e->xSub, (s16)(-ORB_SPEED));   /* drift in with scroll */
 
-            /* drift toward the player's lane + a gentle hover-bob */
-            if      (e->y < p->y) e->y += 1;
-            else if (e->y > p->y) e->y -= 1;
+            /* gentle hover-bob around the spawn row (no player-Y tier chase): a
+             * +-ORB_BOB_PIX sine offset from launchY, indexed by the phase. */
             e->phase++;
-            integrate(&e->y, &e->ySub, flyer_bob_vy_amp(e->phase, ORB_BOB_AMP));
+            {
+                s16 off = (s16)(((s32)k_sin16[(e->phase >> 2) & 0x0F] * ORB_BOB_PIX) >> 6);
+                e->y    = (s16)(e->launchY + off);
+                e->ySub = 0;
+            }
 
             anim_set(&e->av, SS_ANIM_ORB_FLOAT);
             e->tile = anim_tick(&e->av);
