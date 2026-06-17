@@ -401,6 +401,7 @@ Entity *entity_spawn(u8 type, s16 x, s16 y)
         e->launchY   = 0;
         e->fruit     = 0;
         e->popupLen  = 0;
+        e->fromSched = 0;                           /* scheduler tags its own    */
         anim_restart(&e->av, SS_ANIM_ENEMY_WALK);   /* default; per-type below   */
 
         switch (type)
@@ -575,76 +576,177 @@ static void spawn_popup(s16 x, s16 y, u16 val)
     e->popupLen = n;
 }
 
-/* ------------------------------------------------------------------------- */
-/* Spawn the initial enemy wave + a couple of items. Called from entity_init.
- * Enemies are seeded across the wide level ahead of the player's start so they
- * "walk in" as the camera scrolls -- and we deliberately place SEVERAL plus a
- * couple of items so the headline busy-scene FPS test has real load. */
-static void spawn_initial_wave(void)
+/* ===========================================================================
+ *  FAITHFUL per-level WAVE SCHEDULER (arcade $F0C9 spawn tables)
+ * ===========================================================================
+ *  RE + CAPTURE SOURCE (full data in tools/spawn_sched.json):
+ *   - Static RE of ss.03e ($C000): the wave dispatcher sub_EFED reads the
+ *     wave-phase $0638 and (via sub_F065 "select_pattern_ptr" / sub_F019) loads a
+ *     placement-list pointer from the table at ROM $F0C9:
+ *         listPtr = [ $F0C9 + ((stage&0x30)>>1) + (phaseParity & 6) ]   (stage=$0096)
+ *     There are 16 lists (4 stage-groups x 4 phase-slots), each 12 entries of
+ *     (Y_byte, type_byte). sub_F080 spawns one entry at a time at
+ *         worldX = scroll($0090) + $00F8     (just off the RIGHT screen edge)
+ *     into the 16-slot $0828 pool, and STOPS spawning when the live count hits
+ *     the cap ($00A6 == $10 = 16).
+ *   - Live md=02 capture (tools/spawn_cap_L0.txt, spawn_stage_*.txt) CONFIRMED:
+ *       * spawn Ys are exactly {0x28,0x48,0x68,0x88,0xA8,0xC8} = 40,72,104,136,
+ *         168,200 px -- 6 rows, 32px apart;
+ *       * stage 1 -> group 0 -> type 0x00 dominates (the static table's prediction);
+ *       * on-screen enemy count averages ~2.6 and PEAKS at 10 (never the unbounded
+ *         pile-up the old recycler produced).
+ *
+ *  NATIVE RE-EXPRESSION:
+ *   - The 12-entry lists are baked below verbatim (k_wave_list[group][12], the
+ *     real captured (row,type) order, so the spawn SEQUENCE is faithful).
+ *   - stage-group is derived from the round exactly like the arcade derives it
+ *     from the stage byte ((stage&0x30)>>1): rounds map to stages 0,1,2,... so
+ *     early rounds use group 0 (type 0x00), then group 1 (0x01), the mix (group 2)
+ *     and the type-0x02 group at deep/looped rounds -- see sched_group_for_round().
+ *   - type 0x00/0x01/0x02 -> native ET_* archetypes (all RIGHT-edge ground
+ *     marchers, escalating): 0x00=ET_ENEMY_A, 0x01=ET_CREATURE_C, 0x02=ET_COMPOSITE_E.
+ *   - the cursor advances with the SCROLL (cameraX): each time the camera moves
+ *     SPAWN_SCROLL_STEP px past the last spawn, the next list entry is emitted at
+ *     the right edge -- but only while the live SCHEDULED count is under
+ *     SPAWN_ONSCREEN_CAP (the arcade $00A6 gate). No recycling: a scheduled enemy
+ *     that marches off the left despawns for good; population is replenished only
+ *     from the schedule. This bounds the on-screen load to the arcade's.
+ * ========================================================================= */
+
+/* The 6 arcade spawn rows (Y_byte from the $F0C9 lists), used directly as the
+ * native world-Y (both the arcade and the native screen are 224px tall; these
+ * sit inside the lane band). Index 0 = top row .. 5 = bottom row. */
+static const s16 k_spawn_row_y[6] = { 40, 72, 104, 136, 168, 200 };
+
+/* The captured 12-entry placement lists, one representative list per stage-group
+ * (phase-slot 0 of each group from tools/spawn_sched.json -- the real arcade
+ * order). Each entry = a row index 0..5 (the Y_byte decoded to a row) paired with
+ * the group's enemy type. We store just the ROW here; the TYPE comes from the
+ * group (groups 0/1/3 are single-type; group 2 is the 00/01 mix, encoded per
+ * entry in k_wave_mix). The row sequences are transcribed from the $F0C9 lists:
+ *   group0 list@F0E9: C8 68 A8 88 A8 48 C8 48 C8 28 28 88  -> rows below
+ *   group1 list@F149: 28 48 68 48 28 68 88 C8 28 C8 A8 48
+ *   group2 list@F1A9: A8 88 28 88 28 A8 (mix types) ...
+ *   group3 list@F209: C8 A8 88 48 28 68 88 C8 28 C8 A8 48   */
+#define WAVE_LEN  12
+static const u8 k_wave_row[4][WAVE_LEN] =
 {
-    /* Lane world-Y for a given lane index (matches game.c's player lanes:
-     * lane 0 = bottom band, higher lanes step up by LANE_PITCH). */
+    /* group0 (Y: C8 68 A8 88 A8 48 C8 48 C8 28 28 88) */
+    { 5,2,4,3,4,1,5,1,5,0,0,3 },
+    /* group1 (Y: 28 48 68 48 28 68 88 C8 28 C8 A8 48) */
+    { 0,1,2,1,0,2,3,5,0,5,4,1 },
+    /* group2 (Y: A8 A8 88 48 28 68 88 C8 28 C8 A8 48) -- MIX type per k_wave_mix */
+    { 4,4,3,1,0,2,3,5,0,5,4,1 },
+    /* group3 (Y: C8 A8 88 48 28 68 88 C8 28 C8 A8 48) */
+    { 5,4,3,1,0,2,3,5,0,5,4,1 },
+};
+/* group-2 per-entry type (the captured 00/01 interleave at list@F1A9:
+ *   A8/00 A8/01 88/00 48/01 28/00 68/01 88/00 C8/01 28/00 C8/01 A8/00 48/01). */
+static const u8 k_wave_mix[WAVE_LEN] = { 0,1,0,1,0,1,0,1,0,1,0,1 };
+
+/* type_byte (0x00/0x01/0x02) -> native archetype. All are right-edge ground
+ * marchers; the variants escalate (basic walker -> creature -> tough composite),
+ * matching how the arcade's groups get tougher with the stage. */
+static u8 sched_type_to_et(u8 t)
+{
+    switch (t)
+    {
+        case 0:  return ET_ENEMY_A;       /* group0 walker variant A           */
+        case 1:  return ET_CREATURE_C;    /* group1 walker variant B (creature) */
+        default: return ET_COMPOSITE_E;   /* group2/3 tougher variant (2 HP)    */
+    }
+}
+
+/* Round -> stage-group, faithful to the arcade's ((stage&0x30)>>1) derivation:
+ * the stage byte $005A increments per round from 0, so round R (1-based) ~ stage
+ * (R-1). (stage&0x30)>>1 then selects the group: stages 0x00-0x0F -> g0,
+ * 0x10-0x1F -> g1, 0x20-0x2F -> g2, 0x30+ -> g3. With 8 distinct rounds before
+ * the level set cycles, early rounds are g0, and deeper loops escalate the
+ * variant exactly as the arcade does. */
+static u8 sched_group_for_round(void)
+{
+    u16 stage = (u16)(g_game.round - 1);   /* round 1 -> stage 0                */
+    u8  g = (u8)(((stage & 0x30) >> 1) / 8);
+    if (g > 3) g = 3;
+    return g;
+}
+
+/* ---- Scheduler state (file-static; reset by entity_schedule_init) ---------- */
+static u8  s_sched_group;       /* stage-group selected for this round          */
+static u8  s_sched_cursor;      /* index into the 12-entry wave list (wraps)    */
+static s16 s_sched_next_x;      /* spawn the next entry once cameraX >= this     */
+
+/* Spacing (px of scroll) between successive scheduled spawns. Derived from the
+ * live capture: ~17 spawns over the ~1300px the camera covered in the play
+ * sample => ~one spawn per ~80px of scroll. We use a slightly tighter base so a
+ * brisk run keeps a faithful 2-3 on screen, and the on-screen CAP (not the
+ * spacing) is the real limiter under load. */
+#define SPAWN_SCROLL_STEP   72
+
+/* Count the live SCHEDULED wave enemies (the arcade $00A6 live-count gate). */
+static u16 sched_live_count(void)
+{
+    u16 i, n = 0;
+    for (i = 0; i < ENTITY_MAX; i++)
+        if (g_entities[i].active && g_entities[i].fromSched) n++;
+    return n;
+}
+
+/* (Re)arm the scheduler for the current round: pick the stage-group, reset the
+ * list cursor, and set the first spawn threshold a little ahead of the level
+ * start so the opening wave walks in as the player begins to move. */
+void entity_schedule_init(void)
+{
+    s_sched_group  = sched_group_for_round();
+    s_sched_cursor = 0;
+    /* first spawn once the camera has eased forward a touch from the start */
+    s_sched_next_x = (s16)(g_game.cameraX + SPAWN_SCROLL_STEP / 2);
+}
+
+/* Per-frame: emit scheduled wave enemies as the camera advances, capped at the
+ * arcade on-screen count. Called from entity_update_all. Spawns at the right
+ * screen edge (arcade worldX = scroll + $F8 ~= cameraX + SCREEN_W) so they walk
+ * in from the right, exactly like the arcade wave. */
+void entity_schedule_tick(void)
+{
+    /* spawn as many as the scroll has earned, but never exceed the on-screen cap
+     * (mirrors sub_F080 gating on $00A6 != $10). Bound the per-frame loop so a big
+     * camera jump (round restart) can't spew a screenful at once. */
+    u8 budget = 3;
+    while (g_game.cameraX >= s_sched_next_x && budget--)
+    {
+        if (sched_live_count() < SPAWN_ONSCREEN_CAP)
+        {
+            u8  row = k_wave_row[s_sched_group][s_sched_cursor];
+            u8  tb  = (s_sched_group == 2) ? k_wave_mix[s_sched_cursor]
+                                           : (s_sched_group == 3 ? 2
+                                           : (s_sched_group == 1 ? 1 : 0));
+            s16 sy  = k_spawn_row_y[row];
+            s16 sx  = (s16)(g_game.cameraX + SCREEN_W + 8);   /* right edge (~scroll+F8) */
+            Entity *e = entity_spawn(sched_type_to_et(tb), sx, sy);
+            if (e) e->fromSched = 1;
+        }
+        /* advance the cursor + the next-spawn scroll threshold whether or not the
+         * cap let us spawn (the arcade wave-phase keeps advancing; a capped frame
+         * just skips that placement -- it doesn't stall the whole wave). */
+        s_sched_cursor = (u8)((s_sched_cursor + 1) % WAVE_LEN);
+        s_sched_next_x = (s16)(s_sched_next_x + SPAWN_SCROLL_STEP);
+    }
+}
+
+/* ------------------------------------------------------------------------- */
+/* Seed the AMBIENT, non-wave entities (the SonSon FRUIT variety) at level start.
+ * The marching enemy WAVES come from the faithful scheduler (entity_schedule_*);
+ * fruit are stationary collectibles placed across the level. Kept few + spread so
+ * the scanline load stays low; the scheduler owns the dynamic enemy population. */
+static void spawn_ambient(void)
+{
     #define LANE_Y(l)   ((s16)(LANE_BASE_Y - (s16)(l) * LANE_PITCH))
 
-    /* DENSITY NOTE: the headline test is a BUSY scene held at 60fps. The native
-     * VDP slows when many 16x16 sprites overlap the same scanlines, and as the
-     * player advances every enemy that marches off the LEFT recycles to the right
-     * edge -- so over time they tend to CLUSTER. We therefore (a) seed a moderate
-     * roster SPREAD WIDE across the level (so few are co-resident at once) and (b)
-     * cap the on-screen sprite count hard (ENTITY_SAT_MAX). One or two of each
-     * archetype is enough to showcase every behaviour without piling the scanlines.
-     * (Batch-1 seeded ~18 and held 60 with the player clearing them; this keeps a
-     * comparable on-screen load while adding the new types + the fruit.) */
-
-    /* Ground enemyA -- a few, well spread (they march left toward the player). */
-    entity_spawn(ET_ENEMY_A, 360,  LANE_Y(0));
-    entity_spawn(ET_ENEMY_A, 620,  LANE_Y(2));
-    entity_spawn(ET_ENEMY_A, 980,  LANE_Y(1));
-    entity_spawn(ET_ENEMY_A, 1280, LANE_Y(0));
-
-    /* FLYER: enters high and glide-then-dives at the player. */
-    entity_spawn(ET_FLYER, 540,  LANE_Y(5));
-    entity_spawn(ET_FLYER, 1180, LANE_Y(4));
-
-    /* THROWER: marches in and lobs projectiles from range. */
-    entity_spawn(ET_THROWER, 760,  LANE_Y(2));
-
-    /* ---- BATCH-2 archetypes, one each, spread across the level.
-     * TODO: faithful per-level spawn schedule from the arcade spawn tables
-     *   (sub_EF51/EFED wave cursor at $0638; per-stage placement lists at ROM
-     *   $F0C9 indexed by stage-phase ^ lane). This ad-hoc spread is a stand-in
-     *   until that schedule is captured -- it just makes every type APPEAR. ---- */
-
-    /* CREATURE_G: ground creature that marches + THROWS an arcing projectile. */
-    entity_spawn(ET_CREATURE_G, 700,  LANE_Y(0));
-
-    /* CREATURE_C: creature-family walker with a vertical wander. */
-    entity_spawn(ET_CREATURE_C, 1040, LANE_Y(3));
-
-    /* COMPOSITE_E: the tough 2-HP large composite, a heavier lane walker. */
-    entity_spawn(ET_COMPOSITE_E, 880, LANE_Y(1));
-
-    /* HOPPER: leaping creature that springs in ballistic arcs at the player. */
-    entity_spawn(ET_HOPPER, 460,  LANE_Y(0));
-
-    /* ---- BATCH-3 archetypes (obj16x16 / classD / objSingle), one each, spread
-     * wide so the busy scene shows every new behaviour without crowding. ---- */
-
-    /* LARGE: the tough 3-HP obj16x16 patroller (flips direction on a cadence). */
-    entity_spawn(ET_LARGE, 1120, LANE_Y(1));
-
-    /* EMITTER: a stationary insect emplacement that fires flat shots at the player. */
-    entity_spawn(ET_EMITTER, 600, LANE_Y(4));
-
-    /* ORB: a slow hovering lethal hazard (unique objSingle), drifting + bobbing. */
-    entity_spawn(ET_ORB, 1240, LANE_Y(5));
-
-    /* ---- FRUIT VARIETY (the SonSon signature collectible) -- scattered across the
-     * level on lanes the player climbs to. The four types escalate in value
-     * (cherry 300 / orange 500 / apple 1000 / gold 2000); the gold is rarer + on a
-     * high lane (a reward for climbing). Eating one scores by type + pops a "+N".
-     * Fruit are static + cheap, but still render as sprites, so they too are
-     * spread out (not stacked on one screen) to keep the scanline load down. */
+    /* ---- FRUIT VARIETY (the SonSon signature collectible). Four types escalate
+     * in value (cherry 300 / orange 500 / apple 1000 / gold 2000); the gold is
+     * rarer + on a high lane (a reward for climbing). Eating one scores by type +
+     * pops a floating "+N". Spread across the level so they're never stacked. */
     spawn_fruit(FRUIT_CHERRY, 420,  LANE_Y(1));
     spawn_fruit(FRUIT_ORANGE, 820,  LANE_Y(0));
     spawn_fruit(FRUIT_APPLE,  1080, LANE_Y(2));
@@ -660,7 +762,8 @@ void entity_init(void)
     g_player_hurt         = 0;
     g_player_invuln       = 0;
     g_player_dead_request = 0;
-    spawn_initial_wave();
+    spawn_ambient();            /* stationary fruit collectibles                */
+    entity_schedule_init();     /* arm the faithful per-level wave scheduler     */
 }
 
 /* ------------------------------------------------------------------------- */
@@ -801,11 +904,13 @@ static void entity_update_one(Entity *e, const Player *p)
             anim_set(&e->av, SS_ANIM_ENEMY_WALK);
             e->tile = anim_tick(&e->av);
 
-            /* recycle when it has marched well past the left edge of the view
-             * (arcade DD52: off-screen-left recycle). Re-seed it ahead on the
-             * right so the scene stays populated. */
+            /* off-screen-left (arcade DD52). SCHEDULED wave enemies DESPAWN for
+             * good (the scheduler replenishes from the per-level list -- no
+             * right-edge recycle, so they never pile up beyond the arcade count).
+             * A non-scheduled straggler recycles as before. */
             if (e->x < g_game.cameraX - 32)
             {
+                if (e->fromSched) { e->active = 0; break; }
                 e->x = (s16)(g_game.cameraX + SCREEN_W + 16);
                 e->xSub = 0;
             }
@@ -872,9 +977,11 @@ static void entity_update_one(Entity *e, const Player *p)
                 integrate(&e->y, &e->ySub, e->vy);
             }
 
-            /* recycle off the left edge: re-seed high on the right, gliding again */
+            /* off the left edge: scheduled flyers despawn (scheduler-replenished);
+             * a non-scheduled one re-seeds high on the right, gliding again. */
             if (e->x < g_game.cameraX - 32)
             {
+                if (e->fromSched) { e->active = 0; break; }
                 e->x      = (s16)(g_game.cameraX + SCREEN_W + 16);
                 e->y      = (s16)(LANE_BASE_Y - 5 * LANE_PITCH);   /* high lane    */
                 e->xSub   = 0;
@@ -938,9 +1045,10 @@ static void entity_update_one(Entity *e, const Player *p)
             if (e->fireTimer) e->fireTimer--;
             e->tile = anim_tick(&e->av);
 
-            /* recycle off the left edge so the scene stays populated */
+            /* off the left edge: scheduled despawn / non-scheduled recycle */
             if (e->x < g_game.cameraX - 32)
             {
+                if (e->fromSched) { e->active = 0; break; }
                 e->x     = (s16)(g_game.cameraX + SCREEN_W + 16);
                 e->xSub  = 0;
                 e->state = 0;
@@ -1016,8 +1124,9 @@ static void entity_update_one(Entity *e, const Player *p)
                 anim_set(&e->av, SS_ANIM_CREG_WALK);
             e->tile = anim_tick(&e->av);
 
-            if (e->x < g_game.cameraX - 32)        /* off-screen-left recycle      */
+            if (e->x < g_game.cameraX - 32)        /* off-screen-left              */
             {
+                if (e->fromSched) { e->active = 0; break; }
                 e->x = (s16)(g_game.cameraX + SCREEN_W + 16);
                 e->xSub = 0;
                 e->timer = CREG_FIRE_PERIOD;
@@ -1053,8 +1162,9 @@ static void entity_update_one(Entity *e, const Player *p)
             anim_set(&e->av, SS_ANIM_CREC_WALK);
             e->tile = anim_tick(&e->av);
 
-            if (e->x < g_game.cameraX - 32)
+            if (e->x < g_game.cameraX - 32)        /* off-screen-left              */
             {
+                if (e->fromSched) { e->active = 0; break; }
                 e->x = (s16)(g_game.cameraX + SCREEN_W + 16);
                 e->xSub = 0;
             }
@@ -1086,8 +1196,9 @@ static void entity_update_one(Entity *e, const Player *p)
             anim_set(&e->av, SS_ANIM_CMPE_WALK);
             e->tile = anim_tick(&e->av);
 
-            if (e->x < g_game.cameraX - 32)
+            if (e->x < g_game.cameraX - 32)        /* off-screen-left              */
             {
+                if (e->fromSched) { e->active = 0; break; }
                 e->x = (s16)(g_game.cameraX + SCREEN_W + 16);
                 e->xSub = 0;
             }
@@ -1149,8 +1260,9 @@ static void entity_update_one(Entity *e, const Player *p)
                 }
             }
 
-            if (e->x < g_game.cameraX - 32)        /* off-screen-left recycle      */
+            if (e->x < g_game.cameraX - 32)        /* off-screen-left              */
             {
+                if (e->fromSched) { e->active = 0; break; }
                 e->x = (s16)(g_game.cameraX + SCREEN_W + 16);
                 e->xSub = 0;
                 e->state = 0;
@@ -1193,9 +1305,17 @@ static void entity_update_one(Entity *e, const Player *p)
             anim_set(&e->av, SS_ANIM_LARGE_WALK);
             e->tile = anim_tick(&e->av);
 
-            /* recycle when it wanders well off either edge (it patrols both ways) */
-            if (e->x < g_game.cameraX - 48 ||
-                e->x > g_game.cameraX + SCREEN_W + 64)
+            /* off either edge (it patrols both ways): a SCHEDULED large despawns
+             * once it clears the left; a non-scheduled one recycles. */
+            if (e->x < g_game.cameraX - 48)
+            {
+                if (e->fromSched) { e->active = 0; break; }
+                e->x = (s16)(g_game.cameraX + SCREEN_W + 16);
+                e->xSub = 0;
+                e->vx = (s16)(-LARGE_SPEED);
+                e->timer = LARGE_TURN;
+            }
+            else if (e->x > g_game.cameraX + SCREEN_W + 64)
             {
                 e->x = (s16)(g_game.cameraX + SCREEN_W + 16);
                 e->xSub = 0;
@@ -1277,8 +1397,9 @@ static void entity_update_one(Entity *e, const Player *p)
             anim_set(&e->av, SS_ANIM_ORB_FLOAT);
             e->tile = anim_tick(&e->av);
 
-            if (e->x < g_game.cameraX - 32)        /* off-screen-left recycle      */
+            if (e->x < g_game.cameraX - 32)        /* off-screen-left              */
             {
+                if (e->fromSched) { e->active = 0; break; }
                 e->x = (s16)(g_game.cameraX + SCREEN_W + 16);
                 e->xSub = 0;
             }
@@ -1470,6 +1591,10 @@ void entity_update_all(void)
     u16 i;
 
     if (g_player_hurt) g_player_hurt--;             /* decay the hurt window     */
+
+    /* Faithful per-level wave scheduler: spawn the next scheduled enemies as the
+     * camera advances, capped at the arcade on-screen count (no recycle pile-up). */
+    entity_schedule_tick();
 
     for (i = 0; i < ENTITY_MAX; i++)
     {

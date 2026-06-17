@@ -111,6 +111,10 @@ typedef struct
     s16 launchY;    /* ENEMY_SHOT: world-Y it was lobbed from (arc land test) */
     u8  fruit;      /* ET_ITEM: FruitType                                    */
     u8  popupLen;   /* ET_POPUP: glyph count in popupStr                     */
+    u8  fromSched;  /* 1 = spawned by the faithful per-level wave scheduler  *
+                     * (so it counts against the on-screen cap + despawns,   *
+                     * never recycles, when it marches off the left edge --  *
+                     * arcade $0828 wave enemy). 0 = ambient/projectile/item. */
     char popupStr[6];/* ET_POPUP: the "+N" text, formatted ONCE at spawn (so
                      * the per-frame render does zero intToStr/strlen work)   */
     Anim av;        /* faithful animation cursor (walk / death) -- enemyA     */
@@ -135,6 +139,29 @@ typedef struct
 #define ENTITY_SAT_MAX      18
 
 extern Entity g_entities[ENTITY_MAX];
+
+/* ---- Faithful per-level WAVE SCHEDULER (arcade $F0C9 spawn tables) ---------
+ * Replaces the old ad-hoc "seed a fixed wave + recycle off-left" spawner (which
+ * let enemies ACCUMULATE on the right edge beyond what the arcade ever shows --
+ * the measured cause of the sub-60 dips under load). The arcade spawns enemies
+ * one at a time from a per-stage placement list (sub_F065/F019 -> sub_F080),
+ * keyed to the scroll advancing, at worldX = scroll($90)+$F8 (right edge), into
+ * the 16-slot $0828 pool, and STOPS when the live count hits the cap ($00A6 ==
+ * 0x10). We re-express that: a scroll-position cursor walks the captured list and
+ * spawns the next (row,type) at the right edge whenever the camera advances a
+ * faithful spacing AND the live scheduled count is under SPAWN_ONSCREEN_CAP. See
+ * tools/spawn_sched.json (the static RE of $F0C9, validated by live md=02
+ * capture: arcade on-screen enemies avg ~2.6, peak 10).
+ *
+ * On-screen simultaneous cap for SCHEDULED wave enemies. The arcade hard cap is
+ * the 16-slot pool ($00A6 != 0x10 gate); live md=02 play peaks at ~10. We cap at
+ * 12 -- comfortably inside the arcade's real on-screen load, and far below the
+ * old recycler's unbounded pile-up -- so the busy scene matches the arcade. */
+#define SPAWN_ONSCREEN_CAP  12
+
+void entity_schedule_init(void);              /* (re)arm the scheduler for the   *
+                                               * current round (game.c round set)*/
+void entity_schedule_tick(void);              /* per-frame: spawn scheduled waves*/
 
 /* ---- Lifecycle (called from game.c) -------------------------------------- */
 void entity_init(void);                       /* clear the pool + spawn waves  */

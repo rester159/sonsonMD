@@ -1,0 +1,78 @@
+fr=1020 round=1 cam=0 sched=0 total=5 [t3=4 t2=1] fps_sofar=...
+fr=1080 round=1 cam=20 sched=0 total=8 [t3=4 t2=4] fps_sofar=...
+fr=1140 round=1 cam=98 sched=1 total=5 [t1=1 t3=4] fps_sofar=...
+fr=1200 round=1 cam=110 sched=2 total=10 [t1=2 t2=4 t3=4] fps_sofar=...
+fr=1260 round=1 cam=159 sched=0 total=9 [t3=4 t2=5] fps_sofar=...
+fr=1320 round=1 cam=313 sched=1 total=10 [t1=1 t2=5 t3=4] fps_sofar=...
+fr=1380 round=1 cam=348 sched=1 total=5 [t1=1 t3=4] fps_sofar=60.00
+fr=1440 round=1 cam=348 sched=1 total=11 [t1=1 t2=6 t3=4] fps_sofar=60.00
+fr=1500 round=1 cam=451 sched=1 total=9 [t1=1 t2=4 t3=4] fps_sofar=60.00
+SNAP busy F1500
+fr=1560 round=1 cam=604 sched=0 total=8 [t3=3 t2=4 t14=1] fps_sofar=60.00
+fr=1620 round=1 cam=757 sched=0 total=8 [t3=3 t2=5] fps_sofar=60.00
+fr=1680 round=1 cam=910 sched=2 total=9 [t1=2 t2=4 t3=3] fps_sofar=60.00
+fr=1740 round=1 cam=1063 sched=3 total=11 [t1=3 t2=5 t3=3] fps_sofar=60.00
+fr=1800 round=1 cam=1144 sched=2 total=5 [t1=2 t3=3] fps_sofar=60.00
+fr=1860 round=1 cam=1144 sched=2 total=5 [t1=2 t3=3] fps_sofar=60.00
+fr=1920 round=2 cam=0 sched=0 total=5 [t3=4 t2=1] fps_sofar=...
+fr=1980 round=2 cam=0 sched=0 total=11 [t3=4 t2=7] fps_sofar=...
+fr=2040 round=2 cam=131 sched=1 total=9 [t1=1 t2=4 t3=4] fps_sofar=...
+fr=2100 round=2 cam=284 sched=1 total=10 [t1=1 t2=5 t3=4] fps_sofar=...
+fr=2160 round=2 cam=391 sched=2 total=6 [t1=2 t3=4] fps_sofar=...
+fr=2220 round=2 cam=424 sched=3 total=7 [t1=3 t3=4] fps_sofar=...
+fr=2280 round=2 cam=457 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=2340 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=2400 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=2460 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=2520 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=2580 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=2640 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=2700 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=2760 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=2820 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=2880 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=2940 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=3000 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=3060 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=3120 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=3180 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+SNAP busy F3200
+fr=3240 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=3300 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=3360 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=3420 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=3480 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=3540 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=3600 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=3660 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=3720 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=3780 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=3840 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=3900 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=3960 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=4020 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=4080 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=4140 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=4200 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=4260 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=4320 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=4380 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=4440 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=4500 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=4560 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=4620 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=4680 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=4740 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=4800 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=4860 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=4920 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=4980 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=5040 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=5100 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+fr=5160 round=2 cam=461 sched=3 total=7 [t1=3 t3=4] fps_sofar=60.00
+
+=== PER-ROUND (LEVEL) WORST-CASE ===
+round 1 : maxSchedOnScreen=4  busyFPS=60.00
+round 2 : maxSchedOnScreen=3  busyFPS=60.00
+
+SCORE final=3900

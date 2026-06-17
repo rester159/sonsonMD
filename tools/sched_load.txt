@@ -1,0 +1,4 @@
+=== PHASE FPS (native genesis NTSC, round 1) ===
+A_enemies_only   FPS=60.00  maxTotalSprites=8  maxScheduledEnemies=4
+B_faithful_fire  FPS=60.00  maxTotalSprites=16  maxScheduledEnemies=7
+C_spam_fire      FPS=34.29  maxTotalSprites=22  maxScheduledEnemies=6

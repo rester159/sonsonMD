@@ -1,0 +1,17 @@
+fr=1080 score=0 sched=0
+fr=1200 score=400 sched=3
+fr=1320 score=1500 sched=4
+fr=1440 score=1700 sched=5
+fr=1560 score=1900 sched=4
+fr=1680 score=1900 sched=0
+fr=1800 score=2100 sched=1
+fr=1920 score=2500 sched=1
+fr=2040 score=2700 sched=2
+fr=2160 score=3600 sched=4
+fr=2280 score=3800 sched=5
+fr=2400 score=4800 sched=1
+fr=2520 score=5200 sched=0
+fr=2640 score=5200 sched=0
+fr=2760 score=5400 sched=1
+
+score start=0 final=5600  KILLS-HAPPENED=true
