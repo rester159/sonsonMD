@@ -69,10 +69,13 @@ extern u16 g_levelW;                              /* current level pixel width  
  *
  *  - Lane (vertical) field: the player Y lives in the SINGLE byte at -$8
  *    (sub_AE16.c @ $AE2B parks it at #$F8; sub_AD10.c @ $AD4E does subb #$08 on
- *    it). An 8-bit Y => it wraps mod 256 -> the vertical loop. Lane motion is
- *    quantized in 8px sub-steps; the visible lane pitch in the captured scene's
- *    ladder sprites (ss_gfx: bank-9 lane sprites at y=108,132,168,216) is ~24px.
- *      -> LANE_PITCH (24) and LANE_COUNT below; lane index wraps.
+ *    it). An 8-bit Y => it wraps mod 256 -> the vertical loop. The playfield is
+ *    6 vine TIERS; the hero stands on the SAME tier rows the enemies + baked
+ *    platform tiles use -- entity.c's RE'd k_spawn_row_y = {40,72,104,136,168,200}
+ *    (pitch 32). (An earlier ~24px guess from a few ladder sprites put the hero on
+ *    a mismatched grid so he floated BETWEEN the platform rows -- fixed: the lane
+ *    grid below IS the tier grid.)
+ *      -> LANE_PITCH (32) / LANE_COUNT (6) / LANE_BASE_Y (200=bottom tier); wraps.
  *
  *  - Anim cadence: the shared per-frame tick sub_9617.c counts the timer byte
  *    at -$3 down to 0, then steps the 2-byte sprite-cell script cursor (-$2:-1)
@@ -98,9 +101,12 @@ extern u16 g_levelW;                              /* current level pixel width  
 /* Lanes: vertical pitch (px) and how many stack before the field wraps. 24px is
  * the captured ladder-rung spacing; the player Y byte wraps mod 256 in the
  * arcade, so the lane INDEX wraps here (climb past the top => bottom lane). */
-#define LANE_PITCH          24
-#define LANE_COUNT          7           /* 7*24 = 168px of climbable lanes     */
-#define LANE_BASE_Y         (LEVEL_H - PLAYER_H - 16)  /* world Y of lane 0    */
+#define LANE_PITCH          32          /* arcade tier spacing (== entity.c k_spawn_row_y) */
+#define LANE_COUNT          6           /* 6 vine tiers (the playfield platform rows)      */
+#define LANE_BASE_Y         200         /* world Y of lane 0 = the BOTTOM tier row         */
+/* lane i (0=bottom) -> world Y = LANE_BASE_Y - i*LANE_PITCH = {200,168,136,104,72,40},
+ * i.e. exactly entity.c's k_spawn_row_y reversed -- the hero shares the enemies'/tiles'
+ * vertical grid so he stands ON the platforms instead of floating between them. */
 
 /* Frames the player must hold UP/DOWN before the next lane step (one discrete
  * step per press-hold tick -- the arcade advances the lane on an edge, not
