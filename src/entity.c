@@ -1105,8 +1105,22 @@ static inline s16 flyer_bob_vy(u8 phase)
  * pulls it down into a parabola. launchY records the lob height so the shot
  * despawns when it falls back to that level -- the native land/impact (arcade
  * sub_D446), plus a hard max-life guard. */
+/* The arcade lobbed-projectile pool is classI $0DA8 = exactly 4 slots
+ * ($0DA8 + 4*$20 = $0E28, the player-shot slot), so at most 4 enemy lobs exist at
+ * once. Cap live ET_ENEMY_SHOT at 4 to match (faithful + bounds the projectile load,
+ * the same theme as the player's single-shot $0E28 cap). */
+#define ESHOT_MAX  4
+static u8 enemy_shot_count(void)
+{
+    u8 i, n = 0;
+    for (i = 0; i < ENTITY_MAX; i++)
+        if (g_entities[i].active && g_entities[i].type == ET_ENEMY_SHOT) n++;
+    return n;
+}
+
 static void thrower_lob(s16 sx, s16 sy, const Player *p)
 {
+    if (enemy_shot_count() >= ESHOT_MAX) return;        /* arcade $0DA8 4-slot pool */
     Entity *s = entity_spawn(ET_ENEMY_SHOT, sx, sy);
     if (!s) return;
     s->vy      = ESHOT_VY0;                              /* up -- the arc start    */
@@ -1124,6 +1138,7 @@ static void thrower_lob(s16 sx, s16 sy, const Player *p)
  * rather than "landing" immediately; the off-screen / max-life guard despawns it. */
 static void emitter_fire(s16 sx, s16 sy, const Player *p)
 {
+    if (enemy_shot_count() >= ESHOT_MAX) return;        /* arcade $0DA8 4-slot pool */
     Entity *s = entity_spawn(ET_ENEMY_SHOT, sx, sy);
     if (!s) return;
     s->vy      = 0;                                      /* flat -- no arc start   */
