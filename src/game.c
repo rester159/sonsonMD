@@ -23,6 +23,11 @@
 
 GameState g_game;
 
+/* Mode chosen at the front-end selector (set by main.c after selector_run).
+ * Defaults to MODE_ARCADE (0). The game can read this for mode-specific
+ * behaviour (arcade DIP-driven params vs home options) -- wired in Phase 8b. */
+u8 g_mode = 0;
+
 /* The player's sprite tile: a recognizable 16x16 actor from the baked scene
  * set (SPRITE_SIZE(2,2) = 4 col-major 8x8 tiles). ss_scene_sprites[0] is the
  * first arcade spriteram slot; we borrow its tile as a stand-in player frame.

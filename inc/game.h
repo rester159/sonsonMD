@@ -150,6 +150,12 @@ typedef struct
 
 extern GameState g_game;
 
+/* Boot-flow config: the mode chosen at the front-end selector (Phase 8),
+ * MODE_ARCADE (0) or MODE_HOME (1) from frontend.h. Stored once by main.c after
+ * selector_run() and readable by the game (e.g. for the future arcade DIP /
+ * home options branch -- Phase 8b). */
+extern u8 g_mode;
+
 /* Lifecycle (called from main.c). */
 void game_init(void);      /* palettes, tiles, BG nametable, player spawn    */
 void game_update(void);    /* read pad, move player, advance anim, camera    */
