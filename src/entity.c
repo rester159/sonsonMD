@@ -80,6 +80,34 @@
  *      (ldd #$0400; std -$F,x). We re-express: a grounded creature that springs
  *      up+forward toward the player (gravity arc), lands on its lane, pauses, and
  *      leaps again. Body contact hurts. One shot kills it (in the air or grounded).
+ *
+ *  BATCH 3 -- the iconic FRUIT VARIETY + three more SPAWNED archetypes:
+ *    - FRUIT (ET_ITEM): SonSon's signature scoring is EATING FRUIT. One round
+ *      fruit shape recoloured into four types (cherry/orange/apple/gold) with
+ *      ESCALATING point values (k_fruit_score[] = 300/500/1000/2000 -- the
+ *      arcade bonus-number tiers, codes 404-415). On collect: score by type +
+ *      the item SFX (snd_sfx_item, cmd 0x02) + a floating "+N" POPUP (the arcade
+ *      classK $0ED8 score-child, sub_CBC8/sub_CCB1, re-expressed as a cheap
+ *      drifting HUD-font label -- see ET_POPUP).
+ *    - LARGE (obj16x16, root $D57F -> init $D58B, move $D5F3, seeded by $D54B):
+ *      a TOUGH multi-HP patroller. $D58B sets HP $8,x=#$07 + a 16px box; $D5F3
+ *      counts a timer then reloads a velocity vector from the $DB4B table = a
+ *      periodic-velocity march that reverses on a cadence. We re-express: a
+ *      brisk lane patroller that periodically flips direction, taking 3 hits
+ *      (native HP 3 vs arcade 7 -- a fair first cut; see TODO). The literal
+ *      4-sprite composite body ($F2B3 builds it from the $F2F8 program-ROM
+ *      sprite table -- not in the gfx bake) is a TODO; here it is one 16x16.
+ *    - EMITTER (classD, root $BF6B idx0, periodic-fire idx2 $BFE5->$C00F, launch
+ *      leaf $BF75): a STATIONARY emplacement. $BF75 counts a fire-countdown
+ *      $D,x down and at 0 spawns a projectile child (stb -$10,x=1; inc -$F,x)
+ *      then reloads. We re-express: a fixed insect that hovers in place and
+ *      FIRES a horizontal shot at the player every EMIT_FIRE_PERIOD frames
+ *      (reusing the classI ENEMY_SHOT, launched flat). One shot kills it.
+ *    - ORB (objSingle, spawn $E1C4 -> behaviour $E1F5): a parent-linked unique
+ *      object that settles relative to the scroll + runs its own anim. We
+ *      re-express a slow HOVERING lethal hazard: it drifts toward the player
+ *      with a vertical bob, lethal on contact, kept visually distinct from the
+ *      COLLECTIBLE fruit by its motion (never collected). One shot kills it.
  * =========================================================================== */
 
 Entity g_entities[ENTITY_MAX];
@@ -188,17 +216,77 @@ u8 g_player_dead_request = 0;   /* set here on a lethal contact, cleared by game
 #define HOP_VX              0x0140      /* forward speed toward the player (~1.25px) */
 #define HOP_LAND_PAUSE      26          /* frames grounded between leaps (~0.43s)   */
 
+/* ---- LARGE (obj16x16 $D57F/$D58B/$D5F3) tunables ---------------------------
+ * The arcade large object inits HP $8,x=#$07 and a 16px box, then $D5F3 counts a
+ * timer down and reloads a velocity vector from the $DB4B table on each expiry --
+ * a periodic-velocity patrol. We re-express a brisk lane patroller that FLIPS its
+ * march direction every LARGE_TURN frames (the periodic velocity reload), taking
+ * LARGE_HP hits. NATIVE HP is 3, not the arcade 7 -- a fair first cut so it reads
+ * as the tough archetype without becoming a bullet-sponge slog (see TODO). */
+#define LARGE_HP            3           /* tough: three shots (arcade $8,x=#$07 = 7) */
+#define LARGE_SPEED         0x00B0      /* ~0.69 px/frame heavy patrol march         */
+#define LARGE_TURN          64          /* frames between march-direction flips      */
+
+/* ---- EMITTER (classD $BF6B/$BFE5/$BF75) tunables ---------------------------
+ * The arcade emitter ($BF75) counts a fire-countdown $D,x down and on 0 spawns a
+ * projectile child then reloads. We re-express a STATIONARY emplacement that
+ * FIRES a flat horizontal shot at the player every EMIT_FIRE_PERIOD frames (a
+ * short EMIT_FIRE_ANIM lunge each shot). One shot kills it. */
+#define EMIT_HP             1
+#define EMIT_FIRE_PERIOD    80          /* frames between shots (~1.33s cadence)     */
+#define EMIT_FIRE_ANIM      14          /* frames the fire pose shows                */
+#define EMIT_SHOT_VX        0x0260      /* flat shot speed toward the player (~2.4px)*/
+
+/* ---- ORB (objSingle $E1C4/$E1F5) tunables ----------------------------------
+ * A slow HOVERING lethal hazard: drifts toward the player with a vertical bob.
+ * Kept visually distinct from the collectible fruit by this motion (it is never
+ * collected -- it hurts). One shot kills it. */
+#define ORB_HP              1
+#define ORB_SPEED           0x0080      /* ~0.5 px/frame slow drift toward player    */
+#define ORB_BOB_AMP         0x0120      /* gentle vertical hover-bob amplitude        */
+
+/* ---- FRUIT (ET_ITEM) point values -- the SonSon SIGNATURE scoring ----------
+ * EATING FRUIT is SonSon's headline mechanic. One round fruit shape recoloured
+ * into four types with ESCALATING values; these tiers are the arcade's bonus-
+ * number sprites (codes 404-415 render 100/300/500/1000/2000/10000). Indexed by
+ * FruitType (cherry/orange/apple/gold). */
+static const u16 k_fruit_score[FRUIT_TYPE_COUNT] =
+{
+    300,    /* FRUIT_CHERRY (red)    */
+    500,    /* FRUIT_ORANGE (orange) */
+    1000,   /* FRUIT_APPLE  (green)  */
+    2000    /* FRUIT_GOLD   (gold)   */
+};
+/* Baked sprite tile per fruit type (the FRUIT_* anim frame-0 tiles). */
+static const u8 k_fruit_anim[FRUIT_TYPE_COUNT] =
+{
+    SS_ANIM_FRUIT_CHERRY, SS_ANIM_FRUIT_ORANGE,
+    SS_ANIM_FRUIT_APPLE,  SS_ANIM_FRUIT_GOLD
+};
+
+/* ---- POPUP (floating "+N" score, the classK $0ED8 score-child re-expressed) -
+ * The arcade spawns a child into the $0ED8 pool on a kill/pickup that draws the
+ * floating point value (sub_CBC8 animates it, sub_CCB1 dispatches its states).
+ * We re-express it cheaply as a short-lived entity that DRIFTS UPWARD and is
+ * drawn as a HUD-font "+N" label by game_render (not a hardware sprite -- it
+ * carries no tile). POPUP_LIFE frames, rising POPUP_RISE px total. */
+#define POPUP_LIFE          34          /* ~0.57s on screen (short -> few co-resident)*/
+#define POPUP_RISE_VY       (s16)(-0x0100) /* ~1.0 px/frame upward drift             */
+
 /* Score awards (arcade exact per-enemy point values are not isolated in the RE;
  * reuse the task's +200 ground / +300 tougher tiers -- the flyer + thrower are
  * the "tougher" archetypes, so they score above the basic ground walker). */
 #define SCORE_ENEMY         200         /* defeat a ground enemy                 */
-#define SCORE_ITEM          500         /* collect a fruit                       */
 #define SCORE_FLYER         300         /* defeat a flyer (tougher than ground)  */
 #define SCORE_THROWER       300         /* defeat a thrower                      */
 #define SCORE_CREATURE_G    300         /* defeat a throwing ground creature     */
 #define SCORE_CREATURE_C    200         /* defeat a creature-family walker       */
 #define SCORE_COMPOSITE_E   500         /* defeat the tough 2-HP large composite */
 #define SCORE_HOPPER        300         /* defeat a leaping hopper               */
+#define SCORE_LARGE         800         /* defeat the tough 3-HP large patroller */
+#define SCORE_EMITTER       400         /* defeat a projectile emitter           */
+#define SCORE_ORB           300         /* defeat a hovering orb hazard          */
+/* (ET_ITEM/fruit score is per-type, k_fruit_score[]; no flat SCORE_ITEM.)      */
 
 /* ---- DIFFICULTY hook (arcade DSW2 0x60 -> g_config.difficulty 0..3) --------
  * SonSon's Difficulty switch makes the enemies more aggressive. We re-express
@@ -265,7 +353,6 @@ static u8 thrower_fire_period(void)
  * ss_scene_sprites[17].tile a bank-2 actor (item). */
 #define ENEMY_TILE          (ss_anims[SS_ANIM_ENEMY_WALK].frames[0].tile)
 #define SHOT_TILE           (ss_scene_sprites[22].tile)
-#define ITEM_TILE           (ss_scene_sprites[17].tile)   /* bank-2 actor (119) */
 /* New archetypes animate off baked anim sets (cold-start = frame 0). */
 #define FLYER_TILE          (ss_anims[SS_ANIM_FLYER_FLY].frames[0].tile)
 #define THROWER_TILE        (ss_anims[SS_ANIM_THROWER_IDLE].frames[0].tile)
@@ -275,6 +362,12 @@ static u8 thrower_fire_period(void)
 #define CREC_TILE           (ss_anims[SS_ANIM_CREC_WALK].frames[0].tile)
 #define COMPE_TILE          (ss_anims[SS_ANIM_CMPE_WALK].frames[0].tile)
 #define HOP_TILE            (ss_anims[SS_ANIM_HOP_HOP].frames[0].tile)
+/* Batch-3 archetypes (cold-start = frame 0). ET_ITEM cold-starts at the fruit
+ * frame chosen by its FruitType (set explicitly at spawn, see entity_spawn). */
+#define LARGE_TILE          (ss_anims[SS_ANIM_LARGE_WALK].frames[0].tile)
+#define EMIT_TILE           (ss_anims[SS_ANIM_EMIT_IDLE].frames[0].tile)
+#define ORB_TILE            (ss_anims[SS_ANIM_ORB_FLOAT].frames[0].tile)
+#define FRUIT_TILE(ft)      (ss_anims[k_fruit_anim[(ft)]].frames[0].tile)
 
 /* ------------------------------------------------------------------------- */
 /* Free-slot allocator: linear scan of the fixed pool (ENTITY_MAX is small, so
@@ -306,6 +399,8 @@ Entity *entity_spawn(u8 type, s16 x, s16 y)
         e->phase     = 0;
         e->fireTimer = 0;
         e->launchY   = 0;
+        e->fruit     = 0;
+        e->popupLen  = 0;
         anim_restart(&e->av, SS_ANIM_ENEMY_WALK);   /* default; per-type below   */
 
         switch (type)
@@ -325,8 +420,10 @@ Entity *entity_spawn(u8 type, s16 x, s16 y)
                 break;
 
             case ET_ITEM:
-                e->hp   = 0;
-                e->tile = ITEM_TILE;       /* stationary collectible              */
+                e->hp    = 0;
+                e->fruit = FRUIT_CHERRY;   /* default; caller sets the type+tile  */
+                anim_restart(&e->av, k_fruit_anim[FRUIT_CHERRY]);
+                e->tile  = FRUIT_TILE(FRUIT_CHERRY);   /* stationary collectible  */
                 break;
 
             case ET_FLYER:
@@ -396,6 +493,42 @@ Entity *entity_spawn(u8 type, s16 x, s16 y)
                 e->tile   = HOP_TILE;
                 break;
 
+            case ET_LARGE:                 /* obj16x16 tough patroller ($D57F)      */
+                e->hp     = LARGE_HP;      /* 3 HP (arcade $8,x=#$07)               */
+                e->facing = 1;             /* starts marching LEFT                  */
+                e->state  = 0;             /* 0 = patrol, 1 = dying                 */
+                e->vx     = (s16)(-LARGE_SPEED);
+                e->timer  = LARGE_TURN;             /* frames to next direction flip */
+                anim_restart(&e->av, SS_ANIM_LARGE_WALK);
+                e->tile   = LARGE_TILE;
+                break;
+
+            case ET_EMITTER:               /* classD stationary shot emitter ($BF6B)*/
+                e->hp     = EMIT_HP;
+                e->facing = 1;             /* faces left toward the player          */
+                e->state  = 0;             /* 0 = idle/firing, 1 = dying            */
+                e->vx     = 0;             /* STATIONARY                            */
+                e->timer  = EMIT_FIRE_PERIOD;       /* first-shot cadence            */
+                anim_restart(&e->av, SS_ANIM_EMIT_IDLE);
+                e->tile   = EMIT_TILE;
+                break;
+
+            case ET_ORB:                   /* objSingle hovering hazard ($E1C4)     */
+                e->hp     = ORB_HP;
+                e->facing = 1;
+                e->state  = 0;             /* 0 = hover, 1 = dying                  */
+                e->vx     = (s16)(-ORB_SPEED);
+                anim_restart(&e->av, SS_ANIM_ORB_FLOAT);
+                e->tile   = ORB_TILE;
+                break;
+
+            case ET_POPUP:                 /* floating "+N" score popup (no sprite) */
+                e->hp    = 0;
+                e->vy    = POPUP_RISE_VY;  /* drift upward                          */
+                e->timer = POPUP_LIFE;
+                e->tile  = 0;              /* drawn as HUD text, not a sprite       */
+                break;
+
             default:
                 e->tile = ENEMY_TILE;
                 break;
@@ -403,6 +536,43 @@ Entity *entity_spawn(u8 type, s16 x, s16 y)
         return e;
     }
     return 0;   /* pool full */
+}
+
+/* ------------------------------------------------------------------------- */
+/* Spawn a FRUIT of a specific type (sets the type, its recoloured sprite, and
+ * its anim). The SonSon signature collectible -- score on touch is per-type
+ * (k_fruit_score[]). Returns the entity or 0 if the pool is full. */
+static Entity *spawn_fruit(FruitType ft, s16 x, s16 y)
+{
+    Entity *e = entity_spawn(ET_ITEM, x, y);
+    if (!e) return 0;
+    e->fruit = (u8)ft;
+    anim_restart(&e->av, k_fruit_anim[ft]);
+    e->tile  = FRUIT_TILE(ft);
+    return e;
+}
+
+/* Spawn a floating "+N" score POPUP at (x,y) showing `val` points. The arcade's
+ * classK $0ED8 score-child (sub_CBC8 anim / sub_CCB1 dispatch) re-expressed as a
+ * cheap drifting font-glyph label (font sprites, no body tile). The "+N" text is
+ * formatted ONCE here (not per frame) into e->popupStr, so the per-frame render
+ * does zero intToStr/strlen work -- just steps the cached glyphs across. */
+static void spawn_popup(s16 x, s16 y, u16 val)
+{
+    Entity *e = entity_spawn(ET_POPUP, x, y);
+    char tmp[8];
+    u8   n;
+    if (!e) return;
+    tmp[0] = '+';
+    intToStr((s32)val, tmp + 1, 1);
+    n = (u8)strlen(tmp);
+    if (n > 5) n = 5;                         /* popupStr holds up to 5 glyphs + NUL */
+    {
+        u8 k;
+        for (k = 0; k < n; k++) e->popupStr[k] = tmp[k];
+        e->popupStr[n] = 0;
+    }
+    e->popupLen = n;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -416,59 +586,69 @@ static void spawn_initial_wave(void)
      * lane 0 = bottom band, higher lanes step up by LANE_PITCH). */
     #define LANE_Y(l)   ((s16)(LANE_BASE_Y - (s16)(l) * LANE_PITCH))
 
-    /* A spread of ground enemies down the level, on assorted lanes. They march
-     * left toward the player; placing them at increasing world-X means a fresh
-     * one enters the right edge roughly every time the camera advances. */
-    entity_spawn(ET_ENEMY_A, 320,  LANE_Y(0));
-    entity_spawn(ET_ENEMY_A, 460,  LANE_Y(1));
-    entity_spawn(ET_ENEMY_A, 600,  LANE_Y(0));
-    entity_spawn(ET_ENEMY_A, 760,  LANE_Y(2));
-    entity_spawn(ET_ENEMY_A, 900,  LANE_Y(1));
-    entity_spawn(ET_ENEMY_A, 1040, LANE_Y(0));
-    entity_spawn(ET_ENEMY_A, 1180, LANE_Y(3));
+    /* DENSITY NOTE: the headline test is a BUSY scene held at 60fps. The native
+     * VDP slows when many 16x16 sprites overlap the same scanlines, and as the
+     * player advances every enemy that marches off the LEFT recycles to the right
+     * edge -- so over time they tend to CLUSTER. We therefore (a) seed a moderate
+     * roster SPREAD WIDE across the level (so few are co-resident at once) and (b)
+     * cap the on-screen sprite count hard (ENTITY_SAT_MAX). One or two of each
+     * archetype is enough to showcase every behaviour without piling the scanlines.
+     * (Batch-1 seeded ~18 and held 60 with the player clearing them; this keeps a
+     * comparable on-screen load while adding the new types + the fruit.) */
 
-    /* FLYERS: enter high (upper lanes) and glide-then-dive at the player. Two
-     * seeded across the level so the busy-scene test always has a flyer on
-     * screen alongside the walkers + a thrower. */
+    /* Ground enemyA -- a few, well spread (they march left toward the player). */
+    entity_spawn(ET_ENEMY_A, 360,  LANE_Y(0));
+    entity_spawn(ET_ENEMY_A, 620,  LANE_Y(2));
+    entity_spawn(ET_ENEMY_A, 980,  LANE_Y(1));
+    entity_spawn(ET_ENEMY_A, 1280, LANE_Y(0));
+
+    /* FLYER: enters high and glide-then-dives at the player. */
     entity_spawn(ET_FLYER, 540,  LANE_Y(5));
-    entity_spawn(ET_FLYER, 980,  LANE_Y(4));
+    entity_spawn(ET_FLYER, 1180, LANE_Y(4));
 
-    /* THROWERS: march in and lob projectiles from range. Two across the level. */
-    entity_spawn(ET_THROWER, 700,  LANE_Y(2));
-    entity_spawn(ET_THROWER, 1120, LANE_Y(1));
+    /* THROWER: marches in and lobs projectiles from range. */
+    entity_spawn(ET_THROWER, 760,  LANE_Y(2));
 
-    /* ---- BATCH-2 archetypes, seeded across the level alongside the above so the
-     * busy-scene test always has the new behaviours on screen. The current pool
-     * cap (ENTITY_MAX=24) holds all of these plus the items comfortably; the SAT
-     * cull (ENTITY_SAT_MAX=20) keeps the on-screen sprite count safe.
-     *
+    /* ---- BATCH-2 archetypes, one each, spread across the level.
      * TODO: faithful per-level spawn schedule from the arcade spawn tables
      *   (sub_EF51/EFED wave cursor at $0638; per-stage placement lists at ROM
      *   $F0C9 indexed by stage-phase ^ lane). This ad-hoc spread is a stand-in
      *   until that schedule is captured -- it just makes every type APPEAR. ---- */
 
-    /* CREATURE_G: ground creatures that march in and THROW arcing projectiles
-     * once in range (distinct from the humanoid thrower -- they keep advancing). */
-    entity_spawn(ET_CREATURE_G, 640,  LANE_Y(0));
-    entity_spawn(ET_CREATURE_G, 1080, LANE_Y(2));
+    /* CREATURE_G: ground creature that marches + THROWS an arcing projectile. */
+    entity_spawn(ET_CREATURE_G, 700,  LANE_Y(0));
 
-    /* CREATURE_C: creature-family walkers that seek the player with a vertical
-     * wander (slightly erratic ground drift). */
-    entity_spawn(ET_CREATURE_C, 580,  LANE_Y(3));
-    entity_spawn(ET_CREATURE_C, 960,  LANE_Y(1));
+    /* CREATURE_C: creature-family walker with a vertical wander. */
+    entity_spawn(ET_CREATURE_C, 1040, LANE_Y(3));
 
-    /* COMPOSITE_E: the tough 2-HP large composite -- a heavier lane walker. One
-     * mid-level so a busy scene shows the "takes two shots" archetype. */
-    entity_spawn(ET_COMPOSITE_E, 800, LANE_Y(0));
+    /* COMPOSITE_E: the tough 2-HP large composite, a heavier lane walker. */
+    entity_spawn(ET_COMPOSITE_E, 880, LANE_Y(1));
 
-    /* HOPPERS: leaping creatures that spring in ballistic arcs toward the player.
-     * Two across the level on the ground lanes. */
-    entity_spawn(ET_HOPPER, 500,  LANE_Y(0));
-    entity_spawn(ET_HOPPER, 1000, LANE_Y(0));
+    /* HOPPER: leaping creature that springs in ballistic arcs at the player. */
+    entity_spawn(ET_HOPPER, 460,  LANE_Y(0));
 
-    /* A couple of fruit pickups on lanes the player will climb to. */
-    entity_spawn(ET_ITEM, 520, LANE_Y(2));
-    entity_spawn(ET_ITEM, 840, LANE_Y(0));
+    /* ---- BATCH-3 archetypes (obj16x16 / classD / objSingle), one each, spread
+     * wide so the busy scene shows every new behaviour without crowding. ---- */
+
+    /* LARGE: the tough 3-HP obj16x16 patroller (flips direction on a cadence). */
+    entity_spawn(ET_LARGE, 1120, LANE_Y(1));
+
+    /* EMITTER: a stationary insect emplacement that fires flat shots at the player. */
+    entity_spawn(ET_EMITTER, 600, LANE_Y(4));
+
+    /* ORB: a slow hovering lethal hazard (unique objSingle), drifting + bobbing. */
+    entity_spawn(ET_ORB, 1240, LANE_Y(5));
+
+    /* ---- FRUIT VARIETY (the SonSon signature collectible) -- scattered across the
+     * level on lanes the player climbs to. The four types escalate in value
+     * (cherry 300 / orange 500 / apple 1000 / gold 2000); the gold is rarer + on a
+     * high lane (a reward for climbing). Eating one scores by type + pops a "+N".
+     * Fruit are static + cheap, but still render as sprites, so they too are
+     * spread out (not stacked on one screen) to keep the scanline load down. */
+    spawn_fruit(FRUIT_CHERRY, 420,  LANE_Y(1));
+    spawn_fruit(FRUIT_ORANGE, 820,  LANE_Y(0));
+    spawn_fruit(FRUIT_APPLE,  1080, LANE_Y(2));
+    spawn_fruit(FRUIT_GOLD,   960,  LANE_Y(5));   /* high-lane reward */
 
     #undef LANE_Y
 }
@@ -562,6 +742,23 @@ static void thrower_lob(s16 sx, s16 sy, const Player *p)
     s->vx      = s->facing ? (s16)(-ESHOT_VX) : (s16)ESHOT_VX;
     s->timer   = 180;                                    /* ~3s hard max-life      */
     s->launchY = sy;                                     /* land when it falls back */
+}
+
+/* ---- EMITTER fire: spawn a FLAT horizontal shot toward the player -----------
+ * Re-expresses the classD launch ($BF75 spawning a projectile child). Unlike the
+ * thrower's parabolic lob, the emitter's shot starts with NO upward velocity and
+ * a fast horizontal velocity (gravity then only gently bows it), so it reads as a
+ * straight emplacement shot. launchY is parked well BELOW so it crosses the screen
+ * rather than "landing" immediately; the off-screen / max-life guard despawns it. */
+static void emitter_fire(s16 sx, s16 sy, const Player *p)
+{
+    Entity *s = entity_spawn(ET_ENEMY_SHOT, sx, sy);
+    if (!s) return;
+    s->vy      = 0;                                      /* flat -- no arc start   */
+    s->facing  = (p->x < sx) ? 1 : 0;                    /* aim at the player      */
+    s->vx      = s->facing ? (s16)(-EMIT_SHOT_VX) : (s16)EMIT_SHOT_VX;
+    s->timer   = 150;                                    /* ~2.5s hard max-life    */
+    s->launchY = (s16)(SCREEN_H + 64);                   /* far below: never lands */
 }
 
 /* ------------------------------------------------------------------------- */
@@ -963,6 +1160,143 @@ static void entity_update_one(Entity *e, const Player *p)
             break;
         }
 
+        /* ----- LARGE (obj16x16 $D57F/$D58B/$D5F3): tough patroller -------------
+         * RE: $D58B inits HP $8,x=#$07 + a 16px box; the move handler $D5F3 counts
+         * a timer $D,x down and on expiry reloads a velocity vector from the $DB4B
+         * table -- a periodic-velocity march. We re-express: a brisk lane patroller
+         * that FLIPS its march direction every LARGE_TURN frames (the periodic
+         * velocity reload), lane-homing onto the player like the heavy walkers.
+         * Takes 3 hits (collision pass decrements hp). Death (state 1) = burst. */
+        case ET_LARGE:
+        {
+            if (e->state == 1)                 /* dying */
+            {
+                anim_set(&e->av, SS_ANIM_LARGE_DEATH);
+                e->tile = anim_tick(&e->av);
+                if (--e->timer == 0) e->active = 0;
+                break;
+            }
+
+            /* periodic direction flip (the $D5F3 velocity-table reload) */
+            if (--e->timer == 0)
+            {
+                e->timer = LARGE_TURN;
+                e->vx    = (s16)(-e->vx);       /* reverse march direction          */
+            }
+            /* but always bias toward the player so it presses the attack */
+            if (p->x < e->x) e->facing = 1; else e->facing = 0;
+            integrate(&e->x, &e->xSub, e->vx);
+            /* home onto the player's lane Y one step at a time (heavy approach) */
+            if      (e->y < p->y) e->y += 1;
+            else if (e->y > p->y) e->y -= 1;
+
+            anim_set(&e->av, SS_ANIM_LARGE_WALK);
+            e->tile = anim_tick(&e->av);
+
+            /* recycle when it wanders well off either edge (it patrols both ways) */
+            if (e->x < g_game.cameraX - 48 ||
+                e->x > g_game.cameraX + SCREEN_W + 64)
+            {
+                e->x = (s16)(g_game.cameraX + SCREEN_W + 16);
+                e->xSub = 0;
+                e->vx = (s16)(-LARGE_SPEED);
+                e->timer = LARGE_TURN;
+            }
+            break;
+        }
+
+        /* ----- EMITTER (classD $BF6B/$BF75): stationary periodic shot emitter ---
+         * RE: $BF75 counts a fire-countdown $D,x down and on 0 spawns a projectile
+         * child then reloads. We re-express: a FIXED emplacement (no march) that
+         * fires a flat shot at the player every EMIT_FIRE_PERIOD frames (a brief
+         * EMIT_FIRE pose each shot). Death (state 1) = burst. It holds station, so
+         * it only leaves the scene by being killed or scrolling off the left. */
+        case ET_EMITTER:
+        {
+            if (e->state == 1)                 /* dying */
+            {
+                anim_set(&e->av, SS_ANIM_EMIT_DEATH);
+                e->tile = anim_tick(&e->av);
+                if (--e->timer == 0) e->active = 0;
+                break;
+            }
+
+            e->facing = (p->x < e->x) ? 1 : 0;  /* face the player                 */
+
+            /* fire on a cadence (the $BF75 countdown). Only when on-screen-ish so
+             * off-screen emitters don't spam shots the player never sees. */
+            {
+                s16 sx = (s16)(e->x - g_game.cameraX);
+                if (sx > -16 && sx < SCREEN_W + 16)
+                {
+                    if (e->fireTimer == 0 && --e->timer == 0)
+                    {
+                        emitter_fire((s16)(e->x + 4), (s16)(e->y + 4), p);
+                        e->timer     = EMIT_FIRE_PERIOD;
+                        e->fireTimer = EMIT_FIRE_ANIM;
+                        anim_restart(&e->av, SS_ANIM_EMIT_FIRE);
+                    }
+                }
+            }
+            if (e->fireTimer)
+                e->fireTimer--;
+            else
+                anim_set(&e->av, SS_ANIM_EMIT_IDLE);
+            e->tile = anim_tick(&e->av);
+
+            /* despawn only once it has scrolled well off the LEFT (it never marches) */
+            if (e->x < g_game.cameraX - 32) e->active = 0;
+            break;
+        }
+
+        /* ----- ORB (objSingle $E1C4/$E1F5): slow hovering lethal hazard --------
+         * RE: a parent-linked unique object that settles relative to the scroll +
+         * runs its own anim script. We re-express a slow drift toward the player
+         * with a vertical hover-bob (kept distinct from the COLLECTIBLE fruit by
+         * its motion -- it is lethal, never collected). Death (state 1) = burst. */
+        case ET_ORB:
+        {
+            if (e->state == 1)                 /* dying */
+            {
+                anim_set(&e->av, SS_ANIM_ORB_DEATH);
+                e->tile = anim_tick(&e->av);
+                if (--e->timer == 0) e->active = 0;
+                break;
+            }
+
+            if (p->x < e->x) { e->facing = 1; if (e->vx > 0) e->vx = -e->vx; }
+            else             { e->facing = 0; if (e->vx < 0) e->vx = -e->vx; }
+            integrate(&e->x, &e->xSub, e->vx);
+
+            /* drift toward the player's lane + a gentle hover-bob */
+            if      (e->y < p->y) e->y += 1;
+            else if (e->y > p->y) e->y -= 1;
+            e->phase++;
+            integrate(&e->y, &e->ySub, flyer_bob_vy_amp(e->phase, ORB_BOB_AMP));
+
+            anim_set(&e->av, SS_ANIM_ORB_FLOAT);
+            e->tile = anim_tick(&e->av);
+
+            if (e->x < g_game.cameraX - 32)        /* off-screen-left recycle      */
+            {
+                e->x = (s16)(g_game.cameraX + SCREEN_W + 16);
+                e->xSub = 0;
+            }
+            break;
+        }
+
+        /* ----- POPUP: floating "+N" score label (classK $0ED8 child) -----------
+         * RE: the arcade spawns a score-child on a kill/pickup that draws the
+         * floating value (sub_CBC8 anim / sub_CCB1 dispatch). We re-express it as a
+         * short-lived entity that drifts UPWARD; game_render draws it as a HUD-font
+         * "+N" (it carries no hardware sprite). Despawn when its life expires. */
+        case ET_POPUP:
+        {
+            integrate(&e->y, &e->ySub, e->vy);    /* rise                          */
+            if (e->timer == 0 || --e->timer == 0) e->active = 0;
+            break;
+        }
+
         /* ----- ITEM: stationary; collected on player touch (handled below) -- */
         case ET_ITEM:
             break;
@@ -1022,8 +1356,9 @@ static void collision_pass(const Player *p)
             u32 award;
 
             /* select the killable archetypes + their death-state / score.
-             * (walker/creatureC/compositeE/creatureG use state 1 = dying; the
-             * flyer/thrower/hopper use state 2 -- their state-machine layouts.) */
+             * (walker/creatureC/compositeE/creatureG/large/emitter/orb use state
+             * 1 = dying; the flyer/thrower/hopper use state 2 -- their state-
+             * machine layouts.) */
             if      (en->type == ET_ENEMY_A)     { deathState = 1; award = SCORE_ENEMY;       }
             else if (en->type == ET_FLYER)       { deathState = 2; award = SCORE_FLYER;       }
             else if (en->type == ET_THROWER)     { deathState = 2; award = SCORE_THROWER;     }
@@ -1031,6 +1366,9 @@ static void collision_pass(const Player *p)
             else if (en->type == ET_CREATURE_C)  { deathState = 1; award = SCORE_CREATURE_C;  }
             else if (en->type == ET_COMPOSITE_E) { deathState = 1; award = SCORE_COMPOSITE_E; }
             else if (en->type == ET_HOPPER)      { deathState = 2; award = SCORE_HOPPER;      }
+            else if (en->type == ET_LARGE)       { deathState = 1; award = SCORE_LARGE;       }
+            else if (en->type == ET_EMITTER)     { deathState = 1; award = SCORE_EMITTER;     }
+            else if (en->type == ET_ORB)         { deathState = 1; award = SCORE_ORB;         }
             else continue;
 
             if (!en->active || en->state == deathState) continue;   /* dead/dying */
@@ -1040,7 +1378,8 @@ static void collision_pass(const Player *p)
             {
                 if (en->hp > 1)
                 {
-                    en->hp--;
+                    en->hp--;                       /* tough enemy: another hit    */
+                    snd_sfx_enemy();                /* hit-feedback SFX            */
                 }
                 else
                 {
@@ -1048,6 +1387,12 @@ static void collision_pass(const Player *p)
                     en->timer = ENEMY_DEATH_FRAMES;
                     en->vx    = 0;
                     g_game.score += award;
+                    /* NOTE: the arcade shows a score child on enemy kills too
+                     * (classK $0ED8), but we DON'T pop a "+N" per kill here -- in a
+                     * busy fire-fight that would spawn many concurrent popup-glyph
+                     * sprites and shave the frame budget. The iconic SonSon popup is
+                     * the FRUIT one (low-frequency), which we DO show (see ET_ITEM
+                     * collect below). Enemy kills still score + play the defeat SFX. */
                     snd_sfx_enemy();               /* enemy-defeat SFX (verified) */
                 }
                 s->active = 0;                      /* shot is consumed          */
@@ -1069,12 +1414,15 @@ static void collision_pass(const Player *p)
         {
             /* hostile bodies: lethal on contact unless already in their death
              * sequence (a dying/corpse enemy is harmless). Death-state index
-             * differs by archetype (1 for the walkers/creatures, 2 for the
-             * flyer/thrower/hopper) -- match each so a corpse can't hurt. */
+             * differs by archetype (1 for the walkers/creatures/large/emitter/orb,
+             * 2 for the flyer/thrower/hopper) -- match each so a corpse can't hurt. */
             case ET_ENEMY_A:
             case ET_CREATURE_G:
             case ET_CREATURE_C:
             case ET_COMPOSITE_E:
+            case ET_LARGE:
+            case ET_EMITTER:
+            case ET_ORB:
                 if (en->state != 1) lethal_contact(p, en);
                 break;
             case ET_FLYER:
@@ -1092,13 +1440,20 @@ static void collision_pass(const Player *p)
                 }
                 break;
 
+            /* FRUIT collect: SonSon's signature scoring. Award by fruit TYPE
+             * (escalating values), play the item SFX, pop a floating "+N", and
+             * vanish. (The arcade spawns a classK $0ED8 score-child here -- the
+             * popup; sub_CBC8 animates it.) */
             case ET_ITEM:
                 if (aabb(p->x, p->y, PLAYER_W, PLAYER_H,
                          en->x, en->y, BODY_W, BODY_H))
                 {
-                    g_game.score += SCORE_ITEM;
+                    u16 val = k_fruit_score[en->fruit < FRUIT_TYPE_COUNT
+                                            ? en->fruit : 0];
+                    g_game.score += val;
+                    spawn_popup((s16)(en->x), (s16)(en->y), val);
                     snd_sfx_item();                  /* item-collect SFX (verified) */
-                    en->active = 0;                  /* fruit collected            */
+                    en->active = 0;                  /* fruit eaten                */
                 }
                 break;
 
@@ -1143,13 +1498,30 @@ void entity_update_all(void)
  *   word2 = TILE_ATTR_FULL(PAL1, prio, flipV, flipH, tile)
  *   word3 = (0x80 + screenX) & 0x1FF
  */
+/* Cap on POPUP glyph sprites appended per frame (after the entity sprites). Each
+ * popup "+N" is up to ~6 glyphs; capping the TOTAL glyphs keeps us well under the
+ * 80-sprite ceiling alongside the player + entities. (Defined in entity.h so the
+ * SAT buffer in game.c can be sized to match.) */
+#define POPUP_GLYPH_MAX     ENTITY_POPUP_GLYPH_MAX
+
 u16 entity_render_all(u16 *sat, u16 firstSlot)
 {
-    u16 count = 0;
-    u16 slot  = firstSlot;
+    u16 count  = 0;            /* entity BODY sprites (capped at ENTITY_SAT_MAX) */
+    u16 glyphs = 0;            /* popup glyph sprites (capped at POPUP_GLYPH_MAX)*/
+    u16 slot   = firstSlot;
     u16 i;
 
-    for (i = 0; i < ENTITY_MAX && count < ENTITY_SAT_MAX; i++)
+    /* ONE pass over the pool: entity bodies (16x16) AND floating "+N" score-popup
+     * glyphs (1x1 font-tile sprites), built into one linked SAT chain.
+     *   - Bodies use PAL1 + the entity's baked tile (capped at ENTITY_SAT_MAX).
+     *   - Popups carry NO body tile; they emit cached glyph sprites pointing at
+     *     the SGDK font (TILE_FONT_INDEX + (ch-32), PAL3 -- the font palette
+     *     game.c set up). The "+N" text was formatted ONCE at spawn (e->popupStr),
+     *     so this does zero per-frame intToStr/strlen. Riding the same SAT DMA,
+     *     the popups cost no active-display VRAM writes (the arcade's classK
+     *     $0ED8 score-child, sub_CBC8 anim, re-expressed cheaply).
+     * A single loop avoids a second 48-slot scan. */
+    for (i = 0; i < ENTITY_MAX; i++)
     {
         Entity *e = &g_entities[i];
         s16 sx, sy;
@@ -1158,6 +1530,27 @@ u16 entity_render_all(u16 *sat, u16 firstSlot)
         sx = (s16)(e->x - g_game.cameraX);
         sy = e->y;
 
+        if (e->type == ET_POPUP)
+        {
+            u8 k;
+            if (glyphs >= POPUP_GLYPH_MAX) continue;
+            if (sy <= -8 || sy >= SCREEN_H) continue;
+            for (k = 0; k < e->popupLen && glyphs < POPUP_GLYPH_MAX; k++)
+            {
+                s16 gx = (s16)(sx + k * 8);
+                u16 ftile = (u16)(TILE_FONT_INDEX + ((u8)e->popupStr[k] - 32));
+                if (gx <= -8 || gx >= SCREEN_W) continue;
+                sat[slot * 4 + 0] = (u16)((0x80 + sy) & 0x3FF);
+                sat[slot * 4 + 1] = (u16)((SPRITE_SIZE(1, 1) << 8) | (slot + 1));
+                sat[slot * 4 + 2] = (u16)TILE_ATTR_FULL(PAL3, 1, 0, 0, ftile);
+                sat[slot * 4 + 3] = (u16)((0x80 + gx) & 0x1FF);
+                slot++; glyphs++;
+            }
+            continue;
+        }
+
+        /* entity body (16x16). Cap the BODY sprites; popups have their own cap. */
+        if (count >= ENTITY_SAT_MAX) continue;
         /* cull off-screen sprites (with a small margin) so the SAT stays lean */
         if (sx <= -BODY_W || sx >= SCREEN_W || sy <= -BODY_H || sy >= SCREEN_H)
             continue;
@@ -1165,7 +1558,6 @@ u16 entity_render_all(u16 *sat, u16 firstSlot)
         /* (dying enemies no longer blink: the baked ENEMY_DEATH animation -- the
          * 307->308->309->310 collapse, driven in entity_update_one -- IS the
          * death feedback now, so we draw every frame of it.) */
-
         sat[slot * 4 + 0] = (u16)((0x80 + sy) & 0x3FF);
         /* link to the NEXT slot; the loop tail patches the final link to 0 */
         sat[slot * 4 + 1] = (u16)((SPRITE_SIZE(2, 2) << 8) | (slot + 1));
@@ -1177,7 +1569,8 @@ u16 entity_render_all(u16 *sat, u16 firstSlot)
     }
 
     /* terminate the chain: the last appended sprite links to 0 */
-    if (count) sat[(slot - 1) * 4 + 1] = (u16)((SPRITE_SIZE(2, 2) << 8) | 0);
+    if (slot != firstSlot) sat[(slot - 1) * 4 + 1] =
+        (u16)((sat[(slot - 1) * 4 + 1] & 0xFF00) | 0);
 
-    return count;
+    return (u16)(slot - firstSlot);   /* total sprites appended (bodies + glyphs) */
 }

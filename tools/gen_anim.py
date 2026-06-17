@@ -164,6 +164,66 @@ ANIMS = [
     ("HOP_HOP",     True,  [(388, ENEMY_BANK, 6), (389, ENEMY_BANK, 6)]),
     ("HOP_DEATH",   False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
                             (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
+
+    # =======================================================================
+    #  BATCH 3 -- the iconic SonSon FRUIT variety + three more SPAWNED archetypes
+    #  (obj16x16 $D57F, classD $BF6B, objSingle $E1C4). FRAME provenance, like
+    #  batches 1-2: the attract DEMO never exercises these, so codes are taken
+    #  from the authentic arcade SPRITE SHEET (eyeball-verified distinct + non-
+    #  blank via tools/sheet_browse.py / fruit_pick.py / bank_scan.py); AI is the
+    #  behavioural RE (see entity.c headers + ../sonson/port/src handlers).
+    # =======================================================================
+    # ---- FRUIT (the SonSon signature collectible). SonSon's fruit are ONE round
+    #   fruit SHAPE recoloured by COLOR BANK into distinct fruit types with
+    #   escalating point values -- exactly the arcade design (verified: sprite
+    #   code 233 is a clean round fruit with a leaf+highlight; banks 0/1/9/30 bake
+    #   it red / orange / green / gold, each using a distinct PAL1 colour set, so
+    #   the four read as cherry / orange / apple / gold-fruit). Single static
+    #   frame each (fruit don't animate); the point value lives in entity.c.
+    #   The popup-number sprites (arcade codes 404-415 = 100/300/500/1000/2000/
+    #   10000) confirm the value tiers; the native popup is a floating "+N" via
+    #   the HUD font (the arcade's classK $0ED8 score-child mechanic, sub_CBC8/
+    #   sub_CCB1, re-expressed cheaply). ----
+    ("FRUIT_CHERRY", False, [(233, 0,  1)]),   # red    -> 300
+    ("FRUIT_ORANGE", False, [(233, 1,  1)]),   # orange -> 500
+    ("FRUIT_APPLE",  False, [(233, 9,  1)]),   # green  -> 1000
+    ("FRUIT_GOLD",   False, [(233, 30, 1)]),   # gold   -> 2000
+
+    # ---- LARGE object (obj16x16, seeded by sub_D54B into $0E48 3 slots stride
+    #   $30; root $D57F -> init $D58B sets HP $8,x=#$07 + a 16px box $D,x=#$10;
+    #   move $D5F3 counts a timer then reloads a velocity vector from the $DB4B
+    #   table = a periodic-velocity PATROL; the multi-sprite body is assembled by
+    #   the $F2B3 composite emitter). The TOUGH archetype. WALK = a distinct
+    #   robed/armoured humanoid pair 322/323 (blue-caped, white body, red trim);
+    #   THROW-less. Death = shared burst. (Native HP is 3, not the arcade 7 --
+    #   see entity.c TODO; the literal 4-sprite composite render needs the $F2F8
+    #   program-ROM sprite-assembly table, not in the gfx bake -- TODO there too.)
+    ("LARGE_WALK",  True,  [(322, ENEMY_BANK, 7), (323, ENEMY_BANK, 7)]),
+    ("LARGE_DEATH", False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
+                            (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
+
+    # ---- EMITTER (classD projectile/thrower family, spawn $BF6B idx0; the
+    #   periodic-fire emitter is idx2 $BFE5 -> $C00F; the launch leaf $BF75
+    #   counts a fire-countdown $D,x down and on 0 spawns a projectile child
+    #   (stb -$10,x=1; inc -$F,x) then reloads). A STATIONARY emplacement that
+    #   periodically FIRES a projectile (re-using the classI ENEMY_SHOT). FLY =
+    #   a distinct white dragonfly/stinger insect pair 318/319 (it hovers in
+    #   place, wings flicking, and looses shots). Death = shared burst. ----
+    ("EMIT_IDLE",   True,  [(318, ENEMY_BANK, 6), (319, ENEMY_BANK, 6)]),
+    ("EMIT_FIRE",   False, [(319, ENEMY_BANK, 8), (318, ENEMY_BANK, 6)]),
+    ("EMIT_DEATH",  False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
+                            (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
+
+    # ---- ORB (objSingle unique object, spawn $E1C4 -> behaviour $E1F5; a
+    #   parent-linked single-instance object that settles relative to the scroll
+    #   and runs its own anim script $E27D/$E24D). Re-expressed as a slow HOVERING
+    #   hazard -- a glowing orb (round sprite 231 in bank 14 -> orange glow, kept
+    #   visually distinct from the COLLECTIBLE fruit by its motion: it drifts +
+    #   bobs and is LETHAL on contact, never collected). 2-frame shimmer. Death =
+    #   shared burst. ----
+    ("ORB_FLOAT",   True,  [(231, 14, 6), (230, 14, 6)]),
+    ("ORB_DEATH",   False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
+                            (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
 ]
 
 

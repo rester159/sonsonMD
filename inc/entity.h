@@ -39,14 +39,25 @@
  *   ET_CREATURE_C (classC creature family BC20/BC6C/BC74 -- walker),
  *   ET_COMPOSITE_E (classE large entity C306/C350/C35E/F2B3 -- tough 2-HP walker),
  *   ET_HOPPER     (classH scrolling actor CF39/D0A2/D0B5/D02D -- leaping hopper).
- * TODO(more-archetypes): obj16x16 large composite ($D57F 4-sprite boss-ish),
- *   classD projectile-emitter ($BF6B), fruit/item variety. */
+ *
+ * BATCH 3 (this pass): the iconic SonSon FRUIT VARIETY (ET_ITEM now carries a
+ *   fruit TYPE: cherry/orange/apple/gold, each its own sprite colour + escalating
+ *   point value + a floating "+N" score popup) PLUS three more SPAWNED archetypes:
+ *   ET_LARGE   (obj16x16 $D57F/$D58B/$D5F3, seeded by $D54B: a TOUGH multi-HP
+ *               patroller -- arcade HP 7, native 3; composite render is a TODO),
+ *   ET_EMITTER (classD $BF6B/$BFE5/$BF75: a STATIONARY emplacement that
+ *               periodically FIRES a projectile -- reuses the classI ENEMY_SHOT),
+ *   ET_ORB     (objSingle $E1C4/$E1F5: a slow HOVERING lethal unique object).
+ * TODO(more-archetypes): the literal multi-sprite COMPOSITE render for ET_LARGE /
+ *   ET_COMPOSITE_E (arcade $F2B3 builds the body from a $F2F8 program-ROM sprite-
+ *   assembly table -- NOT in the graphics-ROM bake, so it can't be reconstructed
+ *   here yet; both render as a single faithful 16x16 actor for now). */
 typedef enum
 {
     ET_NONE = 0,    /* empty slot                                            */
     ET_ENEMY_A,     /* ground enemy -- marches left toward the player        */
     ET_SHOT,        /* player projectile -- travels in the facing direction  */
-    ET_ITEM,        /* collectible fruit (bonus score on player touch)       */
+    ET_ITEM,        /* collectible FRUIT (bonus score on touch; e->fruit=type)*/
     ET_FLYER,       /* flyer (classF $DF18/$DF90): glides an arc, then dives  */
     ET_THROWER,     /* thrower (enemyMain $BAB3): marches, lobs projectiles   */
     ET_ENEMY_SHOT,  /* lobbed projectile (classI $D352): parabolic arc, hurts */
@@ -54,8 +65,26 @@ typedef enum
                      * periodically throws an arcing projectile (an ENEMY_SHOT) */
     ET_CREATURE_C,  /* classC creature ($BC6C family): a lane-seeking walker    */
     ET_COMPOSITE_E, /* classE large entity ($C35E walker): tough 2-HP lane walk */
-    ET_HOPPER       /* classH leaping hopper ($D0B5): ballistic leaps at player */
+    ET_HOPPER,      /* classH leaping hopper ($D0B5): ballistic leaps at player */
+    ET_LARGE,       /* obj16x16 ($D57F/$D58B): tough 3-HP patroller            */
+    ET_EMITTER,     /* classD ($BF6B/$BF75): stationary periodic shot emitter  */
+    ET_ORB,         /* objSingle ($E1C4): slow hovering lethal unique object   */
+    ET_POPUP        /* floating "+N" score popup (classK $0ED8 child, $CBC8)   */
 } EntityType;
+
+/* Fruit TYPES (ET_ITEM e->fruit). SonSon's signature scoring is EATING FRUIT:
+ * one round fruit shape recoloured per type, with ESCALATING point values. The
+ * value tiers are the arcade's bonus-number sprites (codes 404-415 = 100/300/
+ * 500/1000/2000/10000); these four are the common collectibles. See entity.c
+ * k_fruit_score[] + the FRUIT_* baked sprites. */
+typedef enum
+{
+    FRUIT_CHERRY = 0,   /* red    -- 300                                       */
+    FRUIT_ORANGE,       /* orange -- 500                                       */
+    FRUIT_APPLE,        /* green  -- 1000                                      */
+    FRUIT_GOLD,         /* gold   -- 2000                                      */
+    FRUIT_TYPE_COUNT
+} FruitType;
 
 /* ---- Entity record (CLEAN native, packed) --------------------------------
  * Mirrors the arcade record's INTEGER behaviour (state / fixed-point position /
@@ -80,23 +109,30 @@ typedef struct
     u8  phase;      /* free phase accumulator (FLYER vertical-bob sine index) */
     u8  fireTimer;  /* THROWER: frames left in the current throw-lunge pose   */
     s16 launchY;    /* ENEMY_SHOT: world-Y it was lobbed from (arc land test) */
+    u8  fruit;      /* ET_ITEM: FruitType                                    */
+    u8  popupLen;   /* ET_POPUP: glyph count in popupStr                     */
+    char popupStr[6];/* ET_POPUP: the "+N" text, formatted ONCE at spawn (so
+                     * the per-frame render does zero intToStr/strlen work)   */
     Anim av;        /* faithful animation cursor (walk / death) -- enemyA     */
     u16 tile;       /* absolute VRAM base tile (SPRITE_SIZE(2,2))            */
 } Entity;
 
 /* Pool size. The arcade main array ($0768) is 55 slots; we cap the NATIVE pool
- * smaller because the headline test is a BUSY scene held at 60fps, and the VDP
+ * near that because the headline test is a BUSY scene held at 60fps, and the VDP
  * tops out at 80 sprites / 20 per scanline anyway (entity_render_all also caps
- * on-screen sprites). 32 holds the seeded enemy roster (now 8 archetypes) plus
- * player shots AND the enemy-lobbed projectiles (throwers + creatureG children)
- * with headroom; the collision pass is still a trivial 32x32 byte scan on the
- * 68000, and only ENTITY_SAT_MAX of them ever reach the hardware sprite list. */
-#define ENTITY_MAX          32
+ * on-screen sprites). 48 holds the full seeded roster (now 11 enemy archetypes +
+ * the FRUIT VARIETY) plus player shots, the enemy-lobbed/emitter projectiles, AND
+ * the floating score POPUPs with headroom; the collision pass is still a trivial
+ * O(N^2) byte scan on the 68000 (its inner loop early-outs on non-shots), and
+ * only ENTITY_SAT_MAX of them ever reach the hardware sprite list. */
+#define ENTITY_MAX          48
 
 /* Hard cap on entities appended to the SAT in one frame (after the player).
  * Keeps us clear of the 80-hardware-sprite ceiling and the per-scanline limit
- * even if the pool is full and all on-screen. */
-#define ENTITY_SAT_MAX      20
+ * even if the pool is full and all on-screen. The native VDP slows when many
+ * 16x16 sprites overlap the same scanlines (the per-scanline sprite limit), so
+ * this cap is the headline-busy-scene's 60fps guard -- not the pool size. */
+#define ENTITY_SAT_MAX      18
 
 extern Entity g_entities[ENTITY_MAX];
 
@@ -110,8 +146,15 @@ void entity_update_all(void);                 /* AI + motion + collision + score
  * among the appended sprites (each links to the next; the LAST links to 0 to
  * terminate). Returns the number of sprites appended; on a nonzero return the
  * caller should link the player's sprite to `firstSlot`, otherwise terminate
- * the player's link with 0. Only on-screen entities are emitted, capped at
- * ENTITY_SAT_MAX. */
+ * the player's link with 0.
+ *
+ * Appends BOTH the entity bodies (16x16) AND the floating "+N" score-popup glyphs
+ * (1x1 font-tile sprites) in one chain. Popups carry no body tile -- they're
+ * emitted as SGDK font glyphs (PAL3), so they cost no extra active-display VRAM
+ * writes (they ride the same SAT DMA). Bodies are capped at ENTITY_SAT_MAX and the
+ * popup glyphs at ENTITY_POPUP_GLYPH_MAX, so the SAT buffer must hold
+ * 1 + ENTITY_SAT_MAX + ENTITY_POPUP_GLYPH_MAX sprites. */
+#define ENTITY_POPUP_GLYPH_MAX  10
 u16  entity_render_all(u16 *sat, u16 firstSlot);
 
 /* ---- Player-driven hooks (game.c calls these) ---------------------------- */

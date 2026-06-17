@@ -788,10 +788,11 @@ static void bg_stream(void)
  * ------------------------------------------------------------------------- */
 void game_render(void)
 {
-    /* SAT for the player (slot 0) + the entity pool (slots 1..). Sized for the
-     * player plus ENTITY_SAT_MAX entities; well under the 80-sprite hardware
+    /* SAT for the player (slot 0) + the entity pool (slots 1..) + the score-popup
+     * glyph sprites. Sized for the player plus ENTITY_SAT_MAX entity bodies plus
+     * ENTITY_POPUP_GLYPH_MAX popup glyphs; well under the 80-sprite hardware
      * ceiling. */
-    static u16 sat[(1 + ENTITY_SAT_MAX) * 4];
+    static u16 sat[(1 + ENTITY_SAT_MAX + ENTITY_POPUP_GLYPH_MAX) * 4];
     const Player *p = &g_game.player;
     u16 nEnt;
     u16 totalSprites;
@@ -899,6 +900,10 @@ void game_render(void)
             VDP_drawText(lv, 24, 1);       /* "xN" at cols 24..25               */
         }
     }
+
+    /* (The floating "+N" score POPUPS are emitted as hardware sprites inside
+     * entity_render_all -- font-tile glyphs chained into the same SAT DMA, so they
+     * cost no active-display VRAM writes. See entity_render_all.) */
 
     /* --- GAME OVER overlay (Plane B, centered) ---
      * Shown for the whole FLOW_GAME_OVER beat over the still-scrolling level.
