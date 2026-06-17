@@ -67,14 +67,18 @@ void game_init(void)
             VDP_setTileMapDataRow(BG_A, &ss_scene_nametable[row * 32], row, 0, 32, DMA);
     }
 
-    /* Spawn the player at a sensible on-screen start: lower-centre of the
-     * screen, a plausible standing position for a SonSon lane. */
+    /* Spawn the player standing on the bottom lane (lane 0), pinned at the left
+     * edge of the arcade screen band -- the SonSon hero starts low-left and runs
+     * right into the scrolling level. */
     {
         Player *p = &g_game.player;
-        p->x         = (LEVEL_W - PLAYER_W) / 2;   /* centred horizontally     */
-        p->y         = LEVEL_H - PLAYER_H - 32;    /* near the bottom lane      */
+        p->lane      = 0;
+        p->y         = LANE_BASE_Y;                /* lane 0 world Y            */
+        p->x         = BAND_LEFT;                  /* pinned at the band's left */
+        p->xSub      = 0;
         p->vx        = 0;
-        p->vy        = 0;
+        p->laneTimer = 0;
+        p->climbing  = 0;
         p->facing    = FACING_RIGHT;
         p->anim      = 0;
         p->animTimer = PLAYER_ANIM_PERIOD;
@@ -85,73 +89,132 @@ void game_init(void)
 }
 
 /* ---------------------------------------------------------------------------
- *  game_update -- one frame of input + simulation.
+ *  game_update -- one frame of FAITHFUL SonSon locomotion.
  *
- *  TODO Phase 3b: faithful lane/climb movement from the RE. The arcade player
- *  is the run-along-horizontal-lanes + climb-between-lanes mechanic. The active
- *  player updater is handler $B1F3 ("Player -- active run/jump/fire", class
- *  players/$0708 idx 1) in ../sonson/census_semantic.toml; its behavioural
- *  reference is the port's lifted sub_B1F3 (the prompt's ~sub_A98A pointer is
- *  the neighbourhood -- the player-class handlers cluster at $B1BC..$B286).
- *  Replace the simple px/frame D-pad model below with that lane state machine
- *  (gravity, climb-up/down between lanes, run accel, fire into $0E28).
+ *  Re-expressed cleanly from the verified arcade player code (the oracle):
+ *  ../sonson/port/src/{sub_A98A, sub_A9A7, sub_A9C5, sub_AB52, sub_AD10,
+ *  sub_AE16, sub_9617}.c. The mechanic and every constant are documented on the
+ *  LOCOMOTION CONSTANTS block in game.h. In one sentence: the hero is pinned in
+ *  a fixed horizontal screen band and runs by scrolling the world (LEFT/RIGHT),
+ *  and steps between 8px-quantised lanes (UP/DOWN) whose field wraps vertically.
+ *
+ *  NOT yet faithful (scope-limited, TODO): jump / fire / attack (arcade B1F3 ->
+ *  B25A spawns a shot into $0E28) and terrain/enemy collision. The lane field
+ *  here is free (no per-lane platform gating). The anim-state var is driven
+ *  correctly so real walk/climb frames drop in trivially once baked.
  * ------------------------------------------------------------------------- */
 void game_update(void)
 {
     Player *p = &g_game.player;
     u16 pad = JOY_readJoypad(JOY_1);
 
-    /* --- horizontal: D-pad LEFT/RIGHT = run --- */
+    /* ----- HORIZONTAL: run = commanded velocity + the constant forward drift.
+     * Arcade ($A9C5/$A9A7): worldX-fraction gets += $008D every frame (perpetual
+     * forward creep) plus the input-gated velocity word; the integer worldX is
+     * the carry-out. We accumulate in 1/256-px (xSub) and carry into p->x. The
+     * forward drift is folded into the rightward run / idle so the hero always
+     * eases forward, exactly as in the arcade. ----- */
     p->vx = 0;
-    if (pad & BUTTON_LEFT)
+    if (pad & BUTTON_RIGHT)
     {
-        p->vx     = -PLAYER_SPEED_X;
-        p->facing = FACING_LEFT;
-    }
-    else if (pad & BUTTON_RIGHT)
-    {
-        p->vx     = PLAYER_SPEED_X;
+        p->vx     = (s16)(RUN_VEL_SUBPX + RUN_DRIFT_SUBPX);  /* run with the creep */
         p->facing = FACING_RIGHT;
     }
+    else if (pad & BUTTON_LEFT)
+    {
+        p->vx     = (s16)(-RUN_VEL_SUBPX + RUN_DRIFT_SUBPX); /* push back vs creep  */
+        p->facing = FACING_LEFT;
+    }
+    else
+    {
+        p->vx     = (s16)RUN_DRIFT_SUBPX;                    /* idle: just the creep */
+    }
 
-    /* --- vertical: D-pad UP/DOWN = move between lanes (placeholder) --- */
-    p->vy = 0;
-    if (pad & BUTTON_UP)        p->vy = -PLAYER_SPEED_Y;
-    else if (pad & BUTTON_DOWN) p->vy =  PLAYER_SPEED_Y;
+    /* integrate sub-pixel X -> world X (signed carry, like addd/inc -$B,x) */
+    {
+        s32 acc = (s32)p->xSub + (s32)p->vx;
+        p->x   = (s16)(p->x + (acc >> 8));
+        p->xSub = (u16)(acc & 0xFF);
+    }
 
-    /* --- integrate + clamp to level bounds --- */
-    p->x += p->vx;
-    p->y += p->vy;
+    /* ----- VERTICAL: lane stepping with the SonSon vertical WRAP.
+     * Arcade Y is the single byte at -$8 (wraps mod 256 => the vertical loop),
+     * nudged in 8px sub-steps. We model discrete lanes (LANE_PITCH apart) and
+     * wrap the lane INDEX: climbing past the top lane reappears at the bottom,
+     * and dropping below the bottom reappears at the top. One step per hold-tick
+     * (LANE_STEP_PERIOD) so a held press climbs at a steady cadence. ----- */
+    if (p->laneTimer != 0) p->laneTimer--;
 
-    if (p->x < 0)                    p->x = 0;
-    if (p->x > LEVEL_W - PLAYER_W)   p->x = LEVEL_W - PLAYER_W;
-    if (p->y < 0)                    p->y = 0;
-    if (p->y > LEVEL_H - PLAYER_H)   p->y = LEVEL_H - PLAYER_H;
+    p->climbing = 0;
+    if (pad & (BUTTON_UP | BUTTON_DOWN))
+    {
+        p->climbing = 1;
+        if (p->laneTimer == 0)
+        {
+            if (pad & BUTTON_UP)
+                p->lane = (u8)((p->lane + 1) % LANE_COUNT);          /* climb up   */
+            else
+                p->lane = (u8)((p->lane + LANE_COUNT - 1) % LANE_COUNT); /* down   */
+            p->laneTimer = LANE_STEP_PERIOD;
+        }
+    }
+    /* derive world Y from the lane index (lane 0 = bottom, higher = up-screen) */
+    p->y = (s16)(LANE_BASE_Y - (s16)p->lane * LANE_PITCH);
 
-    /* --- walk-cycle anim timer (cosmetic; single frame drawn for now) --- */
-    if (p->vx != 0 || p->vy != 0)
+    /* ----- CAMERA + horizontal screen-band clamp (arcade sub_AB52).
+     * The hero is pinned to the band [BAND_LEFT..BAND_RIGHT] in SCREEN space;
+     * the world scrolls to keep him there. We move the camera so screenX stays
+     * inside the band, then clamp the camera to the level and re-clamp the
+     * player's *world* X to the band edge when the camera can't scroll further
+     * (level start / end) -- exactly the arcade's "push worldX back to the
+     * clamp" behaviour. ----- */
+    {
+        s16 maxCam  = (s16)(LEVEL_W - SCREEN_W);
+        s16 screenX;
+        if (maxCam < 0) maxCam = 0;                 /* level no wider than screen */
+
+        /* scroll the camera to keep the player inside the band */
+        screenX = (s16)(p->x - g_game.cameraX);
+        if (screenX < BAND_LEFT)        g_game.cameraX = (s16)(p->x - BAND_LEFT);
+        else if (screenX > BAND_RIGHT)  g_game.cameraX = (s16)(p->x - BAND_RIGHT);
+
+        if (g_game.cameraX < 0)      g_game.cameraX = 0;
+        if (g_game.cameraX > maxCam) g_game.cameraX = maxCam;
+
+        /* with the camera clamped, re-pin the player's world X to the band so he
+         * never escapes the visible window at the level edges */
+        screenX = (s16)(p->x - g_game.cameraX);
+        if (screenX < BAND_LEFT)
+        {
+            p->x = (s16)(g_game.cameraX + BAND_LEFT);
+            p->xSub = 0;
+        }
+        else if (screenX > BAND_RIGHT)
+        {
+            p->x = (s16)(g_game.cameraX + BAND_RIGHT);
+            p->xSub = 0;
+        }
+    }
+
+    /* ----- ANIM cadence (arcade sub_9617: per-frame countdown then step).
+     * Advance the walk OR climb cycle while moving; hold the idle frame at rest.
+     * anim is the cell index a future baked frame-set will key off. ----- */
+    if ((pad & (BUTTON_LEFT | BUTTON_RIGHT)) || p->climbing)
     {
         if (--p->animTimer == 0)
         {
             p->animTimer = PLAYER_ANIM_PERIOD;
-            p->anim = (u8)((p->anim + 1) & 0x03);
+            p->anim = (u8)((p->anim + 1) & 0x03);   /* 4-frame walk/climb cycle  */
         }
     }
     else
     {
-        p->anim = 0;                 /* idle frame                            */
+        p->anim = 0;                                /* idle frame                */
         p->animTimer = PLAYER_ANIM_PERIOD;
     }
-
-    /* --- camera follows the player, kept roughly centred, clamped to level --- */
-    {
-        s16 target = (s16)(p->x + PLAYER_W / 2 - SCREEN_W / 2);
-        s16 maxCam = (s16)(LEVEL_W - SCREEN_W);
-        if (maxCam < 0) maxCam = 0;        /* level no wider than screen       */
-        if (target < 0)      target = 0;
-        if (target > maxCam) target = maxCam;
-        g_game.cameraX = target;
-    }
+    /* TODO: bake + swap player anim frames (walk N-frame + climb cycle). The
+     * sprite cell is currently the single baked PLAYER_TILE; p->anim/p->climbing
+     * already carry the state to select the right frame once tiles exist. */
 }
 
 /* ---------------------------------------------------------------------------
