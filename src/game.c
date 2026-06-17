@@ -68,6 +68,50 @@ GameConfig g_config =
  * Anim cursor p->av. PLAYER_TILE is just the cold-start frame (run frame 0). */
 #define PLAYER_TILE   (ss_anims[SS_ANIM_PLAYER_RUN].frames[0].tile)
 
+/* ===========================================================================
+ *  EXTRA-LIFE (BONUS) thresholds -- arcade DSW2 0x18, RE-sourced (see game.h).
+ * ===========================================================================
+ *  Per g_config.bonusLife (0..3) a fixed list of score thresholds (decimal points)
+ *  at which a bonus life is granted. A 0 entry terminates a list shorter than
+ *  BONUS_LIST_MAX (idx2/idx3 award exactly one). Values verified against the DIP
+ *  labels (dipswitch.c) + the BCD threshold constants in the arcade ROM
+ *  (rom/ss.01e ~$4E60-$4EBC: 20K/30K/80K/90K/100K/120K all present). */
+static const u32 k_bonus_thresholds[4][BONUS_LIST_MAX] =
+{
+    {  30000,  90000, 120000 },   /* idx0 "30K 90K 120K"                          */
+    {  20000,  80000, 100000 },   /* idx1 "20K 80K 100K" (default)                */
+    {  30000,      0,      0 },   /* idx2 "30K ONLY"                              */
+    {  20000,      0,      0 }    /* idx3 "20K ONLY"                              */
+};
+
+/* check_extra_life -- award bonus lives for every bonus threshold the score has
+ * crossed since the last check (arcade DSW2 0x18). Walks the active threshold list
+ * from g_game.bonusNextIdx; each crossed threshold grants one life (capped at
+ * LIFE_MAX), advances the index, updates the HUD (lives is re-read each render),
+ * and -- if SND_CMD_1UP is defined -- plays a 1-up cue. Called once per frame from
+ * game_update while the score can change. Cheap: a couple of u32 compares. */
+static void check_extra_life(void)
+{
+    u8 bl = g_config.bonusLife;
+    const u32 *list;
+    if (bl > 3) bl = 3;
+    list = k_bonus_thresholds[bl];
+
+    while (g_game.bonusNextIdx < BONUS_LIST_MAX)
+    {
+        u32 thr = list[g_game.bonusNextIdx];
+        if (thr == 0) break;                       /* list terminator (idx2/idx3)  */
+        if (g_game.score < thr) break;             /* not reached the next one yet */
+
+        /* crossed this threshold: award a life (capped) + advance */
+        if (g_game.lives < LIFE_MAX) g_game.lives++;
+        g_game.bonusNextIdx++;
+#ifdef SND_CMD_1UP
+        snd_command(SND_CMD_1UP);                  /* 1-up cue (see sound.h note)  */
+#endif
+    }
+}
+
 /* FPS-readout text palette. The SGDK system font lives at a high VRAM tile
  * index (TILE_FONT_INDEX ~= 1376), so it never collides with the scene tiles
  * at 0..134 or the level tiles at 135..(135+SS_LEVEL_TILE_COUNT). We give the
@@ -275,6 +319,7 @@ void game_init(void)
      * the front-end wrote it before game_init. We treat it as the STARTING life
      * count (lives in hand, the current one included). Start ALIVE, no flow. */
     g_game.lives     = g_config.lives;
+    g_game.bonusNextIdx = 0;          /* no bonus thresholds reached yet            */
     g_game.flow      = FLOW_ALIVE;
     g_game.flowTimer = 0;
 
@@ -712,13 +757,14 @@ bool game_update(void)
      * common case, this is belt-and-braces so it can't leak into the next life. */
     g_player_dead_request = 0;
 
-    /* TODO(extend-life): award a bonus life when the score crosses the arcade
-     * Bonus-Life thresholds. g_config.bonusLife is the decoded DSW2 0x18 table
-     * index (dipswitch.c labels: 20K/80K/100K, etc.); track a "next bonus score"
-     * and on crossing it do g_game.lives++ (capped) + the bonus jingle. The DIP
-     * is already plumbed end-to-end (front-end -> g_config.bonusLife) -- only the
-     * threshold table + the score-cross check remain.
-     *
+    /* EXTRA LIFE (arcade DSW2 0x18): award bonus lives for any threshold the score
+     * has crossed. The threshold list is selected by g_config.bonusLife (decoded
+     * from DSW2 0x18 by sync_from_dsw; dipswitch.c labels 20K/80K/100K etc.); see
+     * k_bonus_thresholds[] + the RE notes in game.h. This is what makes the
+     * Bonus-Life DIP actually grant lives (previously a no-op TODO). Cheap; checked
+     * every frame (score only grows during ALIVE play, so this is safe anywhere). */
+    check_extra_life();
+    /*
      * ROUND PROGRESSION is implemented above: the FLOW_ALIVE case detects the
      * level-end finish (camera maxed + the hero pushing the right wall for
      * ROUND_CLEAR_DWELL frames) -> FLOW_ROUND_CLEAR; that beat shows the ROUND

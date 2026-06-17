@@ -66,6 +66,19 @@
 
 #include <genesis.h>
 
+/* EXTRA-LIFE (1-up) CUE -- NOT ISOLATED (2026-06-17). The arcade awards bonus lives
+ * at the DSW2 0x18 thresholds (20K/30K/.. -- see game.h), but a DEDICATED 1-up jingle
+ * could not be pinned: driving a real scoring game in MAME (coin+start via the proven
+ * ss_sndtap harness, md@$0002==0x02 in-game) and watching the sound latch + the live
+ * score ($006C-$006F BCD, displayed = stored x10), the only "jingle-ish" command that
+ * fired during scoring (0x06) recurred at non-threshold scores (9.8K/15.9K/21.4K) and
+ * far too often to be the extend cue -- it is a recurring combat/ambient SFX, not 1-up.
+ * No distinct command fired exactly at the 20K bonus crossing. So the extra-life is
+ * wired WITHOUT a cue by default. To enable one once isolated (e.g. via a save-state
+ * placed just below a threshold, or an .inp recording), define SND_CMD_1UP to the
+ * confirmed command -- game.c's check_extra_life() plays it under #ifdef SND_CMD_1UP.
+ *   // #define SND_CMD_1UP   0x??     (uncomment + set when the 1-up cmd is verified) */
+
 /* Verified SonSon sound-command numbers (see header comment + sound.c). */
 #define SND_CMD_STOP        0x00    /* halt + silence (arcade pairs 00+song)     */
 #define SND_CMD_COIN        0x01    /* coin insert jingle                        */

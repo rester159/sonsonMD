@@ -145,6 +145,28 @@ extern u16 g_levelW;                              /* current level pixel width  
 #define BLINK_MASK          2       /* sprite shown when (timer & BLINK_MASK)==0 */
 
 /* ===========================================================================
+ *  EXTRA-LIFE (BONUS) -- arcade DSW2 0x18 thresholds, RE-sourced.
+ * ===========================================================================
+ *  SonSon awards bonus lives when the score crosses fixed thresholds selected by
+ *  the arcade Bonus-Life switch (DSW2 0x18 -> g_config.bonusLife 0..3). The labels
+ *  (dipswitch.c, verbatim from MAME -listxml sonson) and their threshold lists:
+ *    idx0 "30K 90K 120K"  -> extra life at  30000,  90000, 120000  (three, then none)
+ *    idx1 "20K 80K 100K"  -> extra life at  20000,  80000, 100000  (default)
+ *    idx2 "30K ONLY"      -> extra life at  30000                  (one only)
+ *    idx3 "20K ONLY"      -> extra life at  20000                  (one only)
+ *  The "ONLY" suffix on idx2/idx3 confirms idx0/idx1 are fixed 3-award lists (NOT
+ *  "first at X then every Y"). All six threshold VALUES (20K/30K/80K/90K/100K/120K)
+ *  were confirmed present in the arcade program ROM as BCD constants near the score
+ *  code (rom/ss.01e ~$4E60-$4EBC). The running score is plain decimal here (game.c
+ *  g_game.score), so thresholds are stored as decimal points -- no BCD/x10 needed.
+ *
+ *  LIVES CAP: the arcade lives display is a small field; we cap the in-hand count
+ *  so a long high-scoring run can't overflow the HUD digit. 9 keeps the single-digit
+ *  "Lx N" readout valid (the HUD already clamps the glyph to 9). */
+#define BONUS_LIST_MAX      3       /* longest threshold list (idx0/idx1 = 3 entries) */
+#define LIFE_MAX            9       /* cap on lives in hand (HUD is one digit)        */
+
+/* ===========================================================================
  *  ROUND-PROGRESSION CONSTANTS -- the round-clear beat + per-round difficulty.
  * ===========================================================================
  *  SonSon is a round-based climber: clear a round and the next one begins (the
@@ -229,6 +251,14 @@ typedef struct
      * flow     = the death/respawn/game-over state machine (GameFlow).
      * flowTimer= frame countdown for the current non-ALIVE phase.            */
     u8     lives;
+    /* --- extra-life (bonus) economy (arcade DSW2 0x18 thresholds) ---
+     * bonusNextIdx = index of the NEXT not-yet-awarded bonus threshold in the
+     *   active g_config.bonusLife list (see game.c k_bonus_thresholds[]). Each time
+     *   the running score crosses k_bonus_thresholds[bonusLife][bonusNextIdx], a
+     *   life is granted and this advances; when it passes the list end no more
+     *   bonus lives are awarded (the arcade tables are fixed 3-shot / 1-shot lists,
+     *   not "every N"). Reset to 0 in game_init. */
+    u8     bonusNextIdx;
     u8     flow;       /* GameFlow                                            */
     u16    flowTimer;  /* frames left in the current DYING/RESPAWNING/GAMEOVER */
     /* --- round progression (Phase 5 round structure) ---

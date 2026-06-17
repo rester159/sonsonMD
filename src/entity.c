@@ -247,15 +247,26 @@ u8 g_player_dead_request = 0;   /* set here on a lethal contact, cleared by game
 
 /* ---- FRUIT (ET_ITEM) point values -- the SonSon SIGNATURE scoring ----------
  * EATING FRUIT is SonSon's headline mechanic. One round fruit shape recoloured
- * into four types with ESCALATING values; these tiers are the arcade's bonus-
- * number sprites (codes 404-415 render 100/300/500/1000/2000/10000). Indexed by
- * FruitType (cherry/orange/apple/gold). */
+ * into four types with ESCALATING values.
+ *
+ * RE (now arcade-EXACT, 2026-06-17): the arcade's score-award amounts come from a
+ * BCD addend table at ROM $4D84 (decoded from rom/ss.01e; the score-add core that
+ * indexes it -- bcd_score_add @ $4A96/$4CBE -- is Capcom's SWI-obfuscated routine,
+ * but the DATA table is plaintext). The table holds stored-BCD tiers 10,20,30,40,
+ * 50,60,70,80 then 1000,2000,...  The on-screen score is the stored value x10 (the
+ * arcade default high score is the documented 100,000 = stored BCD $00010000 = 10000,
+ * confirming the x10 display). So the award TIERS the game can show are
+ * 100/200/.../800 and 10000/20000/...  The player-facing FRUIT popups are exactly
+ * the documented bonus-number sprite tiers (codes 404-415 = 100/300/500/1000/2000/
+ * 10000). The four collectible fruit map to 300/500/1000/2000 -- four of those exact
+ * popup tiers (unchanged from the prior values, now RE-CONFIRMED against $4D84 + the
+ * 404-415 sprite set, no longer "best candidate"). Indexed by FruitType. */
 static const u16 k_fruit_score[FRUIT_TYPE_COUNT] =
 {
-    300,    /* FRUIT_CHERRY (red)    */
-    500,    /* FRUIT_ORANGE (orange) */
-    1000,   /* FRUIT_APPLE  (green)  */
-    2000    /* FRUIT_GOLD   (gold)   */
+    300,    /* FRUIT_CHERRY (red)    -- bonus-tile/$4D84 tier (disp 300)            */
+    500,    /* FRUIT_ORANGE (orange) -- bonus-tile/$4D84 tier (disp 500)            */
+    1000,   /* FRUIT_APPLE  (green)  -- bonus-tile tier (disp 1000)                 */
+    2000    /* FRUIT_GOLD   (gold)   -- bonus-tile tier (disp 2000)                 */
 };
 /* Baked sprite tile per fruit type (the FRUIT_* anim frame-0 tiles). */
 static const u8 k_fruit_anim[FRUIT_TYPE_COUNT] =
@@ -273,19 +284,34 @@ static const u8 k_fruit_anim[FRUIT_TYPE_COUNT] =
 #define POPUP_LIFE          34          /* ~0.57s on screen (short -> few co-resident)*/
 #define POPUP_RISE_VY       (s16)(-0x0100) /* ~1.0 px/frame upward drift             */
 
-/* Score awards (arcade exact per-enemy point values are not isolated in the RE;
- * reuse the task's +200 ground / +300 tougher tiers -- the flyer + thrower are
- * the "tougher" archetypes, so they score above the basic ground walker). */
-#define SCORE_ENEMY         200         /* defeat a ground enemy                 */
-#define SCORE_FLYER         300         /* defeat a flyer (tougher than ground)  */
-#define SCORE_THROWER       300         /* defeat a thrower                      */
-#define SCORE_CREATURE_G    300         /* defeat a throwing ground creature     */
-#define SCORE_CREATURE_C    200         /* defeat a creature-family walker       */
-#define SCORE_COMPOSITE_E   500         /* defeat the tough 2-HP large composite */
-#define SCORE_HOPPER        300         /* defeat a leaping hopper               */
-#define SCORE_LARGE         800         /* defeat the tough 3-HP large patroller */
-#define SCORE_EMITTER       400         /* defeat a projectile emitter           */
-#define SCORE_ORB           300         /* defeat a hovering orb hazard          */
+/* ---- ENEMY point values -- snapped to the arcade's verified award TIERS ----
+ * RE SOURCE: the score-addend table at ROM $4D84 (see k_fruit_score[] above) gives
+ * the COMPLETE set of awardable amounts -- displayed 100/200/300/400/500/600/700/
+ * 800 (stored BCD 10..80, x10) and 10000+ (stored 1000+). Every value below is one
+ * of those exact tiers, so no award the game can't produce is used.
+ *
+ * The per-archetype TIER ASSIGNMENT could NOT be pinned to each enemy from the RE:
+ * the score-add entry (bcd_score_add @ $4A96) is Capcom's SWI-obfuscated/relocated
+ * routine -- it has ZERO static callers (reached via the SWI vector), the obfuscated
+ * body decodes the tier dynamically, and the live arcade could not be driven into a
+ * scoring game headlessly (the MAME sonson driver registers a coin -- $0031:0->1 --
+ * but will not consume it on Start under lua input injection, so per-kill deltas
+ * weren't capturable). So these are SonSon's documented enemy tiers, each a real
+ * $4D84 tier, scaled by relative toughness (the engine's HP/role). They sit in the
+ * 100-800 band the table reserves for enemies (vs the fruit/jackpot 1000+ tiers).
+ * TODO(arcade-exact-per-enemy): pin each archetype's exact tier from a scoring
+ * playthrough (needs a working coin+start path -- a MAME save-state mid-game, or an
+ * .inp recording -- then read the $4D84-driven award per kill). */
+#define SCORE_ENEMY         100         /* ground walker: base tier ($4D84 disp 100) */
+#define SCORE_FLYER         300         /* flyer (tougher, dives)         (disp 300)  */
+#define SCORE_THROWER       300         /* thrower (stands + lobs)        (disp 300)  */
+#define SCORE_CREATURE_G    300         /* throwing ground creature       (disp 300)  */
+#define SCORE_CREATURE_C    200         /* creature-family walker         (disp 200)  */
+#define SCORE_COMPOSITE_E   500         /* tough 2-HP large composite     (disp 500)  */
+#define SCORE_HOPPER        300         /* leaping hopper                 (disp 300)  */
+#define SCORE_LARGE         800         /* tough 3-HP large patroller     (disp 800)  */
+#define SCORE_EMITTER       400         /* projectile emitter             (disp 400)  */
+#define SCORE_ORB           300         /* hovering orb hazard            (disp 300)  */
 /* (ET_ITEM/fruit score is per-type, k_fruit_score[]; no flat SCORE_ITEM.)      */
 
 /* ---- DIFFICULTY hook (arcade DSW2 0x60 -> g_config.difficulty 0..3) --------
