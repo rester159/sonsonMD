@@ -47,6 +47,39 @@
  *      with a native sub-pixel vy that GRAVITY increments each frame (vx toward
  *      the player at launch) -> the same up-then-down arc. Contact hurts the
  *      player; it despawns on the "ground" (its spawn lane) or off-screen.
+ *
+ *  BATCH 2 -- four more SPAWNED archetypes (census `spawn=true` families), AI
+ *  re-expressed from their RE handlers (the leaf movers under each class's
+ *  dispatch table; the transliterated jump-tables in ../sonson/port/src are the
+ *  oracle for which leaf does what):
+ *    - CREATURE_G (classG, spawn $C6DA, idle $C6EA, walk/patrol $C744, attack/
+ *      throw $C7F2, hop $C920, death $C9A0): a ground creature that walks toward
+ *      the player and, in range, periodically THROWS an arcing projectile. The
+ *      attack handler $C7F2/$C80D sets a child-spawn (stb $D,x=#$10; inc -$E,x)
+ *      -- it spawns a projectile child into the $0ED8 pool (census: "spawns a
+ *      projectile into $0ED8"). We re-express: march toward the player; within
+ *      range, lob an ENEMY_SHOT on a cadence (reusing the classI projectile).
+ *      Distinct from THROWER (a creature, not the humanoid thrower). One shot kills.
+ *    - CREATURE_C (classC, spawn $BC20, family dispatch $BC6C, walk $BC74): a
+ *      creature-family member; the idx1 sub-dispatch ($BC6C) routes the "flyer"
+ *      family but the on-screen body the spawner places is the walker ($BC74).
+ *      We re-express the common spawned form: a lane-seeking ground walker (like
+ *      enemyA but a distinct creature sprite + a gentle vertical wander). 1 shot.
+ *    - COMPOSITE_E (classE, on-screen-gate spawn $C306, walker AI $C350/$C35E,
+ *      multi-sprite emitter $F2B3): a LARGE composite entity. $C35E reads the
+ *      lane byte (<$24), parity-gates, and loads a $0200 (2.0px) horizontal
+ *      velocity -- a lane-walker that periodically shifts. Being "large/composite"
+ *      it is the TOUGHER archetype: 2 HP (two shots to kill). We re-express a
+ *      brisk lane walker that takes two hits. (The literal 4-sprite composite
+ *      render is a later task -- TODO; here it is one 16x16 body.)
+ *    - HOPPER (classH, spawn $CF39, run $CF4E, tracking-walk $D02D, leaping
+ *      hopper $D0A2, effect $D122): a grounded AI that LEAPS in ballistic arcs.
+ *      The hop leaf $D0B5 adds a per-frame velocity delta to the 16-bit Y accum
+ *      (ldd -$8,x; addd $17,u; std -$8,x), checks a land bound (jsr $A847; bcs ->
+ *      recover state idx6), and refreshes a $0400 (4.0px) horizontal velocity
+ *      (ldd #$0400; std -$F,x). We re-express: a grounded creature that springs
+ *      up+forward toward the player (gravity arc), lands on its lane, pauses, and
+ *      leaps again. Body contact hurts. One shot kills it (in the air or grounded).
  * =========================================================================== */
 
 Entity g_entities[ENTITY_MAX];
@@ -117,6 +150,44 @@ u8 g_player_dead_request = 0;   /* set here on a lethal contact, cleared by game
 #define ESHOT_HALF_W        4           /* projectile AABB half-width (8px)         */
 #define ESHOT_HALF_H        4           /* projectile AABB half-height              */
 
+/* ---- CREATURE_G (classG $C744 walk / $C7F2 throw) tunables -----------------
+ * A ground creature that marches toward the player (like enemyA) and, once the
+ * horizontal gap closes inside CREG_RANGE, periodically LOBS a projectile (its
+ * $C7F2 child-spawn) -- reusing the classI ENEMY_SHOT. It keeps marching while it
+ * throws (a creature, not the stand-and-fire humanoid thrower). One shot kills. */
+#define CREG_HP             1
+#define CREG_SPEED          0x00E0      /* ~0.875 px/frame march toward the player */
+#define CREG_RANGE          140         /* start lobbing once within this gap (px) */
+#define CREG_FIRE_PERIOD    90          /* frames between throws (~1.5s cadence)   */
+#define CREG_THROW_ANIM     12          /* frames the throw-lunge pose shows        */
+
+/* ---- CREATURE_C (classC $BC6C family / $BC74 walk) tunables -----------------
+ * A creature-family walker: seeks the player on the ground like enemyA but with
+ * a gentle vertical WANDER (a small sine bob on top of the lane-homing) so it
+ * reads as a distinct, slightly erratic creature. One shot kills it. */
+#define CREC_HP             1
+#define CREC_SPEED          0x0110      /* ~1.06 px/frame seek                      */
+#define CREC_BOB_AMP        0x0090      /* gentle vertical wander amplitude          */
+
+/* ---- COMPOSITE_E (classE $C35E walker) tunables ----------------------------
+ * The TOUGHER archetype: a brisk lane walker that takes TWO shots (the arcade's
+ * "large/composite" entity). $C35E loads a $0200 (2.0px) horizontal velocity on
+ * its parity gate; we march it at COMPE_SPEED and give it COMPE_HP = 2. */
+#define COMPE_HP            2           /* large composite: two shots to kill       */
+#define COMPE_SPEED         0x00D0      /* ~0.81 px/frame (heavier than the walker)  */
+
+/* ---- HOPPER (classH $D0B5 leaping hopper) tunables -------------------------
+ * Springs up+forward toward the player in a gravity arc, lands on its lane,
+ * pauses, then leaps again (the $D0B5 ballistic state: per-frame Y accel + a
+ * $0400 horizontal velocity refresh + a land check). Re-expressed with a native
+ * gravity vy and a forward vx set at each launch; lands when it falls back to the
+ * launch lane Y, waits HOP_LAND_PAUSE, then re-launches. One shot kills it. */
+#define HOP_HP              1
+#define HOP_GRAVITY         0x0020      /* per-frame downward accel (1/256 px)      */
+#define HOP_VY0             (s16)(-0x0320) /* initial UP velocity (~-3.1 px/frame)  */
+#define HOP_VX              0x0140      /* forward speed toward the player (~1.25px) */
+#define HOP_LAND_PAUSE      26          /* frames grounded between leaps (~0.43s)   */
+
 /* Score awards (arcade exact per-enemy point values are not isolated in the RE;
  * reuse the task's +200 ground / +300 tougher tiers -- the flyer + thrower are
  * the "tougher" archetypes, so they score above the basic ground walker). */
@@ -124,6 +195,10 @@ u8 g_player_dead_request = 0;   /* set here on a lethal contact, cleared by game
 #define SCORE_ITEM          500         /* collect a fruit                       */
 #define SCORE_FLYER         300         /* defeat a flyer (tougher than ground)  */
 #define SCORE_THROWER       300         /* defeat a thrower                      */
+#define SCORE_CREATURE_G    300         /* defeat a throwing ground creature     */
+#define SCORE_CREATURE_C    200         /* defeat a creature-family walker       */
+#define SCORE_COMPOSITE_E   500         /* defeat the tough 2-HP large composite */
+#define SCORE_HOPPER        300         /* defeat a leaping hopper               */
 
 /* ---- DIFFICULTY hook (arcade DSW2 0x60 -> g_config.difficulty 0..3) --------
  * SonSon's Difficulty switch makes the enemies more aggressive. We re-express
@@ -195,6 +270,11 @@ static u8 thrower_fire_period(void)
 #define FLYER_TILE          (ss_anims[SS_ANIM_FLYER_FLY].frames[0].tile)
 #define THROWER_TILE        (ss_anims[SS_ANIM_THROWER_IDLE].frames[0].tile)
 #define ESHOT_TILE          (ss_anims[SS_ANIM_ESHOT_FLY].frames[0].tile)
+/* Batch-2 archetypes (cold-start = walk/hop frame 0). */
+#define CREG_TILE           (ss_anims[SS_ANIM_CREG_WALK].frames[0].tile)
+#define CREC_TILE           (ss_anims[SS_ANIM_CREC_WALK].frames[0].tile)
+#define COMPE_TILE          (ss_anims[SS_ANIM_CMPE_WALK].frames[0].tile)
+#define HOP_TILE            (ss_anims[SS_ANIM_HOP_HOP].frames[0].tile)
 
 /* ------------------------------------------------------------------------- */
 /* Free-slot allocator: linear scan of the fixed pool (ENTITY_MAX is small, so
@@ -276,6 +356,46 @@ Entity *entity_spawn(u8 type, s16 x, s16 y)
                 /* vx / vy set by the thrower at launch (toward the player) */
                 break;
 
+            case ET_CREATURE_G:            /* classG ground creature: walk + throw */
+                e->hp     = CREG_HP;
+                e->facing = 1;             /* marches LEFT toward the player        */
+                e->state  = 0;             /* 0 = walk/throw active, 1 = dying      */
+                e->vx     = (s16)(-CREG_SPEED);
+                e->timer  = CREG_FIRE_PERIOD;       /* first-throw cadence          */
+                anim_restart(&e->av, SS_ANIM_CREG_WALK);
+                e->tile   = CREG_TILE;
+                break;
+
+            case ET_CREATURE_C:            /* classC creature-family walker         */
+                e->hp     = CREC_HP;
+                e->facing = 1;
+                e->state  = 0;             /* 0 = seek active, 1 = dying            */
+                e->vx     = (s16)(-CREC_SPEED);
+                anim_restart(&e->av, SS_ANIM_CREC_WALK);
+                e->tile   = CREC_TILE;
+                break;
+
+            case ET_COMPOSITE_E:           /* classE tough large-composite walker   */
+                e->hp     = COMPE_HP;      /* 2 HP: two shots                       */
+                e->facing = 1;
+                e->state  = 0;             /* 0 = walk active, 1 = dying            */
+                e->vx     = (s16)(-COMPE_SPEED);
+                anim_restart(&e->av, SS_ANIM_CMPE_WALK);
+                e->tile   = COMPE_TILE;
+                break;
+
+            case ET_HOPPER:                /* classH leaping hopper                 */
+                e->hp     = HOP_HP;
+                e->facing = 1;
+                e->state  = 0;             /* 0 = grounded(pause), 1 = airborne, 2 dying */
+                e->vx     = 0;             /* set per-leap toward the player        */
+                e->vy     = 0;
+                e->timer  = HOP_LAND_PAUSE;         /* short pause then first leap   */
+                e->launchY= y;                      /* its ground lane Y             */
+                anim_restart(&e->av, SS_ANIM_HOP_HOP);
+                e->tile   = HOP_TILE;
+                break;
+
             default:
                 e->tile = ENEMY_TILE;
                 break;
@@ -316,6 +436,35 @@ static void spawn_initial_wave(void)
     /* THROWERS: march in and lob projectiles from range. Two across the level. */
     entity_spawn(ET_THROWER, 700,  LANE_Y(2));
     entity_spawn(ET_THROWER, 1120, LANE_Y(1));
+
+    /* ---- BATCH-2 archetypes, seeded across the level alongside the above so the
+     * busy-scene test always has the new behaviours on screen. The current pool
+     * cap (ENTITY_MAX=24) holds all of these plus the items comfortably; the SAT
+     * cull (ENTITY_SAT_MAX=20) keeps the on-screen sprite count safe.
+     *
+     * TODO: faithful per-level spawn schedule from the arcade spawn tables
+     *   (sub_EF51/EFED wave cursor at $0638; per-stage placement lists at ROM
+     *   $F0C9 indexed by stage-phase ^ lane). This ad-hoc spread is a stand-in
+     *   until that schedule is captured -- it just makes every type APPEAR. ---- */
+
+    /* CREATURE_G: ground creatures that march in and THROW arcing projectiles
+     * once in range (distinct from the humanoid thrower -- they keep advancing). */
+    entity_spawn(ET_CREATURE_G, 640,  LANE_Y(0));
+    entity_spawn(ET_CREATURE_G, 1080, LANE_Y(2));
+
+    /* CREATURE_C: creature-family walkers that seek the player with a vertical
+     * wander (slightly erratic ground drift). */
+    entity_spawn(ET_CREATURE_C, 580,  LANE_Y(3));
+    entity_spawn(ET_CREATURE_C, 960,  LANE_Y(1));
+
+    /* COMPOSITE_E: the tough 2-HP large composite -- a heavier lane walker. One
+     * mid-level so a busy scene shows the "takes two shots" archetype. */
+    entity_spawn(ET_COMPOSITE_E, 800, LANE_Y(0));
+
+    /* HOPPERS: leaping creatures that spring in ballistic arcs toward the player.
+     * Two across the level on the ground lanes. */
+    entity_spawn(ET_HOPPER, 500,  LANE_Y(0));
+    entity_spawn(ET_HOPPER, 1000, LANE_Y(0));
 
     /* A couple of fruit pickups on lanes the player will climb to. */
     entity_spawn(ET_ITEM, 520, LANE_Y(2));
@@ -386,11 +535,15 @@ static const s8 k_sin16[16] =
       0,  24,  45,  59,  64,  59,  45,  24,
       0, -24, -45, -59, -64, -59, -45, -24
 };
-static inline s16 flyer_bob_vy(u8 phase)
+static inline s16 flyer_bob_vy_amp(u8 phase, u16 amp)
 {
     /* phase advances every 4 frames (see update); >>2 gives a ~64-frame period. */
     s32 s = k_sin16[(phase >> 2) & 0x0F];
-    return (s16)((s * (s32)FLYER_BOB_AMP) >> 6);
+    return (s16)((s * (s32)amp) >> 6);
+}
+static inline s16 flyer_bob_vy(u8 phase)
+{
+    return flyer_bob_vy_amp(phase, FLYER_BOB_AMP);
 }
 
 /* ---- THROWER lob: spawn a lobbed projectile arcing toward the player --------
@@ -624,6 +777,192 @@ static void entity_update_one(Entity *e, const Player *p)
             break;
         }
 
+        /* ----- CREATURE_G (classG $C744 walk / $C7F2 throw): march + throw -----
+         * RE: the creature walks/patrols ($C744) toward the player; its attack
+         * phase ($C7F2 -> $C80D) spawns a projectile child into the $0ED8 pool.
+         * We re-express: march toward the player (lane-homing like enemyA); once
+         * the gap closes inside CREG_RANGE, LOB an ENEMY_SHOT every CREG_FIRE_
+         * PERIOD frames (a brief throw-lunge anim each lob) -- and keep marching
+         * the whole time (a creature, unlike the stand-and-fire THROWER). Death
+         * (state 1) is the shared burst then despawn ($C9A0). */
+        case ET_CREATURE_G:
+        {
+            s16 gap;
+            if (e->state == 1)                 /* dying */
+            {
+                anim_set(&e->av, SS_ANIM_CREG_DEATH);
+                e->tile = anim_tick(&e->av);
+                if (--e->timer == 0) e->active = 0;
+                break;
+            }
+
+            /* face + march toward the player's world X (the seek) */
+            if (p->x < e->x) { e->facing = 1; if (e->vx > 0) e->vx = -e->vx; }
+            else             { e->facing = 0; if (e->vx < 0) e->vx = -e->vx; }
+            integrate(&e->x, &e->xSub, e->vx);
+            /* home onto the player's lane Y one step at a time */
+            if      (e->y < p->y) e->y += 1;
+            else if (e->y > p->y) e->y -= 1;
+
+            /* throw a lobbed projectile when within range, on a cadence */
+            gap = (s16)((p->x < e->x) ? (e->x - p->x) : (p->x - e->x));
+            if (gap <= CREG_RANGE && e->fireTimer == 0 && --e->timer == 0)
+            {
+                thrower_lob((s16)(e->x + 4), (s16)(e->y + 4), p);
+                e->timer     = CREG_FIRE_PERIOD;
+                e->fireTimer = CREG_THROW_ANIM;
+                anim_restart(&e->av, SS_ANIM_CREG_THROW);
+            }
+            if (e->fireTimer)
+                e->fireTimer--;
+            else
+                anim_set(&e->av, SS_ANIM_CREG_WALK);
+            e->tile = anim_tick(&e->av);
+
+            if (e->x < g_game.cameraX - 32)        /* off-screen-left recycle      */
+            {
+                e->x = (s16)(g_game.cameraX + SCREEN_W + 16);
+                e->xSub = 0;
+                e->timer = CREG_FIRE_PERIOD;
+            }
+            break;
+        }
+
+        /* ----- CREATURE_C (classC $BC6C family / $BC74 walk): seek + wander -----
+         * RE: a creature-family walker ($BC74). We re-express a ground seeker like
+         * enemyA but with a gentle vertical WANDER (a small sine bob on top of the
+         * lane-homing) so it reads as a distinct, slightly erratic creature.
+         * Death (state 1) = shared burst then despawn. */
+        case ET_CREATURE_C:
+        {
+            if (e->state == 1)                 /* dying */
+            {
+                anim_set(&e->av, SS_ANIM_CREC_DEATH);
+                e->tile = anim_tick(&e->av);
+                if (--e->timer == 0) e->active = 0;
+                break;
+            }
+
+            if (p->x < e->x) { e->facing = 1; if (e->vx > 0) e->vx = -e->vx; }
+            else             { e->facing = 0; if (e->vx < 0) e->vx = -e->vx; }
+            integrate(&e->x, &e->xSub, e->vx);
+
+            /* lane-home + a gentle vertical wander (the creature's erratic drift) */
+            if      (e->y < p->y) e->y += 1;
+            else if (e->y > p->y) e->y -= 1;
+            e->phase++;
+            integrate(&e->y, &e->ySub, flyer_bob_vy_amp(e->phase, CREC_BOB_AMP));
+
+            anim_set(&e->av, SS_ANIM_CREC_WALK);
+            e->tile = anim_tick(&e->av);
+
+            if (e->x < g_game.cameraX - 32)
+            {
+                e->x = (s16)(g_game.cameraX + SCREEN_W + 16);
+                e->xSub = 0;
+            }
+            break;
+        }
+
+        /* ----- COMPOSITE_E (classE $C35E walker): tough lane walker (2 HP) ------
+         * RE: $C35E reads the lane byte, parity-gates, and loads a 2.0px walk
+         * velocity -- a lane walker that periodically shifts. As the "large/
+         * composite" entity it is the TOUGHER archetype (2 HP). We re-express a
+         * brisk lane walker; the second hit is handled in the collision pass
+         * (hp>1 decrements). Death (state 1) = shared burst then despawn. */
+        case ET_COMPOSITE_E:
+        {
+            if (e->state == 1)                 /* dying */
+            {
+                anim_set(&e->av, SS_ANIM_CMPE_DEATH);
+                e->tile = anim_tick(&e->av);
+                if (--e->timer == 0) e->active = 0;
+                break;
+            }
+
+            if (p->x < e->x) { e->facing = 1; if (e->vx > 0) e->vx = -e->vx; }
+            else             { e->facing = 0; if (e->vx < 0) e->vx = -e->vx; }
+            integrate(&e->x, &e->xSub, e->vx);
+            if      (e->y < p->y) e->y += 1;
+            else if (e->y > p->y) e->y -= 1;
+
+            anim_set(&e->av, SS_ANIM_CMPE_WALK);
+            e->tile = anim_tick(&e->av);
+
+            if (e->x < g_game.cameraX - 32)
+            {
+                e->x = (s16)(g_game.cameraX + SCREEN_W + 16);
+                e->xSub = 0;
+            }
+            break;
+        }
+
+        /* ----- HOPPER (classH $D0B5 leaping hopper): ballistic leaps -----------
+         * RE: the hop leaf $D0B5 adds a per-frame velocity delta to the Y accum
+         * (gravity), checks a land bound ($A847 -> recover), and refreshes a 4.0px
+         * horizontal velocity. We re-express two phases:
+         *   state 0 GROUNDED: hold on the lane for HOP_LAND_PAUSE frames, then
+         *      LAUNCH -- spring UP (HOP_VY0) and forward toward the player.
+         *   state 1 AIRBORNE: gravity pulls vy down (the arc); on falling back to
+         *      the launch lane Y, LAND -> back to grounded (refresh launchY to the
+         *      current lane in case the camera/player drifted).
+         *   state 2 DYING: shared burst then despawn. */
+        case ET_HOPPER:
+        {
+            if (e->state == 2)                 /* dying */
+            {
+                anim_set(&e->av, SS_ANIM_HOP_DEATH);
+                e->tile = anim_tick(&e->av);
+                if (--e->timer == 0) e->active = 0;
+                break;
+            }
+
+            e->facing = (p->x < e->x) ? 1 : 0;
+
+            if (e->state == 0)                 /* GROUNDED: pause then leap        */
+            {
+                e->anim = 0;                   /* hold the grounded cell           */
+                anim_set(&e->av, SS_ANIM_HOP_HOP);
+                e->av.frame = 0; e->av.timer = ss_anims[SS_ANIM_HOP_HOP].frames[0].dur;
+                e->tile = anim_tile(&e->av);
+                if (e->timer == 0 || --e->timer == 0)
+                {
+                    /* LAUNCH: spring up + forward toward the player */
+                    e->state  = 1;
+                    e->vy     = HOP_VY0;
+                    e->vx     = e->facing ? (s16)(-HOP_VX) : (s16)HOP_VX;
+                    e->launchY = e->y;         /* land back at this lane           */
+                }
+            }
+            else                               /* AIRBORNE: gravity arc            */
+            {
+                anim_set(&e->av, SS_ANIM_HOP_HOP);
+                e->tile = anim_tick(&e->av);   /* flap while airborne              */
+                e->vy += HOP_GRAVITY;
+                integrate(&e->x, &e->xSub, e->vx);
+                integrate(&e->y, &e->ySub, e->vy);
+                /* land: descending (vy>0) and fallen back to/below the launch lane */
+                if (e->vy > 0 && e->y >= e->launchY)
+                {
+                    e->y     = e->launchY;     /* snap to the lane                 */
+                    e->ySub  = 0;
+                    e->vy    = 0;
+                    e->state = 0;
+                    e->timer = HOP_LAND_PAUSE;
+                }
+            }
+
+            if (e->x < g_game.cameraX - 32)        /* off-screen-left recycle      */
+            {
+                e->x = (s16)(g_game.cameraX + SCREEN_W + 16);
+                e->xSub = 0;
+                e->state = 0;
+                e->vy = 0;
+                e->timer = HOP_LAND_PAUSE;
+            }
+            break;
+        }
+
         /* ----- ITEM: stationary; collected on player touch (handled below) -- */
         case ET_ITEM:
             break;
@@ -682,10 +1021,16 @@ static void collision_pass(const Player *p)
             u8  deathState;
             u32 award;
 
-            /* select the killable archetypes + their death-state / score */
-            if      (en->type == ET_ENEMY_A) { deathState = 1; award = SCORE_ENEMY;   }
-            else if (en->type == ET_FLYER)   { deathState = 2; award = SCORE_FLYER;   }
-            else if (en->type == ET_THROWER) { deathState = 2; award = SCORE_THROWER; }
+            /* select the killable archetypes + their death-state / score.
+             * (walker/creatureC/compositeE/creatureG use state 1 = dying; the
+             * flyer/thrower/hopper use state 2 -- their state-machine layouts.) */
+            if      (en->type == ET_ENEMY_A)     { deathState = 1; award = SCORE_ENEMY;       }
+            else if (en->type == ET_FLYER)       { deathState = 2; award = SCORE_FLYER;       }
+            else if (en->type == ET_THROWER)     { deathState = 2; award = SCORE_THROWER;     }
+            else if (en->type == ET_CREATURE_G)  { deathState = 1; award = SCORE_CREATURE_G;  }
+            else if (en->type == ET_CREATURE_C)  { deathState = 1; award = SCORE_CREATURE_C;  }
+            else if (en->type == ET_COMPOSITE_E) { deathState = 1; award = SCORE_COMPOSITE_E; }
+            else if (en->type == ET_HOPPER)      { deathState = 2; award = SCORE_HOPPER;      }
             else continue;
 
             if (!en->active || en->state == deathState) continue;   /* dead/dying */
@@ -723,12 +1068,18 @@ static void collision_pass(const Player *p)
         switch (en->type)
         {
             /* hostile bodies: lethal on contact unless already in their death
-             * sequence (a dying/corpse enemy is harmless). */
+             * sequence (a dying/corpse enemy is harmless). Death-state index
+             * differs by archetype (1 for the walkers/creatures, 2 for the
+             * flyer/thrower/hopper) -- match each so a corpse can't hurt. */
             case ET_ENEMY_A:
+            case ET_CREATURE_G:
+            case ET_CREATURE_C:
+            case ET_COMPOSITE_E:
                 if (en->state != 1) lethal_contact(p, en);
                 break;
             case ET_FLYER:
             case ET_THROWER:
+            case ET_HOPPER:
                 if (en->state != 2) lethal_contact(p, en);
                 break;
 

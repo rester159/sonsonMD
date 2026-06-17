@@ -125,6 +125,45 @@ ANIMS = [
     # ---- ENEMY SHOT / lobbed projectile (classI $D352): a small fireball that
     # flickers between two cells as it arcs (2-frame loop). ----
     ("ESHOT_FLY",    True,  [(70, ENEMY_BANK, 4), (71, ENEMY_BANK, 4)]),
+
+    # =======================================================================
+    #  BATCH 2 -- four more SPAWNED archetypes (census `spawn=true` families),
+    #  faithful AI re-expressed from the RE handlers (see entity.c headers).
+    #  Like batch 1, the attract DEMO never exercises these, so their FRAMES are
+    #  taken from the authentic arcade bank-2 enemy SPRITE SHEET (eyeball-verified
+    #  distinct + non-blank via tools/sheet_browse.py + sheet_pick.py); the AI is
+    #  the behavioural RE. All drive the same anim runtime (anim_tick / sub_9617).
+    # =======================================================================
+    # ---- CREATURE_G (classG ground creature, spawn $C6DA, walk $C744, throw
+    #   $C7F2, hop $C920, death $C9A0): a red/orange horned demon-creature. WALK
+    #   = the 272/273 stride pair; THROW = a brief 274 lunge on the lob (one-shot,
+    #   like the player FIRE / thrower THROW). Death reuses the shared burst. ----
+    ("CREG_WALK",   True,  [(272, ENEMY_BANK, 6), (273, ENEMY_BANK, 6)]),
+    ("CREG_THROW",  False, [(274, ENEMY_BANK, 8), (272, ENEMY_BANK, 6)]),
+    ("CREG_DEATH",  False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
+                            (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
+
+    # ---- CREATURE_C (classC creature family, spawn $BC20, flyer dispatch $BC6C,
+    #   walk $BC74): a blue/gray robed humanoid. WALK = the 264/265 pair (the
+    #   family's on-screen stride). Death = shared burst. ----
+    ("CREC_WALK",   True,  [(264, ENEMY_BANK, 6), (265, ENEMY_BANK, 6)]),
+    ("CREC_DEATH",  False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
+                            (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
+
+    # ---- COMPOSITE_E (classE large entity, gate-spawn $C306, walker AI
+    #   $C350/$C35E, composite emitter $F2B3): a white-helmeted armored soldier --
+    #   the "tougher" 2-HP lane walker. WALK = 352/353. Death = shared burst. ----
+    ("CMPE_WALK",   True,  [(352, ENEMY_BANK, 7), (353, ENEMY_BANK, 7)]),
+    ("CMPE_DEATH",  False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
+                            (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
+
+    # ---- HOPPER (classH scrolling actor, spawn $CF39, leaping hopper $D0A2/
+    #   $D0B5, tracking walker $D02D): a white duck/penguin hopper. HOP = the
+    #   388/389 pair (flapped on the up-arc; the engine holds frame 0 grounded and
+    #   cycles airborne). Death = shared burst. ----
+    ("HOP_HOP",     True,  [(388, ENEMY_BANK, 6), (389, ENEMY_BANK, 6)]),
+    ("HOP_DEATH",   False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
+                            (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
 ]
 
 

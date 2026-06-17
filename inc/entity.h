@@ -33,8 +33,14 @@
  * The arcade has ~55 archetypes (census); these are the implemented native set.
  * Each ET_* re-expresses the SEMANTICS of an arcade handler (the oracle), not a
  * transliteration -- see the per-type AI in entity.c + the $-handler references.
- * TODO(more-archetypes): classG ground-thrower (C7F2), classC creature-flyer
- *   (BC6C), classE large composite (F2B3), fruit/item variety. */
+ *
+ * BATCH 2 added four more SPAWNED archetypes (census `spawn=true` families):
+ *   ET_CREATURE_G (classG ground creature C6DA/C744/C7F2/C920/C9A0 -- walk + throw),
+ *   ET_CREATURE_C (classC creature family BC20/BC6C/BC74 -- walker),
+ *   ET_COMPOSITE_E (classE large entity C306/C350/C35E/F2B3 -- tough 2-HP walker),
+ *   ET_HOPPER     (classH scrolling actor CF39/D0A2/D0B5/D02D -- leaping hopper).
+ * TODO(more-archetypes): obj16x16 large composite ($D57F 4-sprite boss-ish),
+ *   classD projectile-emitter ($BF6B), fruit/item variety. */
 typedef enum
 {
     ET_NONE = 0,    /* empty slot                                            */
@@ -43,7 +49,12 @@ typedef enum
     ET_ITEM,        /* collectible fruit (bonus score on player touch)       */
     ET_FLYER,       /* flyer (classF $DF18/$DF90): glides an arc, then dives  */
     ET_THROWER,     /* thrower (enemyMain $BAB3): marches, lobs projectiles   */
-    ET_ENEMY_SHOT   /* lobbed projectile (classI $D352): parabolic arc, hurts */
+    ET_ENEMY_SHOT,  /* lobbed projectile (classI $D352): parabolic arc, hurts */
+    ET_CREATURE_G,  /* classG ground creature ($C744 walk/$C7F2 throw): walks,
+                     * periodically throws an arcing projectile (an ENEMY_SHOT) */
+    ET_CREATURE_C,  /* classC creature ($BC6C family): a lane-seeking walker    */
+    ET_COMPOSITE_E, /* classE large entity ($C35E walker): tough 2-HP lane walk */
+    ET_HOPPER       /* classH leaping hopper ($D0B5): ballistic leaps at player */
 } EntityType;
 
 /* ---- Entity record (CLEAN native, packed) --------------------------------
@@ -76,8 +87,11 @@ typedef struct
 /* Pool size. The arcade main array ($0768) is 55 slots; we cap the NATIVE pool
  * smaller because the headline test is a BUSY scene held at 60fps, and the VDP
  * tops out at 80 sprites / 20 per scanline anyway (entity_render_all also caps
- * on-screen sprites). 24 is plenty of simultaneous enemies + shots + items. */
-#define ENTITY_MAX          24
+ * on-screen sprites). 32 holds the seeded enemy roster (now 8 archetypes) plus
+ * player shots AND the enemy-lobbed projectiles (throwers + creatureG children)
+ * with headroom; the collision pass is still a trivial 32x32 byte scan on the
+ * 68000, and only ENTITY_SAT_MAX of them ever reach the hardware sprite list. */
+#define ENTITY_MAX          32
 
 /* Hard cap on entities appended to the SAT in one frame (after the player).
  * Keeps us clear of the 80-hardware-sprite ceiling and the per-scanline limit
