@@ -31,15 +31,25 @@ PROVENANCE OF THE FRAME SEQUENCES (authoritative = the arcade):
             clean 4-cycle exactly while the actor's Y stepped between lanes)
     FIRE  : 83 (distinct crouch/action pose, observed held at a fixed lane) then
             back to the run-pass frame -- a short 2-cell shoot stab.
-    DEATH : the demo hero does not die on-camera (TODO: re-extract the exact
-            death tumble script). Approximated as a held distinct pose (83/80)
-            with a final hold -- see PLAYER_DEATH below + the TODO.
+    DEATH : RE-EXTRACTED from real on-camera deaths (tools/ss_pdeath_cap.lua +
+            ss_pdeath_all.lua, 6 forced deaths, tools/death_anim_cap.json). The
+            arcade hero has NO on-screen tumble: on a lethal hit the player sprite
+            VANISHES instantly (~4 frames), then RESPAWNS holding sprite code 83
+            (the standby/arms pose, ~17f) before resuming the run. The all-sprite
+            dump confirms no death-specific sprite of ANY code/bank plays during
+            the gap (sheet codes 74-77 are scrambled garbage, 88-90 decorative).
+            So faithful PLAYER_DEATH = HOLD pose 83 (what the arcade shows at the
+            death/respawn beat); the engine already blinks the hero during DYING.
 
   ENEMY (the bank-2 ground enemy, the most common chaser in the demo):
     WALK  : 304 -> 305 -> 306 -> 305   (0x130..0x132; ~4-7 frames/cell)
-    DEATH : 307 -> 308 -> 309 -> 310   (0x133..0x136; 2 frames each then 310 the
-            corpse/explosion held ~22 frames) -- observed terminal burst before
-            the slot recycled.
+    DEATH : RE-EXTRACTED from real shot-kills (tools/ss_edeath_cap.lua +
+            ss_edeath2.lua, 32 walker death-tails, tools/death_anim_cap.json):
+            307 -> 308 -> 309 (the stagger/recoil, 2f each) -> 310 (the knocked-
+            down corpse, held ~17-34f, median ~23) -> 312 -> 313 -> 314 -> 315
+            (the white-debris explosion-scatter that fades the slot out, ~4/8/8/8f).
+            This is the FULL faithful collapse+explosion (the old bake stopped at
+            310 with a short 9f hold).
 
   TWO MORE ARCHETYPES (the native-enrichment task). The attract DEMO only ever
   exercises the ground walker, so the flyer (classF $DF18) + thrower (enemyMain
@@ -50,6 +60,14 @@ PROVENANCE OF THE FRAME SEQUENCES (authoritative = the arcade):
   faithful behavioural RE (see entity.c headers + ../sonson/port/src):
     FLYER_FLY  : 296 -> 297  (the orange spread-arm flyer; 2-frame wing-flap,
                  a clean glide-flap loop -- distinct from the red walker)
+    FLYER_DEATH: 110..119 (bank 9) -- the GREEN flyer's OWN distinct death burst:
+                 its body breaks apart with YELLOW SPARKS + scattering debris,
+                 visually different from the walker's white-armor collapse. The
+                 frame ORDER is the authoritative arcade sprite sheet (bank 9,
+                 sheet_browse.py); headless AI could not reliably shoot an evasive
+                 gliding flyer so the live cadence wasn't captured -- the per-frame
+                 durations are modeled on the captured walker-burst timing (see
+                 tools/death_anim_cap.json + the TODO there).
     THROWER_*  : 320 -> 321  (the blue/purple humanoid; THROWER_IDLE is the
                  standing/approach cell pair, THROWER_THROW a brief 321 lunge
                  on the lob -- a short non-looping stab like the player FIRE)
@@ -57,6 +75,19 @@ PROVENANCE OF THE FRAME SEQUENCES (authoritative = the arcade):
                  lobbed projectile / enemy shot, tiny + round)
   These drive the SAME native anim runtime (anim_tick / sub_9617 cadence) so the
   flyer flaps, the thrower's throw plays, and the fireball flickers in flight.
+
+DEATH-CAPTURE STATUS (tools/death_anim_cap.json, MAME `sonson` NTSC):
+  CAPTURED LIVE: player death (6 forced deaths -> the hero VANISHES then holds pose
+    83, no tumble) + walker death (32 shot-kills -> 307,308,309 stagger / 310 corpse
+    ~22f / 312-315 explosion). Both baked faithfully + verified stepping in-game.
+  SHEET-VERIFIED (frames), cadence MODELED: flyer death (bank 9 codes 110..119 burst
+    -- headless AI couldn't reliably shoot an evasive gliding flyer, so the per-frame
+    durations are modeled on the captured walker burst).
+  TODO(re-capture): (1) the live flyer-death CADENCE (intercept a flyer); (2) a
+    distinct death for the bank-15 fast-dive creature (183-185) -- it evaded shots
+    headless, so it falls back to the shared walker burst (SHARED_BURST). All other
+    white-armored archetypes (thrower/creatures/composite/hopper/large/emitter/orb)
+    GENUINELY reuse the shared walker burst in the arcade -> SHARED_BURST is faithful.
 
 DETERMINISTIC, Python 3 stdlib only. Emits src/ss_anim.c + inc/ss_anim.h.
 
@@ -85,6 +116,18 @@ import gen_assets as G          # reuse Roms + bake_sprite_tiles (verified)
 # ---------------------------------------------------------------------------
 PLAYER_BANK = 0
 ENEMY_BANK  = 2
+FLYER_BANK  = 9     # the green flyer's color bank (its death burst 110..119)
+
+# SHARED walker-style death burst (the FAITHFUL collapse+explosion captured from
+# 32 real shot-kills -- see header + death_anim_cap.json). Every white-armored
+# enemy archetype (thrower / creatures / composite / hopper / large / emitter /
+# orb) reuses this in the arcade, so they all reference it here (deduped by baked
+# bytes -> the 8 frames cost VRAM ONCE). 307-309 stagger (2f), 310 corpse (~22f),
+# 312-315 the debris-scatter that fades the slot out (4/8/8/8f).
+SHARED_BURST = [(307, ENEMY_BANK, 2), (308, ENEMY_BANK, 2),
+                (309, ENEMY_BANK, 2), (310, ENEMY_BANK, 22),
+                (312, ENEMY_BANK, 4), (313, ENEMY_BANK, 8),
+                (314, ENEMY_BANK, 8), (315, ENEMY_BANK, 8)]
 
 ANIMS = [
     # name,            loop, [ (code, bank, dur), ... ]
@@ -93,34 +136,42 @@ ANIMS = [
     ("PLAYER_CLIMB", True,  [(66, PLAYER_BANK, 4), (67, PLAYER_BANK, 4),
                              (68, PLAYER_BANK, 4), (69, PLAYER_BANK, 4)]),
     ("PLAYER_FIRE",  False, [(83, PLAYER_BANK, 6), (65, PLAYER_BANK, 4)]),
-    # DEATH: approximated (see header TODO) -- a brief stagger on the action pose
-    # then the up/passing frame held as a fall. Faithful death-script re-extract
-    # is a TODO; this reads as a distinct death beat and never loops.
-    ("PLAYER_DEATH", False, [(83, PLAYER_BANK, 8), (80, PLAYER_BANK, 8),
-                             (80, PLAYER_BANK, 16)]),
+    # DEATH: FAITHFUL (re-extracted from 6 real on-camera deaths -- see header +
+    # death_anim_cap.json). The arcade hero shows NO tumble: he vanishes then holds
+    # the code-83 standby pose at the death/respawn beat. We bake that as the held
+    # pose 83 (one-shot, never loops); game.c blinks the sprite through the DYING
+    # window (DEATH_FRAMES) so it reads as the authentic vanish+death-pose beat.
+    ("PLAYER_DEATH", False, [(83, PLAYER_BANK, 64)]),
 
     ("ENEMY_WALK",   True,  [(304, ENEMY_BANK, 5), (305, ENEMY_BANK, 5),
                              (306, ENEMY_BANK, 7), (305, ENEMY_BANK, 5)]),
-    # DEATH: 307,308,309 quick then 310 held (corpse). Non-looping; the engine
-    # despawns at the end of the last (held) frame.
-    ("ENEMY_DEATH",  False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
-                             (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
+    # DEATH: FAITHFUL (re-extracted from 32 real shot-kills -- see header +
+    # death_anim_cap.json). The full walker collapse+explosion (SHARED_BURST):
+    # 307,308,309 stagger/recoil -> 310 knocked-down corpse held ~22f ->
+    # 312,313,314,315 white-debris explosion-scatter (fades out). Non-looping; the
+    # engine despawns at the end of the last frame.
+    ("ENEMY_DEATH",  False, SHARED_BURST),
 
     # ---- FLYER (classF $DF18/$DF90): a 2-frame wing-flap glide loop. The flyer
     # glides its arc/path then dives; both phases share this flap (the arcade
     # swaps the anim SCRIPT on the dive, but the on-screen cell set is this pair).
     ("FLYER_FLY",    True,  [(296, ENEMY_BANK, 5), (297, ENEMY_BANK, 5)]),
-    # Flyer death reuses the generic enemy burst poses (shared corpse FX).
-    ("FLYER_DEATH",  False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
-                             (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
+    # FLYER DEATH: the flyer's OWN distinct burst (bank 9 codes 110..119 -- green
+    # body parts + yellow sparks scattering, NOT the walker's white debris). Frame
+    # order is the authoritative arcade sheet; cadence modeled on the walker burst
+    # (live flyer-kill cadence uncaptured headless -- see death_anim_cap.json TODO).
+    ("FLYER_DEATH",  False, [(110, FLYER_BANK, 3), (111, FLYER_BANK, 3),
+                             (112, FLYER_BANK, 3), (113, FLYER_BANK, 4),
+                             (114, FLYER_BANK, 4), (115, FLYER_BANK, 4),
+                             (116, FLYER_BANK, 4), (117, FLYER_BANK, 4),
+                             (118, FLYER_BANK, 4), (119, FLYER_BANK, 6)]),
 
     # ---- THROWER (enemyMain idx4 $BAB3): IDLE = the standing/approach pair the
     # walker-class thrower shows while closing on the player; THROW = a brief
     # one-shot lunge (321 held) on the lob, mirroring the player FIRE stab. ----
     ("THROWER_IDLE", True,  [(320, ENEMY_BANK, 6), (321, ENEMY_BANK, 6)]),
     ("THROWER_THROW",False, [(321, ENEMY_BANK, 8), (320, ENEMY_BANK, 6)]),
-    ("THROWER_DEATH",False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
-                             (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
+    ("THROWER_DEATH",False, SHARED_BURST),
 
     # ---- ENEMY SHOT / lobbed projectile (classI $D352): a small fireball that
     # flickers between two cells as it arcs (2-frame loop). ----
@@ -140,30 +191,26 @@ ANIMS = [
     #   like the player FIRE / thrower THROW). Death reuses the shared burst. ----
     ("CREG_WALK",   True,  [(272, ENEMY_BANK, 6), (273, ENEMY_BANK, 6)]),
     ("CREG_THROW",  False, [(274, ENEMY_BANK, 8), (272, ENEMY_BANK, 6)]),
-    ("CREG_DEATH",  False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
-                            (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
+    ("CREG_DEATH",  False, SHARED_BURST),
 
     # ---- CREATURE_C (classC creature family, spawn $BC20, flyer dispatch $BC6C,
     #   walk $BC74): a blue/gray robed humanoid. WALK = the 264/265 pair (the
     #   family's on-screen stride). Death = shared burst. ----
     ("CREC_WALK",   True,  [(264, ENEMY_BANK, 6), (265, ENEMY_BANK, 6)]),
-    ("CREC_DEATH",  False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
-                            (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
+    ("CREC_DEATH",  False, SHARED_BURST),
 
     # ---- COMPOSITE_E (classE large entity, gate-spawn $C306, walker AI
     #   $C350/$C35E, composite emitter $F2B3): a white-helmeted armored soldier --
     #   the "tougher" 2-HP lane walker. WALK = 352/353. Death = shared burst. ----
     ("CMPE_WALK",   True,  [(352, ENEMY_BANK, 7), (353, ENEMY_BANK, 7)]),
-    ("CMPE_DEATH",  False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
-                            (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
+    ("CMPE_DEATH",  False, SHARED_BURST),
 
     # ---- HOPPER (classH scrolling actor, spawn $CF39, leaping hopper $D0A2/
     #   $D0B5, tracking walker $D02D): a white duck/penguin hopper. HOP = the
     #   388/389 pair (flapped on the up-arc; the engine holds frame 0 grounded and
     #   cycles airborne). Death = shared burst. ----
     ("HOP_HOP",     True,  [(388, ENEMY_BANK, 6), (389, ENEMY_BANK, 6)]),
-    ("HOP_DEATH",   False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
-                            (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
+    ("HOP_DEATH",   False, SHARED_BURST),
 
     # =======================================================================
     #  BATCH 3 -- the iconic SonSon FRUIT variety + three more SPAWNED archetypes
@@ -199,8 +246,7 @@ ANIMS = [
     #   see entity.c TODO; the literal 4-sprite composite render needs the $F2F8
     #   program-ROM sprite-assembly table, not in the gfx bake -- TODO there too.)
     ("LARGE_WALK",  True,  [(322, ENEMY_BANK, 7), (323, ENEMY_BANK, 7)]),
-    ("LARGE_DEATH", False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
-                            (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
+    ("LARGE_DEATH", False, SHARED_BURST),
 
     # ---- EMITTER (classD projectile/thrower family, spawn $BF6B idx0; the
     #   periodic-fire emitter is idx2 $BFE5 -> $C00F; the launch leaf $BF75
@@ -211,8 +257,7 @@ ANIMS = [
     #   place, wings flicking, and looses shots). Death = shared burst. ----
     ("EMIT_IDLE",   True,  [(318, ENEMY_BANK, 6), (319, ENEMY_BANK, 6)]),
     ("EMIT_FIRE",   False, [(319, ENEMY_BANK, 8), (318, ENEMY_BANK, 6)]),
-    ("EMIT_DEATH",  False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
-                            (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
+    ("EMIT_DEATH",  False, SHARED_BURST),
 
     # ---- ORB (objSingle unique object, spawn $E1C4 -> behaviour $E1F5; a
     #   parent-linked single-instance object that settles relative to the scroll
@@ -222,8 +267,7 @@ ANIMS = [
     #   bobs and is LETHAL on contact, never collected). 2-frame shimmer. Death =
     #   shared burst. ----
     ("ORB_FLOAT",   True,  [(231, 14, 6), (230, 14, 6)]),
-    ("ORB_DEATH",   False, [(307, ENEMY_BANK, 3), (308, ENEMY_BANK, 3),
-                            (309, ENEMY_BANK, 3), (310, ENEMY_BANK, 9)]),
+    ("ORB_DEATH",   False, SHARED_BURST),
 ]
 
 

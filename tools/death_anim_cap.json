@@ -1,0 +1,61 @@
+{
+  "_provenance": "Captured from the live arcade (MAME `sonson`, NTSC) in real md=02 gameplay via the verified coin->start path + spriteram log at $2020. Scripts: D:/portForge/tools/mame/ss_pdeath_cap.lua (player death, forced by running into enemies without firing -> 6 deaths), ss_pdeath_all.lua (all-sprite dump confirming NO player death sprite plays), ss_edeath_cap.lua + ss_edeath2.lua (enemy deaths, fire-hard while pinning grace $0073 -> 32 walker death-tails). Codes/banks confirmed distinct + non-blank via tools/sheet_browse.py. Spriteram decode: code=byte2+((attr&0x20)<<3), bank=attr&0x1F.",
+
+  "player_death": {
+    "summary": "The arcade SonSon hero has NO on-screen death-tumble. On a lethal hit the player sprite VANISHES instantly (pc 1->0) for ~4 frames, then RESPAWNS holding sprite code 83 (the standby/arms pose) for ~17 frames at the re-entry point before resuming the RUN cycle (64/65/80). On the final life it stays gone (game over).",
+    "captured_deaths": 6,
+    "vanish_frames": 4,
+    "respawn_code": 83,
+    "respawn_hold_frames": 17,
+    "bank": 0,
+    "death_pose_codes": [83],
+    "note": "Sprite-sheet codes 74-77 are scrambled/garbage (not poses); 88-90 are decorative title sprites. There is NO dedicated player death/tumble sprite in the ROM -- the vanish IS the death. Faithful PLAYER_DEATH therefore = hold pose 83 (what the arcade shows at the death/respawn beat); the engine already blinks the player during FLOW_DYING."
+  },
+
+  "walker_death": {
+    "comment": "bank 2 ground walker (walk 304/305/306). DEATH-by-shot, captured 32x, canonical = collapse then a long-held corpse then an explosion-scatter when the slot clears.",
+    "bank": 2,
+    "walk_codes": [304, 305, 306],
+    "sequence": [
+      {"code": 307, "dur": 2, "note": "stagger 1 (recoil)"},
+      {"code": 308, "dur": 2, "note": "stagger 2"},
+      {"code": 309, "dur": 2, "note": "stagger 3"},
+      {"code": 310, "dur": 22, "note": "knocked-down corpse, held ~17-34f (median ~23)"},
+      {"code": 312, "dur": 4, "note": "explosion scatter 1"},
+      {"code": 313, "dur": 8, "note": "explosion scatter 2"},
+      {"code": 314, "dur": 8, "note": "explosion scatter 3"},
+      {"code": 315, "dur": 8, "note": "explosion scatter 4 (fades to gone)"}
+    ],
+    "raw_examples": [
+      "307:2 308:2 309:2 310:28",
+      "307:2 308:2 309:2 310:33 312:4 313:8 314:8 315:8",
+      "307:2 308:2 309:2 310:17 312:4 313:8 314:8 315:8"
+    ]
+  },
+
+  "flyer_death": {
+    "comment": "bank 9 green flyer (fly loop 96..109). The flyer has its OWN distinct death burst 110..119 (green-body parts + YELLOW SPARKS, visually different from the walker's white-armor debris) -- sheet-verified via sheet_browse.py bank 9. Headless AI could not reliably SHOOT an evasive gliding flyer, so the live cadence was not captured; frame ORDER is authoritative (the sheet), the cadence is modeled on the captured walker-burst timing (fast early frames, the scatter held a touch longer).",
+    "bank": 9,
+    "fly_codes_loop": "96..109 (14-frame flap/rotation, captured 109->96)",
+    "sequence": [
+      {"code": 110, "dur": 3, "note": "hit -- body breaks, first sparks"},
+      {"code": 111, "dur": 3, "note": "burst + sparks"},
+      {"code": 112, "dur": 3, "note": "debris expands"},
+      {"code": 113, "dur": 4, "note": "debris + sparks"},
+      {"code": 114, "dur": 4, "note": "debris spreads"},
+      {"code": 115, "dur": 4, "note": "debris spreads"},
+      {"code": 116, "dur": 4, "note": "debris dispersing"},
+      {"code": 117, "dur": 4, "note": "fading"},
+      {"code": 118, "dur": 4, "note": "fading"},
+      {"code": 119, "dur": 6, "note": "last spark, gone"}
+    ],
+    "cadence_source": "frame order = arcade sprite sheet (authoritative); per-frame durations modeled on the captured walker death burst (TODO: capture the live flyer-death cadence by intercepting a flyer)."
+  },
+
+  "creature_dive_death": {
+    "comment": "bank 15 fast-dive creature (loop 183/184/185, seen in deep stages). It flew off rather than being shot in headless capture; a distinct death burst was NOT confirmed. Falls back to the shared walker burst.",
+    "bank": 15,
+    "captured_death": false,
+    "fallback": "ENEMY_DEATH (shared walker collapse+explosion)"
+  }
+}

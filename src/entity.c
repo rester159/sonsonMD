@@ -1071,7 +1071,7 @@ static void entity_update_one(Entity *e, const Player *p)
             {
                 anim_set(&e->av, SS_ANIM_ENEMY_DEATH);
                 e->tile = anim_tick(&e->av);
-                if (--e->timer == 0) e->active = 0;
+                if (anim_finished(&e->av)) e->active = 0;
                 break;
             }
 
@@ -1131,7 +1131,7 @@ static void entity_update_one(Entity *e, const Player *p)
             {
                 anim_set(&e->av, SS_ANIM_FLYER_DEATH);
                 e->tile = anim_tick(&e->av);
-                if (--e->timer == 0) e->active = 0;
+                if (anim_finished(&e->av)) e->active = 0;
                 break;
             }
 
@@ -1194,7 +1194,7 @@ static void entity_update_one(Entity *e, const Player *p)
             {
                 anim_set(&e->av, SS_ANIM_THROWER_DEATH);
                 e->tile = anim_tick(&e->av);
-                if (--e->timer == 0) e->active = 0;
+                if (anim_finished(&e->av)) e->active = 0;
                 break;
             }
 
@@ -1282,7 +1282,7 @@ static void entity_update_one(Entity *e, const Player *p)
             {
                 anim_set(&e->av, SS_ANIM_CREG_DEATH);
                 e->tile = anim_tick(&e->av);
-                if (--e->timer == 0) e->active = 0;
+                if (anim_finished(&e->av)) e->active = 0;
                 break;
             }
 
@@ -1330,7 +1330,7 @@ static void entity_update_one(Entity *e, const Player *p)
             {
                 anim_set(&e->av, SS_ANIM_CREC_DEATH);
                 e->tile = anim_tick(&e->av);
-                if (--e->timer == 0) e->active = 0;
+                if (anim_finished(&e->av)) e->active = 0;
                 break;
             }
 
@@ -1368,7 +1368,7 @@ static void entity_update_one(Entity *e, const Player *p)
             {
                 anim_set(&e->av, SS_ANIM_CMPE_DEATH);
                 e->tile = anim_tick(&e->av);
-                if (--e->timer == 0) e->active = 0;
+                if (anim_finished(&e->av)) e->active = 0;
                 break;
             }
 
@@ -1406,7 +1406,7 @@ static void entity_update_one(Entity *e, const Player *p)
             {
                 anim_set(&e->av, SS_ANIM_HOP_DEATH);
                 e->tile = anim_tick(&e->av);
-                if (--e->timer == 0) e->active = 0;
+                if (anim_finished(&e->av)) e->active = 0;
                 break;
             }
 
@@ -1470,7 +1470,7 @@ static void entity_update_one(Entity *e, const Player *p)
             {
                 anim_set(&e->av, SS_ANIM_LARGE_DEATH);
                 e->tile = anim_tick(&e->av);
-                if (--e->timer == 0) e->active = 0;
+                if (anim_finished(&e->av)) e->active = 0;
                 break;
             }
 
@@ -1522,7 +1522,7 @@ static void entity_update_one(Entity *e, const Player *p)
             {
                 anim_set(&e->av, SS_ANIM_EMIT_DEATH);
                 e->tile = anim_tick(&e->av);
-                if (--e->timer == 0) e->active = 0;
+                if (anim_finished(&e->av)) e->active = 0;
                 break;
             }
 
@@ -1565,7 +1565,7 @@ static void entity_update_one(Entity *e, const Player *p)
             {
                 anim_set(&e->av, SS_ANIM_ORB_DEATH);
                 e->tile = anim_tick(&e->av);
-                if (--e->timer == 0) e->active = 0;
+                if (anim_finished(&e->av)) e->active = 0;
                 break;
             }
 
