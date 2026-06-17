@@ -9,5 +9,8 @@ res/*.h
 res/*.rs
 # arcade ROMs (copyrighted; kept on disk as conversion source, not versioned)
 /arcade/
+# python
+__pycache__/
+*.pyc
 # scratch
 /tmp/
