@@ -12,7 +12,7 @@
 #define GAME_H
 
 #include <genesis.h>
-#include "ss_level.h"    /* wide baked level: SS_LEVEL_COLS, ss_level_map, tiles */
+#include "ss_level.h"    /* baked levels: ss_levels[], SsLevel, SS_LEVEL_* (multi) */
 #include "anim_rt.h"     /* shared animation runtime (consumes baked ss_anim.h) */
 
 /* ---- World / level geometry (pixels) -------------------------------------
@@ -25,7 +25,12 @@
  * 256x224 (H32). */
 #define SCREEN_W            256
 #define SCREEN_H            224
-#define LEVEL_W             (SS_LEVEL_COLS * 8)   /* real wide-level pixel width */
+/* The level pixel width is now PER-ROUND (Phase 5 multi-level): each round shows
+ * a different baked level (ss_levels[round]) and they differ in column count, so
+ * the wide-level width is a runtime value (g_levelW = current level cols * 8),
+ * set by level_select() in game.c. Use g_levelW wherever the old single-level
+ * LEVEL_W constant was used (camera clamp, etc.). */
+extern u16 g_levelW;                              /* current level pixel width   */
 #define LEVEL_H             SCREEN_H
 
 /* Plane A is a 64-col sliding window over the wide level. */
@@ -248,6 +253,12 @@ typedef struct
 } GameState;
 
 extern GameState g_game;
+
+/* Current level descriptor (Phase 5 multi-level): points into ss_levels[] for the
+ * round being played. Selected by level_select(round) in game.c, which also loads
+ * the level's tiles at SS_LEVEL_TILE_BASE and sets g_levelW. The column streamer
+ * reads g_curLevel->map / ->cols. */
+extern const SsLevel *g_curLevel;
 
 /* Boot-flow config: the mode chosen at the front-end selector (Phase 8),
  * MODE_ARCADE (0) or MODE_HOME (1) from frontend.h. Stored once by main.c after

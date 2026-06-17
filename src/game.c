@@ -13,10 +13,13 @@
  *  writes. NOT a transliteration of the arcade 6809 -- no source-CPU RAM array,
  *  no per-frame palette/tile re-scan.
  *
- *  Phase 4 replaces the single static screen with a WIDE baked level
- *  (ss_level.c: SS_LEVEL_COLS x 32 BG cells, ~5 screens, baked from the arcade's
- *  scrolling level-1). The 64-col Genesis Plane A is driven as a COLUMN-STREAMED
- *  sliding window over that level (ring buffer; see stream_column / bg_stream):
+ *  Phase 4 replaces the single static screen with a WIDE baked level; Phase 5
+ *  ships SS_LEVEL_COUNT DISTINCT levels (ss_level.c: ss_levels[], ~5 screens each,
+ *  baked from REAL arcade gameplay -- md=02, the CLEAN playfields, NOT the attract
+ *  demo). Each round plays a different one (round 1->level1, 2->level2, ..., then
+ *  it cycles; see level_select / round_advance). The 64-col Genesis Plane A is
+ *  driven as a COLUMN-STREAMED sliding window over the active level (ring buffer;
+ *  see stream_column / bg_stream):
  *  as the player's perpetual forward creep advances the camera, newly-revealed
  *  columns are decoded + DMA'd in at the seam (1 column/frame, tear-free) and
  *  the BG hardware-scrolls -- so the forward run travels through the whole level
@@ -25,6 +28,13 @@
  * =========================================================================== */
 
 GameState g_game;
+
+/* Current level descriptor + its pixel width (Phase 5 multi-level). g_curLevel
+ * points into ss_levels[] for the round being played; g_levelW = cols*8. Both are
+ * set by level_select() below (called from level_restart / round_advance). They
+ * default to level 1 so any code reading them before the first select is sane. */
+const SsLevel *g_curLevel = &ss_levels[0];
+u16            g_levelW   = 0;
 
 /* Free-running game-loop tick: incremented once per game_update(). Used by the
  * headless FPS probe (tools/entity_fps.lua) to measure the actual game-frame
@@ -85,17 +95,18 @@ static void stream_column(s16 levelCol, TransferMethod tm)
 {
     static u16 colbuf[SS_LEVEL_ROWS];          /* one plane column (32 words)  */
     u16 planeCol = (u16)(levelCol & PLANE_COL_MASK);
+    u16 cols     = g_curLevel->cols;           /* current level width (Phase 5) */
     u16 row;
 
-    if (levelCol < 0 || levelCol >= SS_LEVEL_COLS)
+    if (levelCol < 0 || levelCol >= (s16)cols)
     {
         for (row = 0; row < SS_LEVEL_ROWS; row++) colbuf[row] = 0;   /* blank   */
     }
     else
     {
-        const u16 *src = &ss_level_map[(u16)levelCol];     /* row 0 of this col */
+        const u16 *src = &g_curLevel->map[(u16)levelCol];  /* row 0 of this col */
         for (row = 0; row < SS_LEVEL_ROWS; row++)
-            colbuf[row] = src[row * SS_LEVEL_COLS];        /* stride a whole row */
+            colbuf[row] = src[row * cols];                 /* stride a whole row */
     }
 
     /* Strided VRAM write: 32 words down one plane column. VDP_setTileMapDataColumnFast
@@ -110,6 +121,34 @@ static void stream_column(s16 levelCol, TransferMethod tm)
 }
 
 /* ---------------------------------------------------------------------------
+ *  level_select -- choose the baked level for a given round and make it active.
+ *
+ *  Phase 5 multi-level: the engine ships SS_LEVEL_COUNT distinct levels captured
+ *  from REAL arcade gameplay (ss_levels[], see ss_level.c). Round R (1-based)
+ *  plays ss_levels[(R-1) % SS_LEVEL_COUNT] -- round 1->level1, 2->level2, ...,
+ *  then it cycles. Selecting a level: point g_curLevel at it, set the runtime
+ *  level width g_levelW (= cols*8, used by the camera clamp), and DMA its deduped
+ *  tiles into the shared level-tile VRAM region at SS_LEVEL_TILE_BASE (only ONE
+ *  level is resident at a time -- the per-round tile budget is max(per-level),
+ *  not the sum). The level's map words are absolute (base+local), so they're
+ *  consistent for whichever level is loaded at SS_LEVEL_TILE_BASE.
+ *
+ *  Tiles are loaded with immediate DMA so they're resident before level_restart
+ *  cold-fills the plane from this level's map. Caller then streams the map. */
+static void level_select(u8 round)
+{
+    u8 idx = (u8)((round - 1) % SS_LEVEL_COUNT);   /* round 1 -> level 0, cycle */
+    g_curLevel = &ss_levels[idx];
+    g_levelW   = (u16)(g_curLevel->cols * 8);
+
+    /* Load THIS level's tiles into the shared level region (base 135). The level
+     * tile count varies per level but all fit in SS_LEVEL_MAX_TILES slots, which
+     * sit below the resident anim tiles (SS_ANIM_TILE_BASE) -- no overlap. */
+    VDP_loadTileData(g_curLevel->tiles, SS_LEVEL_TILE_BASE,
+                     g_curLevel->tileCount, DMA);
+}
+
+/* ---------------------------------------------------------------------------
  *  level_restart -- (re)build the level window + place the player at the start.
  *
  *  Factored out of game_init so the ROUND-CLEAR advance can reuse the exact same
@@ -118,10 +157,16 @@ static void stream_column(s16 levelCol, TransferMethod tm)
  *  reset the column-streaming range, park the camera at the level start, and
  *  spawn the player low-left on lane 0 pinned at the band -- the SonSon hero's
  *  start pose. Used by game_init (first round) and the round advance (each new
- *  round re-runs this captured level -- see the per-round TODO in game_update).
- *  Does NOT touch score / lives / round / flow -- those are the caller's policy. */
+ *  round runs THIS round's level -- level_select picked it). Does NOT touch
+ *  score / lives / round / flow -- those are the caller's policy. */
 static void level_restart(void)
 {
+    /* Select the level for the CURRENT round (loads its tiles at base 135, sets
+     * g_curLevel + g_levelW). game_init sets round=1 first; round_advance bumps it
+     * before calling here -- so each round shows its own captured level, cycling
+     * through ss_levels[] (round 1->level1, 2->level2, 3->level3, 4->level1...). */
+    level_select(g_game.round);
+
     /* Cold-fill the 64-col Plane A window with the first 64 level columns
      * (columns 0..63 of the wide level). game_render streams new columns in as
      * the camera advances past each tile boundary. */
@@ -196,29 +241,34 @@ void game_init(void)
      * up near ~1376):
      *   scene tiles  [0 .. SS_SCENE_TILE_COUNT)            -- only the player
      *                                                         sprite is used now
-     *   level tiles  [SS_LEVEL_TILE_BASE .. +SS_LEVEL_TILE_COUNT)  (base = 135)
-     * The scene's static BG is dropped; the WIDE level replaces it. We still load
-     * the scene tiles because the player sprite borrows ss_scene_sprites[0].tile. */
+     *   level tiles  [SS_LEVEL_TILE_BASE .. +SS_LEVEL_MAX_TILES)  (base = 135)
+     *                  -- ONE round's level resident at a time (level_select DMAs
+     *                     the active round's tiles here); max 91 tiles.
+     *   anim tiles   [SS_ANIM_TILE_BASE .. )               (base = 346)
+     * The scene's static BG is dropped; the WIDE per-round level replaces it. We
+     * still load the scene tiles because the player sprite borrows
+     * ss_scene_sprites[0].tile. The level tiles are loaded per-round by
+     * level_select() (called from level_restart via the round below). */
     VDP_loadTileData(ss_scene_tiles, SS_SCENE_TILE_BASE, SS_SCENE_TILE_COUNT, DMA);
-    VDP_loadTileData(ss_level_tiles, SS_LEVEL_TILE_BASE, SS_LEVEL_TILE_COUNT, DMA);
     /* Faithful player + enemy animation frames, loaded at a fresh VRAM base
-     * (346) past the scene (0..134) and level (135..345) tiles -- well below the
-     * SGDK font/sprite-engine tiles near ~1376. The baked anim table's per-frame
-     * tile indices are ABSOLUTE (already include SS_ANIM_TILE_BASE). */
+     * (346) past the scene (0..134) and level (135..225, max) tiles -- well below
+     * the SGDK font/sprite-engine tiles near ~1376. The baked anim table's
+     * per-frame tile indices are ABSOLUTE (already include SS_ANIM_TILE_BASE). */
     VDP_loadTileData(ss_anim_tiles, SS_ANIM_TILE_BASE, SS_ANIM_TILE_COUNT, DMA);
 
+    /* Round progression: a NEW game (from the selector) always starts at round 1.
+     * The round number drives the HUD readout, the per-round LEVEL select
+     * (level_restart -> level_select), and entity.c's per-round difficulty ramp.
+     * Set it BEFORE level_restart so the right level (level 1) is loaded. */
+    g_game.round = 1;
+
     /* Build the level window + place the player at the start (shared with the
-     * round advance -- see level_restart). This cold-fills Plane A, resets the
-     * stream range + camera, and spawns the hero low-left on lane 0. */
+     * round advance -- see level_restart). level_restart selects round 1's level
+     * (loads its tiles at base 135 + sets g_levelW), cold-fills Plane A from its
+     * map, resets the stream range + camera, and spawns the hero low-left. */
     level_restart();
 
     g_game.score   = 0;
-
-    /* Round progression: a NEW game (from the selector) always starts at round 1.
-     * The round number drives the HUD readout and entity.c's per-round difficulty
-     * ramp (on top of the g_config.difficulty base). It is incremented as each
-     * round is cleared (see the FLOW_ROUND_CLEAR advance in game_update). */
-    g_game.round = 1;
 
     /* Life economy: the DIP/options LIVES setting now takes effect. g_config.lives
      * is the arcade DSW2 0x03 field decoded by sync_from_dsw() (3 / 4 / 5 / 7);
@@ -277,25 +327,25 @@ static void player_respawn(void)
 /* ---------------------------------------------------------------------------
  *  round_advance -- start the NEXT round after a round-clear beat.
  *
- *  The native engine ships ONE captured wide level (ss_level), so for now each
- *  round LOOPS that same level with a per-round difficulty ramp (entity.c reads
- *  g_game.round). Advancing a round: bump the round counter, rebuild the level +
- *  re-place the player at the start (level_restart -- the same cold-fill the
- *  first round used), clear + re-seed the entity pool (entity_init re-runs the
- *  spawn wave; the fresh enemies pick up the new round's difficulty at spawn),
- *  and replay the round-intro music cue. The caller (game_update) then flips the
- *  flow back to ALIVE so play resumes at the level start.
+ *  The native engine ships SS_LEVEL_COUNT DISTINCT captured levels (ss_levels[],
+ *  baked from real arcade gameplay). Advancing a round: bump the round counter,
+ *  then rebuild via level_restart -- which calls level_select(round) to load the
+ *  NEW round's level (round 1->level1, 2->level2, 3->level3, then it cycles), cold-
+ *  fill Plane A from that level's map, and re-place the player at the start. We
+ *  also clear + re-seed the entity pool (entity_init re-runs the spawn wave; the
+ *  fresh enemies pick up the new round's difficulty at spawn) and replay the
+ *  round-intro music cue. The caller (game_update) then flips the flow back to
+ *  ALIVE so play resumes at the (new) level start.
  *
- *  TODO: distinct per-round level data (capture more ss_level slices from
- *  levelcap / the arcade). Today every round re-runs the single captured slice;
- *  multi-level content is a separate task (ROADMAP Phase 5 level data). When more
- *  slices exist, select the round's level here (e.g. ss_level[(round-1) % N])
- *  before level_restart streams it in. */
+ *  TODO: capture the remaining arcade levels (8 exist; we ship 3) and the per-
+ *  level vertical "climb to advance" end sections -- see ss_level_cap2.lua. With
+ *  more captures, just bake them into ss_levels[] (gen_level.py --multi); the
+ *  cycling here picks them up automatically. */
 static void round_advance(void)
 {
     if (g_game.round < 255) g_game.round++;       /* next round (HUD + difficulty) */
 
-    level_restart();                              /* rebuild level + player start  */
+    level_restart();                              /* select+rebuild next level + player */
     entity_init();                                /* clear + re-seed the wave      */
 
     /* Round-intro music cue (arcade 0x16 then 0x10 at a round start). Re-armed
@@ -389,7 +439,7 @@ static void player_control(u16 pad)
      * (level start / end) -- exactly the arcade's "push worldX back to the
      * clamp" behaviour. ----- */
     {
-        s16 maxCam  = (s16)(LEVEL_W - SCREEN_W);
+        s16 maxCam  = (s16)((s16)g_levelW - SCREEN_W);  /* current level width (Phase 5) */
         s16 screenX;
         if (maxCam < 0) maxCam = 0;                 /* level no wider than screen */
 
@@ -595,7 +645,7 @@ bool game_update(void)
              * resets the dwell. Only checked while ALIVE, so a death/respawn beat
              * can never be mistaken for a clear. */
             {
-                s16 maxCam = (s16)(LEVEL_W - SCREEN_W);
+                s16 maxCam = (s16)((s16)g_levelW - SCREEN_W);  /* current level width (Phase 5) */
                 s16 screenX;
                 if (maxCam < 0) maxCam = 0;
                 screenX = (s16)(g_game.player.x - g_game.cameraX);
