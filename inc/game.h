@@ -98,20 +98,56 @@ extern u16 g_levelW;                              /* current level pixel width  
 #define BAND_LEFT           8           /* arcade $08                          */
 #define BAND_RIGHT          208         /* arcade $D0                          */
 
-/* Lanes: vertical pitch (px) and how many stack before the field wraps. 24px is
- * the captured ladder-rung spacing; the player Y byte wraps mod 256 in the
- * arcade, so the lane INDEX wraps here (climb past the top => bottom lane). */
-#define LANE_PITCH          32          /* arcade tier spacing (== entity.c k_spawn_row_y) */
-#define LANE_COUNT          6           /* 6 vine tiers (the playfield platform rows)      */
-#define LANE_BASE_Y         200         /* world Y of lane 0 = the BOTTOM tier row         */
-/* lane i (0=bottom) -> world Y = LANE_BASE_Y - i*LANE_PITCH = {200,168,136,104,72,40},
- * i.e. exactly entity.c's k_spawn_row_y reversed -- the hero shares the enemies'/tiles'
- * vertical grid so he stands ON the platforms instead of floating between them. */
+/* ===========================================================================
+ *  VERTICAL MODEL -- FAITHFUL TERRAIN COLLISION (replaces the old lane model).
+ * ===========================================================================
+ *  RE (cited): SonSon's terrain is 6 horizontal platform TIERS, decoded from the
+ *  arcade per-column collision bitmap (built by the column streamer sub_A82F @
+ *  $A82F into RAM $0100, tested by sub_A847 @ $A847) -- it reads a per-stage
+ *  terrain table at program-ROM record $6485+stage*7,+5 ($8E source), 32 cols x
+ *  4 bytes/stage. Decoding ss.02e/03e @ $825B shows solid bands ONLY at Y>>3 rows
+ *  {4,8,12,16,20,24} (Y {32,64,96,128,160,192}) on EVERY stage, plus sparse
+ *  per-column gaps. Those 6 tiers map 1:1 to the 6 rendered vine floors; the
+ *  native per-column collision (ss_collision.c, gen_collision.py) carries a 6-bit
+ *  solidity mask per level column (bit t = tier t solid here, 0 = hole). The
+ *  player seats on a tier (no float), climbs between tiers (UP/DOWN), and falls
+ *  through holes onto the tier below -- the native sub_A847.
+ *
+ *  TIER GRID: SS_TIER_Y[tier] (ss_collision.h) is the sprite TOP-LEFT standing Y
+ *  per tier, BOTTOM(0)..TOP(5) = {200,168,136,104,72,40} = entity.c k_spawn_row_y
+ *  reversed (feet on the floor at floorY-16). The hero shares the enemies' / floor
+ *  tiles' grid, so he stands ON the platforms instead of floating between them.
+ *
+ *  LANE_COUNT/LANE_PITCH/LANE_BASE_Y are kept (entity.c's LANE_Y macro + fruit
+ *  placement read them) and still describe the SAME 6-tier grid; the player no
+ *  longer uses a free wrapping lane index -- it uses continuous Y + SS_TIER_Y +
+ *  the collision (see player_control / pv_* in game.c). */
+#define LANE_PITCH          32          /* tier spacing (== SS_TIER_Y step / k_spawn_row_y) */
+#define LANE_COUNT          6           /* 6 vine tiers (== SS_COLLISION_TIERS)             */
+#define LANE_BASE_Y         200         /* world Y (top-left) of tier 0 = the BOTTOM tier   */
 
-/* Frames the player must hold UP/DOWN before the next lane step (one discrete
- * step per press-hold tick -- the arcade advances the lane on an edge, not
- * continuously). Tuned for a brisk-but-controllable climb. */
-#define LANE_STEP_PERIOD    8
+/* CLIMB speed (sub-pixel px/frame) when moving between tiers (arcade states 2/3,
+ * sub_AB82 climb-up / sub_AC38 climb-down). The arcade climb is anim-coupled and
+ * near-instant on a press edge (measured: ~31px in <=8 frames once it triggers,
+ * arc_up.lua); we re-express it as a smooth continuous climb so the motion reads
+ * as "climbing the vine" rather than a lane teleport. 0x0400 = 4.0px/frame ->
+ * one 32px tier in 8 frames. */
+#define CLIMB_SPEED_SUBPX   0x0400
+
+/* GRAVITY when FALLING through a gap (arcade fall state 5, sub_ACDC -> sub_ACEA;
+ * the run state also drifts Y down 1px/frame, reseated by collision -- sub_AA32
+ * dec -$8,x then sub_AAF4 adds the push-out back). A gentle fall accel that lands
+ * the hero on the tier below within a few frames. 0x0040 = +0.25px/frame^2. */
+#define FALL_GRAVITY_SUBPX  0x0040
+#define FALL_MAX_SUBPX      0x0500      /* terminal fall speed (~5px/frame)         */
+
+/* DOWN-to-descend gate: the arcade only lets DOWN start a descent when the hero's
+ * Y byte is past the top (sub_AAD2 @ $AAEA: cmpb #$28 / bls skip), i.e. not on the
+ * very top tier. We mirror it: DOWN descends only if a lower tier exists. */
+
+/* Start tier (0=bottom..5=top). The arcade hero spawns on the MIDDLE tier: the
+ * measured spawn Y ($0488) = 135 (arc_align3.lua) == SS_TIER_Y[2] (136). */
+#define PLAYER_START_TIER   2
 
 /* Walk-anim: frames between anim-step increments while moving (sub_9617 cadence). */
 #define PLAYER_ANIM_PERIOD  6
@@ -233,14 +269,28 @@ typedef enum
  * sub-pixel accumulator (xSub) for the forward drift, and a discrete lane index
  * (+ derived world Y). `tile` is the absolute VRAM base tile of the 16x16
  * sprite (4 col-major 8x8 tiles), borrowed from the baked scene set. */
+/* Player vertical state machine (mirrors the arcade -$F state hi-byte dispatched
+ * @ $A9F7): PV_RUN = on a tier (arcade state 1, sub_AA32); PV_CLIMB_UP/_DOWN =
+ * moving between tiers (states 2/3, sub_AB82/sub_AC38); PV_FALL = no ground under
+ * the column, falling onto the tier below (state 5, sub_ACDC). */
+typedef enum
+{
+    PV_RUN = 0,
+    PV_CLIMB_UP,
+    PV_CLIMB_DOWN,
+    PV_FALL
+} PlayerVState;
+
 typedef struct
 {
     s16 x, y;          /* world position (px), top-left of sprite           */
     u16 xSub;          /* X sub-pixel accumulator (1/256 px) -- drift + vel  */
+    u16 ySub;          /* Y sub-pixel accumulator (1/256 px) -- climb/fall   */
     s16 vx;            /* commanded horizontal velocity (1/256 px per frame) */
-    u8  lane;          /* current lane index [0..LANE_COUNT) -- wraps        */
-    u8  laneTimer;     /* counts down to the next allowed lane step          */
-    u8  climbing;      /* nonzero while a lane change is in progress (anim)   */
+    s16 vy;            /* vertical velocity (1/256 px/frame) -- climb/fall   */
+    u8  vstate;        /* PlayerVState (RUN / CLIMB_UP / CLIMB_DOWN / FALL)  */
+    u8  tier;          /* tier index the hero is on/heading to (0=bottom..5) */
+    u8  climbing;      /* nonzero while climbing/falling (drives climb anim) */
     u8  facing;        /* FACING_LEFT / FACING_RIGHT -> SAT flipH            */
     u8  anim;          /* walk/climb-cycle frame index (legacy state var)    */
     u8  animTimer;     /* counts down to the next anim step (legacy)         */

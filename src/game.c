@@ -3,6 +3,7 @@
 #include "entity.h"
 #include "ss_gfx.h"
 #include "ss_level.h"
+#include "ss_collision.h" /* per-column 6-tier terrain collision (native sub_A847) */
 #include "ss_anim.h"     /* baked player/enemy animation frames + table */
 #include "sound.h"       /* faithful arcade BGM + SFX (Z80/V-Int-driven)  */
 
@@ -35,6 +36,10 @@ GameState g_game;
  * default to level 1 so any code reading them before the first select is sane. */
 const SsLevel *g_curLevel = &ss_levels[0];
 u16            g_levelW   = 0;
+
+/* Index of the level resident this round (round R -> ss_levels[(R-1)%8]); set by
+ * level_select(), read by tier_solid() to pick ss_collision[g_levelIdx]. */
+static u8      g_levelIdx = 0;
 
 /* Free-running game-loop tick: incremented once per game_update(). Used by the
  * headless FPS probe (tools/entity_fps.lua) to measure the actual game-frame
@@ -183,6 +188,7 @@ static void level_select(u8 round)
 {
     u8 idx = (u8)((round - 1) % SS_LEVEL_COUNT);   /* round 1 -> level 0, cycle */
     g_curLevel = &ss_levels[idx];
+    g_levelIdx = idx;                              /* -> ss_collision[idx]       */
     g_levelW   = (u16)(g_curLevel->cols * 8);
 
     /* Load THIS level's tiles into the shared level region (base 135). The level
@@ -231,11 +237,15 @@ static void level_restart(bool keepPose)
         p->vx   = 0;
         if (!keepPose)
         {
-            /* FRESH game (game_init): full cold-start pose -- the SonSon hero starts
-             * low-left on lane 0, facing right, in the run cycle. */
-            p->lane      = 0;
-            p->y         = LANE_BASE_Y;                /* lane 0 world Y            */
-            p->laneTimer = 0;
+            /* FRESH game (game_init): full cold-start pose. The arcade hero SPAWNS
+             * ON THE MIDDLE TIER (measured heroY ($0488) = 135 at game start,
+             * arc_align3.lua) = tier index 2 (SS_TIER_Y[2]=136), facing right, on
+             * the platform (no float), in the run cycle. */
+            p->tier      = PLAYER_START_TIER;
+            p->vstate    = PV_RUN;
+            p->y         = SS_TIER_Y[PLAYER_START_TIER];   /* seated on the tier   */
+            p->ySub      = 0;
+            p->vy        = 0;
             p->climbing  = 0;
             p->facing    = FACING_RIGHT;
             p->anim      = 0;
@@ -245,9 +255,17 @@ static void level_restart(bool keepPose)
             anim_restart(&p->av, SS_ANIM_PLAYER_RUN);   /* start in the run cycle  */
             p->tile      = PLAYER_TILE;
         }
-        /* keepPose (round_advance): the hero KEEPS his lane / facing / anim across
+        /* keepPose (round_advance): the hero KEEPS his tier / facing / anim across
          * the scenery swap -- the arcade's continuous scroll never re-poses him at a
-         * segment boundary, so the climb carries over to the next level seamlessly. */
+         * segment boundary, so the climb carries over to the next level seamlessly.
+         * Re-seat his Y on his current tier in case the new level differs. */
+        else
+        {
+            if (p->tier >= SS_COLLISION_TIERS) p->tier = PLAYER_START_TIER;
+            p->vstate = PV_RUN;
+            p->y      = SS_TIER_Y[p->tier];
+            p->ySub   = 0; p->vy = 0;
+        }
     }
 
     g_game.cameraX  = 0;
@@ -362,12 +380,14 @@ void game_init(void)
 static void player_respawn(void)
 {
     Player *p = &g_game.player;
-    p->lane      = 0;
-    p->y         = LANE_BASE_Y;
+    p->tier      = PLAYER_START_TIER;               /* back on the middle tier   */
+    p->vstate    = PV_RUN;
+    p->y         = SS_TIER_Y[PLAYER_START_TIER];    /* seated on the tier        */
+    p->ySub      = 0;
+    p->vy        = 0;
     p->x         = (s16)(g_game.cameraX + BAND_LEFT);   /* scroll-relative re-place */
     p->xSub      = 0;
     p->vx        = 0;
-    p->laneTimer = 0;
     p->climbing  = 0;
     p->facing    = FACING_RIGHT;
     p->anim      = 0;
@@ -418,20 +438,192 @@ static void round_advance(void)
     snd_play_round();
 }
 
+/* ===========================================================================
+ *  TERRAIN COLLISION -- the native sub_A847 ($A847).
+ * ===========================================================================
+ *  The arcade A847 maps the hero's worldX (-$B) + scroll ($90) to a 32-col ring
+ *  column, then tests the per-column 4-byte solidity mask at RAM $0100 with a row
+ *  bit (Y>>3). We re-express that on the native per-column collision table
+ *  (ss_collision[level], one 6-bit mask/column; bit t = tier t solid). The native
+ *  level's columns ARE world columns (worldX/8), so the lookup is direct -- no
+ *  ring wrap (the native streams the whole wide level, not a 32-col ring). */
+
+/* Is tier `tier` (0=bottom..5=top) SOLID at world X `worldX`? Out-of-level columns
+ * read as solid (so the hero never falls off the level's left/right end -- the
+ * camera clamps the left and the auto-advance handles the right). */
+static u8 tier_solid(s16 worldX, u8 tier)
+{
+    u16 cols = ss_collision_cols[g_levelIdx];
+    s16 col  = (s16)(worldX >> 3);          /* world column = px/8 (A847 cellX>>3) */
+    if (col < 0 || col >= (s16)cols) return 1;
+    if (tier >= SS_COLLISION_TIERS)  return 0;
+    return (u8)((ss_collision[g_levelIdx][col] >> tier) & 1);
+}
+
+/* The hero's collision column uses his sprite mid-X (+8), like A847 (worldX+8). */
+static u8 tier_solid_at_hero(const Player *p, u8 tier)
+{
+    return tier_solid((s16)(p->x + 8), tier);
+}
+
+/* ---------------------------------------------------------------------------
+ *  player_vertical -- the faithful vertical state machine (native sub_A847 +
+ *  the run / climb-up / climb-down / fall states, $A9F7 handlers 1/2/3/5).
+ *
+ *  RE map (cited, ../sonson/port/src):
+ *    state 1 RUN  (sub_AA32 @ $AA32): on a tier. UP ($10, sub_AACF/AAD2 @ $AAD4
+ *      -> state $0200) climbs up; DOWN ($20, sub_AAD2 @ $AAE4, gated cmpb #$28 @
+ *      $AAEA -> state $0300) climbs down; if the column under the hero is a GAP
+ *      (A847 carry-clear -> sub_AAF4 @ $AAF7 -> state $0300/$0500) he falls.
+ *    state 2 CLIMB_UP (sub_AB82/AB97 @ $AB97: Y += climb vel; on reaching the
+ *      tier -> back to run).  state 3 CLIMB_DOWN (sub_AC38/AC79). state 5 FALL
+ *      (sub_ACDC -> sub_ACEA: Y += until it lands -> seat on the tier below).
+ *  Direction bits confirmed by reading raw $40 (=~hw_read $3002) on the arcade:
+ *    UP=$10  DOWN=$20  LEFT=$04  RIGHT=$08  FIRE=$01 (arc_bits.lua).
+ *
+ *  Native re-expression: continuous Y between the 6 SS_TIER_Y tiers (smooth climb
+ *  at CLIMB_SPEED_SUBPX; the arcade climb is anim-coupled + near-instant on a press
+ *  edge -- we make it readable). The hero is SEATED on his tier each RUN frame
+ *  (the A847 push-out); a column gap drops him to the tier below (FALL); UP/DOWN
+ *  move him a tier when one exists in that direction at his column. p->tier is the
+ *  tier he is on (RUN/FALL target) or heading to (CLIMB). ------------------------ */
+static void player_vertical(u16 pad)
+{
+    Player *p = &g_game.player;
+
+    switch ((PlayerVState)p->vstate)
+    {
+        case PV_RUN:
+        {
+            p->climbing = 0;
+            p->vy = 0;
+            /* Seat on the current tier (the A847 reseat: snap Y to the tier's
+             * standing Y). p->tier is the tier the hero stands on. */
+            p->y    = SS_TIER_Y[p->tier];
+            p->ySub = 0;
+
+            /* GAP under the hero's column? -> FALL (arcade AAF4 carry-clear path).
+             * Only when no UP/DOWN climb is being commanded into a neighbour. */
+            if (!tier_solid_at_hero(p, p->tier))
+            {
+                /* fall toward the next SOLID tier below; if none, the bottom */
+                p->vstate   = PV_FALL;
+                p->vy       = 0;
+                p->climbing = 1;
+                break;
+            }
+
+            /* UP ($10): climb to the next tier up if there IS one above (tier<5).
+             * (Arcade gates climb on the structure; off the top there is none.) */
+            if ((pad & BUTTON_UP) && p->tier < (SS_COLLISION_TIERS - 1))
+            {
+                p->tier    = (u8)(p->tier + 1);   /* target = tier above        */
+                p->vstate  = PV_CLIMB_UP;
+                p->vy      = -(s16)CLIMB_SPEED_SUBPX;
+                p->climbing = 1;
+            }
+            /* DOWN ($20): descend to the next tier down if one exists (tier>0)
+             * (arcade $AAEA cmpb #$28 / bls skip -> only when not at the top). */
+            else if ((pad & BUTTON_DOWN) && p->tier > 0)
+            {
+                p->tier    = (u8)(p->tier - 1);   /* target = tier below        */
+                p->vstate  = PV_CLIMB_DOWN;
+                p->vy      = (s16)CLIMB_SPEED_SUBPX;
+                p->climbing = 1;
+            }
+            break;
+        }
+
+        case PV_CLIMB_UP:
+        {
+            /* move Y up toward SS_TIER_Y[tier] (smaller Y = up-screen) */
+            s16 target = SS_TIER_Y[p->tier];
+            s32 acc = (s32)p->ySub + (s32)p->vy;
+            p->y    = (s16)(p->y + (acc >> 8));
+            p->ySub = (u16)(acc & 0xFF);
+            p->climbing = 1;
+            if (p->y <= target)                   /* arrived at the upper tier  */
+            {
+                p->y = target; p->ySub = 0; p->vy = 0;
+                p->vstate = PV_RUN;
+            }
+            break;
+        }
+
+        case PV_CLIMB_DOWN:
+        {
+            s16 target = SS_TIER_Y[p->tier];
+            s32 acc = (s32)p->ySub + (s32)p->vy;
+            p->y    = (s16)(p->y + (acc >> 8));
+            p->ySub = (u16)(acc & 0xFF);
+            p->climbing = 1;
+            if (p->y >= target)                   /* arrived at the lower tier  */
+            {
+                p->y = target; p->ySub = 0; p->vy = 0;
+                p->vstate = PV_RUN;
+            }
+            break;
+        }
+
+        case PV_FALL:
+        default:
+        {
+            /* accelerate downward (arcade fall state); LAND when the hero CROSSES a
+             * solid tier's surface this frame (was above it, now at/below it) --
+             * a crossing test so a fast fall can't skip past a tier between frames. */
+            s16 prevY = p->y;
+            s32 acc;
+            p->climbing = 1;
+            p->vy = (s16)(p->vy + FALL_GRAVITY_SUBPX);
+            if (p->vy > (s16)FALL_MAX_SUBPX) p->vy = (s16)FALL_MAX_SUBPX;
+            acc = (s32)p->ySub + (s32)p->vy;
+            p->y    = (s16)(p->y + (acc >> 8));
+            p->ySub = (u16)(acc & 0xFF);
+
+            {
+                u8  t;
+                s16 landY = 0x7FFF;
+                u8  landT = 0xFF;
+                /* highest solid tier whose surface lies in (prevY .. newY] at the
+                 * hero's column = the one he just fell onto. */
+                for (t = 0; t < SS_COLLISION_TIERS; t++)
+                {
+                    if (!tier_solid_at_hero(p, t)) continue;
+                    if (SS_TIER_Y[t] > prevY && SS_TIER_Y[t] <= p->y &&
+                        SS_TIER_Y[t] < landY)
+                    {
+                        landY = SS_TIER_Y[t]; landT = t;
+                    }
+                }
+                if (landT != 0xFF)
+                {
+                    p->tier = landT; p->y = landY; p->ySub = 0; p->vy = 0;
+                    p->vstate = PV_RUN;
+                }
+                else if (p->y > SS_TIER_Y[0])   /* fell past the bottom -> wrap   */
+                {
+                    /* reappear ABOVE the top tier (the arcade Y byte wraps mod 256
+                     * -- the vertical loop) and keep falling so the crossing test
+                     * can catch the top tiers on the way back down. */
+                    p->y = (s16)(SS_TIER_Y[SS_COLLISION_TIERS - 1] - 24);
+                    p->ySub = 0;
+                }
+            }
+            break;
+        }
+    }
+}
+
 /* ---------------------------------------------------------------------------
  *  player_control -- one frame of FAITHFUL SonSon locomotion (player only).
  *
  *  Re-expressed cleanly from the verified arcade player code (the oracle):
  *  ../sonson/port/src/{sub_A98A, sub_A9A7, sub_A9C5, sub_AB52, sub_AD10,
- *  sub_AE16, sub_9617}.c. The mechanic and every constant are documented on the
- *  LOCOMOTION CONSTANTS block in game.h. In one sentence: the hero is pinned in
- *  a fixed horizontal screen band and runs by scrolling the world (LEFT/RIGHT),
- *  and steps between 8px-quantised lanes (UP/DOWN) whose field wraps vertically.
- *
- *  NOT yet faithful (scope-limited, TODO): jump / fire / attack (arcade B1F3 ->
- *  B25A spawns a shot into $0E28) and terrain/enemy collision. The lane field
- *  here is free (no per-lane platform gating). The anim-state var is driven
- *  correctly so real walk/climb frames drop in trivially once baked.
+ *  sub_A847, sub_AA32, sub_AAF4, sub_9617}.c. The mechanic and every constant are
+ *  documented on the VERTICAL MODEL + LOCOMOTION CONSTANTS blocks in game.h. In
+ *  one sentence: the hero is pinned in a fixed horizontal screen band and runs by
+ *  scrolling the world (LEFT/RIGHT), and stands on / climbs between / falls through
+ *  the 6 platform TIERS (UP/DOWN) per the per-column terrain collision.
  *
  *  `pad` is the joypad for this frame (0 = no input, so the player coasts) --
  *  game_update passes a forced-zero pad while the player is DYING / in GAME OVER
@@ -460,6 +652,14 @@ static void player_control(u16 pad)
         p->vx     = (s16)(-RUN_VEL_SUBPX + RUN_DRIFT_SUBPX); /* push back vs creep  */
         p->facing = FACING_LEFT;
     }
+    else if (pad & (BUTTON_UP | BUTTON_DOWN))
+    {
+        /* CLIMBING: the arcade PAUSES the forward creep while a vertical direction
+         * is held (sub_A9C5 @ $A9D3: andb #$3C gate suppresses the $008D add when
+         * any up/down/left/right bit is set). Measured: heroX stays put while
+         * climbing (arc_dir.lua). So no drift this frame. */
+        p->vx = 0;
+    }
     else
     {
         p->vx     = (s16)RUN_DRIFT_SUBPX;                    /* idle: just the creep */
@@ -472,29 +672,12 @@ static void player_control(u16 pad)
         p->xSub = (u16)(acc & 0xFF);
     }
 
-    /* ----- VERTICAL: lane stepping with the SonSon vertical WRAP.
-     * Arcade Y is the single byte at -$8 (wraps mod 256 => the vertical loop),
-     * nudged in 8px sub-steps. We model discrete lanes (LANE_PITCH apart) and
-     * wrap the lane INDEX: climbing past the top lane reappears at the bottom,
-     * and dropping below the bottom reappears at the top. One step per hold-tick
-     * (LANE_STEP_PERIOD) so a held press climbs at a steady cadence. ----- */
-    if (p->laneTimer != 0) p->laneTimer--;
-
-    p->climbing = 0;
-    if (pad & (BUTTON_UP | BUTTON_DOWN))
-    {
-        p->climbing = 1;
-        if (p->laneTimer == 0)
-        {
-            if (pad & BUTTON_UP)
-                p->lane = (u8)((p->lane + 1) % LANE_COUNT);          /* climb up   */
-            else
-                p->lane = (u8)((p->lane + LANE_COUNT - 1) % LANE_COUNT); /* down   */
-            p->laneTimer = LANE_STEP_PERIOD;
-        }
-    }
-    /* derive world Y from the lane index (lane 0 = bottom, higher = up-screen) */
-    p->y = (s16)(LANE_BASE_Y - (s16)p->lane * LANE_PITCH);
+    /* ----- VERTICAL: faithful tier collision (the native sub_A847 + the run/
+     * climb/fall states). The hero stands ON a platform tier, climbs UP/DOWN
+     * between tiers, and falls through a column GAP onto the tier below -- driven
+     * by the per-column collision (ss_collision[]) instead of a free lane index.
+     * player_vertical() owns the state machine + Y; see it below. ----- */
+    player_vertical(pad);
 
     /* ----- CAMERA + horizontal screen-band clamp (arcade sub_AB52).
      * The hero is pinned to the band [BAND_LEFT..BAND_RIGHT] in SCREEN space;
