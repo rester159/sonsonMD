@@ -28,6 +28,21 @@ GameState g_game;
  * behaviour (arcade DIP-driven params vs home options) -- wired in Phase 8b. */
 u8 g_mode = 0;
 
+/* Game parameters set by the Phase-8b config screens (dipswitch.c / options.c)
+ * before game_init. Initialised to SonSon's authentic power-on DIP defaults
+ * (3 lives, Normal difficulty, 20K/80K/100K bonus, demo sounds on, no flip) so
+ * the engine has sane values even if a screen is skipped. The screens overwrite
+ * this; the engine reads g_config.lives / .difficulty / ... as game-flow lands. */
+GameConfig g_config =
+{
+    DSW1_DEFAULT, DSW2_DEFAULT,   /* raw arcade DIP banks (0xDF / 0xCB)         */
+    3,            /* lives      = 3                                             */
+    1,            /* difficulty = Normal (0=Easy..3=VeryHard)                   */
+    1,            /* bonusLife  = idx1 = 20K 80K 100K (DSW2 default)            */
+    1,            /* demoSound  = on                                            */
+    0             /* flipScreen = off                                           */
+};
+
 /* The player's sprite tile: a recognizable 16x16 actor from the baked scene
  * set (SPRITE_SIZE(2,2) = 4 col-major 8x8 tiles). ss_scene_sprites[0] is the
  * first arcade spriteram slot; we borrow its tile as a stand-in player frame.

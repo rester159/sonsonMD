@@ -52,14 +52,14 @@ int main(bool hardReset)
     capcom_splash_run();                  /* CAPCOM logo + register-exact FM   */
     g_mode = selector_run();              /* ARCADE / HOME + RESTER credit     */
 
-    /* TODO Phase 8b: arcade DIP-switch screen + home options menu.
-     * For MODE_ARCADE expose the DIPs (lives/difficulty/bonus/coinage) as a
-     * config screen; for MODE_HOME show the title menu + options + credits.
-     * Both then feed a game-params struct the native engine reads. For this
-     * iteration both modes fall straight through into the game; g_mode is
-     * stored so the branch can be added here without touching the boot flow. */
-    if (g_mode == MODE_ARCADE) { /* TODO Phase 8b: arcade DIP-switch screen */ }
-    else                       { /* TODO Phase 8b: home options menu        */ }
+    /* Phase 8b: per-mode config screen. ARCADE shows the authentic arcade DIP
+     * bank (Coinage/Lives/Bonus/Difficulty/Demo/Flip/...); HOME shows the
+     * console-style options subset (Lives/Bonus/Difficulty/Demo Sounds). Both
+     * are blocking, run in the front-end H40 text mode, write g_config (game.h),
+     * and tear back to a blank screen before the game video mode is set up. The
+     * native engine reads g_config (lives/difficulty/...) as game-flow lands. */
+    if (g_mode == MODE_ARCADE) dip_screen_run();   /* arcade DIP / service     */
+    else                       options_run();      /* home console options     */
 
     /* ---- GAME VIDEO MODE (after the front-end) ----
      * SonSon is 256x224 (H32). Plane A = 64x32: the wide level scrolls through

@@ -39,4 +39,17 @@ void capcom_splash_run(void);
  * Blocks until the player picks a mode; returns MODE_ARCADE or MODE_HOME. */
 u8 selector_run(void);
 
+/* ARCADE branch (Phase 8b): the authentic arcade DIP-switch / service screen.
+ * Presents SonSon's real DIP bank (Coinage, Lives, Bonus, Difficulty, Demo
+ * Sounds, Flip, ...) as a scrollable toggle list; Up/Down move, Left/Right
+ * change the value, Start confirms. Writes g_config (game.h). Blocks until
+ * confirmed, then clears the screen for game_init. H40 text mode. */
+void dip_screen_run(void);
+
+/* HOME branch (Phase 8b): the console-style options menu (re-created from the
+ * sibling port's home.c OPTIONS page: LIVES / BONUS / DIFFICULTY / DEMO SOUNDS
+ * + START). Matches the selector's native text style + debounced input. Writes
+ * g_config (game.h). Blocks until confirmed, then clears the screen. */
+void options_run(void);
+
 #endif /* FRONTEND_H */

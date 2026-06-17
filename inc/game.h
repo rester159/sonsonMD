@@ -152,9 +152,68 @@ extern GameState g_game;
 
 /* Boot-flow config: the mode chosen at the front-end selector (Phase 8),
  * MODE_ARCADE (0) or MODE_HOME (1) from frontend.h. Stored once by main.c after
- * selector_run() and readable by the game (e.g. for the future arcade DIP /
- * home options branch -- Phase 8b). */
+ * selector_run() and readable by the game (e.g. for the arcade DIP / home
+ * options branch -- Phase 8b). */
 extern u8 g_mode;
+
+/* ===========================================================================
+ *  GameConfig -- the front-end-selected game parameters (Phase 8b).
+ * ===========================================================================
+ *  Filled by the two config screens that run after the selector:
+ *    MODE_ARCADE -> dip_screen_run()  (the full authentic arcade DIP bank)
+ *    MODE_HOME   -> options_run()     (the console-style options subset)
+ *  Both write this struct; the native engine reads it as game-flow lands
+ *  (lives, difficulty, bonus thresholds, etc.).
+ *
+ *  The two raw bytes `dsw1`/`dsw2` mirror SonSon's REAL arcade DIP banks bit
+ *  for bit (verified against MAME `-listxml sonson` and the sibling port's
+ *  shared menu_label/menu_cycle), so the arcade DIP screen edits the authentic
+ *  hardware switches directly. The decoded scalar fields below are the
+ *  convenient view the engine consumes; sync_from_dsw() (dipswitch.c) derives
+ *  them from the two bytes. Authentic bit layout:
+ *
+ *    DSW1: Coinage        (mask 0x0F)   1C/1C default (0x0F)
+ *          Coinage affects (0x10)        Coin A default
+ *          Demo Sounds     (0x20)        0=On (default), 0x20=Off
+ *          Service Mode    (0x40)        0x40=Off (default)
+ *          Flip Screen     (0x80)        0x80=Off (default)
+ *    DSW2: Lives          (0x03)        3:0x03(def) 4:0x02 5:0x01 7:0x00
+ *          2 Players Game  (0x04)        0=2 Credits(def), 0x04=1 Credit
+ *          Bonus Life      (0x18)        idx0=20K/80K/100K(def) ... (see table)
+ *          Difficulty      (0x60)        idx 0Easy..3VeryHard; 0x40 Normal def
+ *          Freeze          (0x80)        0x80=Off (default)
+ * ========================================================================= */
+
+/* Authentic power-on DIP defaults: the OR of every MAME "default=yes" value
+ * (verified against -listxml sonson; each value= attribute is the raw masked
+ * field value, so the bank byte is their bitwise OR).
+ *   DSW1 = Coinage 1C/1C(0x0F) | CoinA(0x10) | DemoOn(0x00) | ServiceOff(0x40)
+ *          | FlipOff(0x80)                                             = 0xDF
+ *   DSW2 = Lives 3(0x03) | 2Players 2Cred(0x00) | Bonus 20K/80K/100K(0x08)
+ *          | Difficulty Normal(0x40) | FreezeOff(0x80)                 = 0xCB  */
+#define DSW1_DEFAULT   0xDF
+#define DSW2_DEFAULT   0xCB
+
+typedef struct
+{
+    /* Raw arcade DIP banks (edited bit-exact by the arcade DIP screen). */
+    u8 dsw1;
+    u8 dsw2;
+
+    /* Decoded view the engine reads (kept in sync with dsw1/dsw2). */
+    u8 lives;        /* extra lives count: 3 / 4 / 5 / 7                        */
+    u8 difficulty;   /* 0=Easy 1=Normal 2=Hard 3=Very Hard                     */
+    u8 bonusLife;    /* Bonus-Life table index 0..3 (see dipswitch.c labels)   */
+    u8 demoSound;    /* 1=demo sounds on, 0=off                                */
+    u8 flipScreen;   /* 1=screen flipped (cocktail), 0=normal                  */
+} GameConfig;
+
+extern GameConfig g_config;
+
+/* Decode g_config.dsw1/.dsw2 (the raw arcade DIP banks) into the engine-facing
+ * scalar fields (lives/difficulty/bonusLife/demoSound/flipScreen). Defined in
+ * dipswitch.c; called by both config screens after they finish editing. */
+void sync_from_dsw(void);
 
 /* Lifecycle (called from main.c). */
 void game_init(void);      /* palettes, tiles, BG nametable, player spawn    */
