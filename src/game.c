@@ -745,15 +745,19 @@ static void player_control(u16 pad)
         u8 fire = (u8)((pad & (BUTTON_B | BUTTON_C)) != 0);
         if (fire && !p->firePrev)
         {
-            /* mid-body launch point (sprite is 16x16) */
-            entity_player_fire((s16)(p->x + 4), (s16)(p->y + 4), p->facing);
-            /* play the arcade player-shot SFX (verified cmd 0x0B). It plays on
-             * the YM2612 SFX voice, mixed over the PSG music -- one shot per press
-             * edge, exactly like the arcade fire-once gate. */
-            snd_sfx_fire();
-            /* show the fire/recoil pose for the anim's full length */
-            p->fireAnim = (u8)(ss_anims[SS_ANIM_PLAYER_FIRE].frames[0].dur +
-                               ss_anims[SS_ANIM_PLAYER_FIRE].frames[1].dur);
+            /* mid-body launch point (sprite is 16x16). The arcade allows only ONE
+             * player shot on screen at a time ($0E28 single slot, sub_B25A), so
+             * entity_player_fire returns FALSE if a shot is still live -- a press
+             * while one is in flight does nothing: no shot, no SFX, no recoil
+             * (faithful, and it kills the old fire-spam slowdown). */
+            if (entity_player_fire((s16)(p->x + 4), (s16)(p->y + 4), p->facing))
+            {
+                /* arcade player-shot SFX (verified cmd 0x0B), YM2612 SFX voice. */
+                snd_sfx_fire();
+                /* show the fire/recoil pose for the anim's full length */
+                p->fireAnim = (u8)(ss_anims[SS_ANIM_PLAYER_FIRE].frames[0].dur +
+                                   ss_anims[SS_ANIM_PLAYER_FIRE].frames[1].dur);
+            }
         }
         p->firePrev = fire;
     }

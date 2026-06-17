@@ -191,8 +191,10 @@ u16  entity_render_all(u16 *sat, u16 firstSlot);
 
 /* ---- Player-driven hooks (game.c calls these) ---------------------------- */
 /* Spawn a player shot from the player's position/facing (the arcade B25A fire).
- * Debouncing (fire-once-per-press) is handled in game.c at the input edge. */
-void entity_player_fire(s16 px, s16 py, u8 facing);
+ * Debouncing (fire-once-per-press) is handled in game.c at the input edge. The
+ * arcade allows only ONE player shot at a time ($0E28 single slot): returns TRUE
+ * iff a shot was actually fired (FALSE while a prior shot is still live). */
+bool entity_player_fire(s16 px, s16 py, u8 facing);
 
 /* Player hit/flash state, raised by player<->enemy contact (arcade DCAC poke).
  * game.c reads g_player_hurt to flash the sprite during the hurt window. It

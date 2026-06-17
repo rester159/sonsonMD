@@ -983,16 +983,27 @@ void entity_init(void)
 }
 
 /* ------------------------------------------------------------------------- */
-/* Player FIRE -- arcade sub_B25A re-expressed. Spawn a SHOT at the player's
- * mid-body, traveling in the facing direction. game.c handles the press-edge
- * debounce (the arcade's "+$3 fire-once" flag), so this just emits the shot. */
-void entity_player_fire(s16 px, s16 py, u8 facing)
+/* Player FIRE -- arcade sub_B25A re-expressed. The arcade player has a SINGLE shot
+ * slot ($0E28; sub_B25A @ $B26C does a literal 'ldu #$0E28' -- a fixed address, NOT
+ * a pool scan), so exactly ONE player shot exists at a time and the next can't fire
+ * until it despawns (off-screen / on hit). We match that here: refuse to fire while
+ * a player shot is still live. Faithful AND it removes the fire-spam entity pile-up
+ * (many coexisting shots was the ~30fps cliff). game.c handles the press-edge
+ * debounce; this returns TRUE iff a shot was actually fired. */
+bool entity_player_fire(s16 px, s16 py, u8 facing)
 {
-    Entity *s = entity_spawn(ET_SHOT, px, py);
-    if (!s) return;
-    s->facing = facing;
-    s->vx     = facing ? (s16)(-SHOT_SPEED) : (s16)SHOT_SPEED;
-    s->vy     = 0;
+    u8 i;
+    for (i = 0; i < ENTITY_MAX; i++)               /* arcade single-slot gate ($0E28) */
+        if (g_entities[i].active && g_entities[i].type == ET_SHOT)
+            return FALSE;
+    {
+        Entity *s = entity_spawn(ET_SHOT, px, py);
+        if (!s) return FALSE;
+        s->facing = facing;
+        s->vx     = facing ? (s16)(-SHOT_SPEED) : (s16)SHOT_SPEED;
+        s->vy     = 0;
+    }
+    return TRUE;
 }
 
 /* ------------------------------------------------------------------------- */
