@@ -139,6 +139,34 @@
 #define GAMEOVER_FRAMES     150     /* ~2.5s GAME OVER overlay before returning  */
 #define BLINK_MASK          2       /* sprite shown when (timer & BLINK_MASK)==0 */
 
+/* ===========================================================================
+ *  ROUND-PROGRESSION CONSTANTS -- the round-clear beat + per-round difficulty.
+ * ===========================================================================
+ *  SonSon is a round-based climber: clear a round and the next one begins (the
+ *  arcade shows a "LET'S GO TENJIKU" round intro and plays the round music --
+ *  0x16 then 0x10 -- see project memory's mode model + snd_play_round). The
+ *  native engine currently streams ONE wide level (ss_level); we make the game an
+ *  ongoing LOOP by re-running that level each round with a subtle per-round
+ *  difficulty ramp, until distinct per-round level data is captured (TODO).
+ *
+ *  ROUND-CLEAR CONDITION: the player reaches the level end. The camera clamps at
+ *  maxCam = LEVEL_W - SCREEN_W and the player's world X re-pins to the right band
+ *  edge there (player_control's edge clamp), so "at the end" == camera maxed AND
+ *  the hero is pushing into the right wall. We require a short DWELL there
+ *  (ROUND_CLEAR_DWELL frames of holding into the edge) so a glancing touch of the
+ *  wall doesn't trip it -- the player must actually run to and into the finish. */
+#define ROUND_CLEAR_FRAMES  120     /* ~2.0s "ROUND CLEAR" beat before next round */
+#define ROUND_CLEAR_DWELL   18      /* frames pushing the level-end wall to clear */
+
+/* Per-round difficulty ramp. Each cleared round nudges the enemies up a notch on
+ * TOP of the g_config.difficulty base (kept subtle/faithful: a single chaser must
+ * still stay out-paceable). entity.c reads g_game.round and adds ROUND_SPEED_STEP
+ * (1/256-px/frame) per round past 1 to the march speed, capped so it never
+ * exceeds the player's ~2px/frame run; it also tightens the flyer dive telegraph
+ * slightly per round. The cap (ROUND_SPEED_MAX_BONUS) bounds the ramp. */
+#define ROUND_SPEED_STEP        0x0020  /* +0.125 px/frame enemy speed per round   */
+#define ROUND_SPEED_MAX_BONUS   0x00C0  /* cap the cumulative round speed bonus    */
+
 /* Game-flow phase: the player's life-cycle state machine driven each frame in
  * game_update. ALIVE is normal play; DYING runs the death beat; RESPAWNING is
  * the post-respawn i-frame window; GAME_OVER shows the overlay then signals the
@@ -148,7 +176,8 @@ typedef enum
     FLOW_ALIVE = 0,
     FLOW_DYING,
     FLOW_RESPAWNING,
-    FLOW_GAME_OVER
+    FLOW_GAME_OVER,
+    FLOW_ROUND_CLEAR    /* level cleared: "ROUND CLEAR" beat, then next round    */
 } GameFlow;
 
 /* Facing flags (maps straight to the SAT flipH bit). */
@@ -197,6 +226,16 @@ typedef struct
     u8     lives;
     u8     flow;       /* GameFlow                                            */
     u16    flowTimer;  /* frames left in the current DYING/RESPAWNING/GAMEOVER */
+    /* --- round progression (Phase 5 round structure) ---
+     * round    = current round number, 1-based. Starts at 1 on a new game (from
+     *            the selector); incremented as each round is cleared. The HUD shows
+     *            it and entity.c ramps difficulty off it (per-round speed bonus).
+     * endDwell = frames the player has been pushing the level-end wall. Counts up
+     *            while the camera is maxed AND the hero is pinned at the right band
+     *            edge; at ROUND_CLEAR_DWELL it triggers the round-clear beat. Reset
+     *            whenever he's not at the finish (so only a sustained push clears). */
+    u8     round;
+    u8     endDwell;
     s16    cameraX;    /* world x at the left edge of the screen (px)        */
     /* --- column-streaming window state ---
      * The 64-col Plane A is a ring buffer over the wide level. loadedMinCol /

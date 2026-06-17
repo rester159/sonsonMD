@@ -110,6 +110,55 @@ static void stream_column(s16 levelCol, TransferMethod tm)
 }
 
 /* ---------------------------------------------------------------------------
+ *  level_restart -- (re)build the level window + place the player at the start.
+ *
+ *  Factored out of game_init so the ROUND-CLEAR advance can reuse the exact same
+ *  level setup: cold-fill the 64-col Plane A window with the first 64 level
+ *  columns (immediate DMA so it's resident before the loop streams the rest in),
+ *  reset the column-streaming range, park the camera at the level start, and
+ *  spawn the player low-left on lane 0 pinned at the band -- the SonSon hero's
+ *  start pose. Used by game_init (first round) and the round advance (each new
+ *  round re-runs this captured level -- see the per-round TODO in game_update).
+ *  Does NOT touch score / lives / round / flow -- those are the caller's policy. */
+static void level_restart(void)
+{
+    /* Cold-fill the 64-col Plane A window with the first 64 level columns
+     * (columns 0..63 of the wide level). game_render streams new columns in as
+     * the camera advances past each tile boundary. */
+    {
+        s16 col;
+        for (col = 0; col < PLANE_COLS; col++)
+            stream_column(col, DMA);           /* immediate: resident before loop */
+    }
+    g_game.loadedMinCol = 0;
+    g_game.loadedMaxCol = PLANE_COLS - 1;
+
+    /* Spawn the player standing on the bottom lane (lane 0), pinned at the left
+     * edge of the arcade screen band -- the SonSon hero starts low-left and runs
+     * right into the scrolling level. */
+    {
+        Player *p = &g_game.player;
+        p->lane      = 0;
+        p->y         = LANE_BASE_Y;                /* lane 0 world Y            */
+        p->x         = BAND_LEFT;                  /* pinned at the band's left */
+        p->xSub      = 0;
+        p->vx        = 0;
+        p->laneTimer = 0;
+        p->climbing  = 0;
+        p->facing    = FACING_RIGHT;
+        p->anim      = 0;
+        p->animTimer = PLAYER_ANIM_PERIOD;
+        p->firePrev  = 0;
+        p->fireAnim  = 0;
+        anim_restart(&p->av, SS_ANIM_PLAYER_RUN);   /* start in the run cycle */
+        p->tile      = PLAYER_TILE;
+    }
+
+    g_game.cameraX  = 0;
+    g_game.endDwell = 0;
+}
+
+/* ---------------------------------------------------------------------------
  *  game_init -- one-time scene + player setup.
  * ------------------------------------------------------------------------- */
 void game_init(void)
@@ -158,40 +207,18 @@ void game_init(void)
      * tile indices are ABSOLUTE (already include SS_ANIM_TILE_BASE). */
     VDP_loadTileData(ss_anim_tiles, SS_ANIM_TILE_BASE, SS_ANIM_TILE_COUNT, DMA);
 
-    /* Cold-fill the 64-col Plane A window with the first 64 level columns
-     * (columns 0..63 of the wide level). game_render streams new columns in as
-     * the camera advances past each tile boundary. */
-    {
-        s16 col;
-        for (col = 0; col < PLANE_COLS; col++)
-            stream_column(col, DMA);           /* immediate: resident before loop */
-    }
-    g_game.loadedMinCol = 0;
-    g_game.loadedMaxCol = PLANE_COLS - 1;
+    /* Build the level window + place the player at the start (shared with the
+     * round advance -- see level_restart). This cold-fills Plane A, resets the
+     * stream range + camera, and spawns the hero low-left on lane 0. */
+    level_restart();
 
-    /* Spawn the player standing on the bottom lane (lane 0), pinned at the left
-     * edge of the arcade screen band -- the SonSon hero starts low-left and runs
-     * right into the scrolling level. */
-    {
-        Player *p = &g_game.player;
-        p->lane      = 0;
-        p->y         = LANE_BASE_Y;                /* lane 0 world Y            */
-        p->x         = BAND_LEFT;                  /* pinned at the band's left */
-        p->xSub      = 0;
-        p->vx        = 0;
-        p->laneTimer = 0;
-        p->climbing  = 0;
-        p->facing    = FACING_RIGHT;
-        p->anim      = 0;
-        p->animTimer = PLAYER_ANIM_PERIOD;
-        p->firePrev  = 0;
-        p->fireAnim  = 0;
-        anim_restart(&p->av, SS_ANIM_PLAYER_RUN);   /* start in the run cycle */
-        p->tile      = PLAYER_TILE;
-    }
-
-    g_game.cameraX = 0;
     g_game.score   = 0;
+
+    /* Round progression: a NEW game (from the selector) always starts at round 1.
+     * The round number drives the HUD readout and entity.c's per-round difficulty
+     * ramp (on top of the g_config.difficulty base). It is incremented as each
+     * round is cleared (see the FLOW_ROUND_CLEAR advance in game_update). */
+    g_game.round = 1;
 
     /* Life economy: the DIP/options LIVES setting now takes effect. g_config.lives
      * is the arcade DSW2 0x03 field decoded by sync_from_dsw() (3 / 4 / 5 / 7);
@@ -215,7 +242,7 @@ void game_init(void)
     /* Round-intro music cue (arcade plays 0x16 then 0x10 at a round start). This
      * is the "round 1 begins" flourish layered over the main BGM start; both are
      * verified command numbers. (Routed to the music slot, so it does not disturb
-     * the SFX channel.) See the TODO in game_update for full per-round progression. */
+     * the SFX channel.) Subsequent rounds re-arm this via round_advance(). */
     snd_play_round();
 }
 
@@ -245,6 +272,35 @@ static void player_respawn(void)
     p->firePrev  = 0;
     p->fireAnim  = 0;
     anim_restart(&p->av, SS_ANIM_PLAYER_RUN);       /* respawn in the run cycle */
+}
+
+/* ---------------------------------------------------------------------------
+ *  round_advance -- start the NEXT round after a round-clear beat.
+ *
+ *  The native engine ships ONE captured wide level (ss_level), so for now each
+ *  round LOOPS that same level with a per-round difficulty ramp (entity.c reads
+ *  g_game.round). Advancing a round: bump the round counter, rebuild the level +
+ *  re-place the player at the start (level_restart -- the same cold-fill the
+ *  first round used), clear + re-seed the entity pool (entity_init re-runs the
+ *  spawn wave; the fresh enemies pick up the new round's difficulty at spawn),
+ *  and replay the round-intro music cue. The caller (game_update) then flips the
+ *  flow back to ALIVE so play resumes at the level start.
+ *
+ *  TODO: distinct per-round level data (capture more ss_level slices from
+ *  levelcap / the arcade). Today every round re-runs the single captured slice;
+ *  multi-level content is a separate task (ROADMAP Phase 5 level data). When more
+ *  slices exist, select the round's level here (e.g. ss_level[(round-1) % N])
+ *  before level_restart streams it in. */
+static void round_advance(void)
+{
+    if (g_game.round < 255) g_game.round++;       /* next round (HUD + difficulty) */
+
+    level_restart();                              /* rebuild level + player start  */
+    entity_init();                                /* clear + re-seed the wave      */
+
+    /* Round-intro music cue (arcade 0x16 then 0x10 at a round start). Re-armed
+     * for the new round, exactly like the round-1 cue in game_init. */
+    snd_play_round();
 }
 
 /* ---------------------------------------------------------------------------
@@ -472,10 +528,13 @@ bool game_update(void)
     g_frameCounter++;          /* headless FPS probe tick (see g_frameCounter) */
 
     /* Publish invulnerability to the entity collision pass: the player can't be
-     * hit while dying or in his respawn i-frames. */
+     * hit while dying, in his respawn i-frames, during the game-over beat, or
+     * during the ROUND CLEAR interlude (a non-combat beat -- the still-marching
+     * enemies must not cost a life on the finish line). */
     g_player_invuln = (u8)(g_game.flow == FLOW_DYING ||
                            g_game.flow == FLOW_RESPAWNING ||
-                           g_game.flow == FLOW_GAME_OVER);
+                           g_game.flow == FLOW_GAME_OVER ||
+                           g_game.flow == FLOW_ROUND_CLEAR);
 
     /* Player control: live only while ALIVE or RESPAWNING (he moves during the
      * i-frames). DYING / GAME_OVER coast on a zero pad (no input). */
@@ -500,7 +559,9 @@ bool game_update(void)
             /* A fresh lethal contact this frame? Consume it: lose a life. The
              * request is only ever raised when not invulnerable (entity.c), so
              * one touch == one life. lives is "lives in hand including current":
-             * losing the LAST one (lives reaches 0) is GAME OVER. */
+             * losing the LAST one (lives reaches 0) is GAME OVER. DEATH takes
+             * priority over a round-clear: a fatal hit on the finish line still
+             * costs the life (so dying mid-level never short-circuits to a clear). */
             if (g_player_dead_request)
             {
                 g_player_dead_request = 0;
@@ -520,6 +581,40 @@ bool game_update(void)
                 {
                     g_game.flow      = FLOW_DYING;
                     g_game.flowTimer = DEATH_FRAMES;
+                }
+                g_game.endDwell = 0;              /* dying cancels any finish dwell */
+                break;
+            }
+
+            /* ROUND-CLEAR detection: the player has reached the LEVEL END. The
+             * camera clamps at maxCam and player_control then re-pins the hero's
+             * world X to the right band edge there, so "at the finish" == the
+             * camera is maxed AND screenX is at (or past) BAND_RIGHT. We require a
+             * short sustained PUSH into that wall (ROUND_CLEAR_DWELL) so only an
+             * intentional run to the end clears the round -- a glancing touch
+             * resets the dwell. Only checked while ALIVE, so a death/respawn beat
+             * can never be mistaken for a clear. */
+            {
+                s16 maxCam = (s16)(LEVEL_W - SCREEN_W);
+                s16 screenX;
+                if (maxCam < 0) maxCam = 0;
+                screenX = (s16)(g_game.player.x - g_game.cameraX);
+
+                if (g_game.cameraX >= maxCam && screenX >= BAND_RIGHT)
+                {
+                    if (++g_game.endDwell >= ROUND_CLEAR_DWELL)
+                    {
+                        /* enter the ROUND CLEAR beat: freeze input, show the
+                         * banner, play the round/clear music, then advance. */
+                        g_game.flow      = FLOW_ROUND_CLEAR;
+                        g_game.flowTimer = ROUND_CLEAR_FRAMES;
+                        g_game.endDwell  = 0;
+                        snd_play_round();         /* round/clear music (0x16+0x10) */
+                    }
+                }
+                else
+                {
+                    g_game.endDwell = 0;          /* not at the finish -> reset    */
                 }
             }
             break;
@@ -543,6 +638,19 @@ bool game_update(void)
                 return TRUE;                      /* leave the loop -> front-end */
             break;
 
+        case FLOW_ROUND_CLEAR:
+            /* "ROUND CLEAR" beat: input is frozen (player_control got a 0 pad
+             * above), the banner + round number show (game_render), the round/
+             * clear music plays. On timeout, advance to the next round (bump the
+             * counter, rebuild the level + re-seed entities at the new difficulty,
+             * re-arm the round music) and resume play at the level start. */
+            if (--g_game.flowTimer == 0)
+            {
+                round_advance();
+                g_game.flow = FLOW_ALIVE;         /* next round begins           */
+            }
+            break;
+
         default:
             break;
     }
@@ -559,12 +667,17 @@ bool game_update(void)
      * is already plumbed end-to-end (front-end -> g_config.bonusLife) -- only the
      * threshold table + the score-cross check remain.
      *
-     * TODO(level-complete / round-progression): the slice runs one endless wide
-     * level. The arcade advances rounds (LET'S GO TENJIKU intro per round -- see
-     * project memory's mode model). Add a level-clear condition (reach the level
-     * end / clear the wave) -> a round-clear beat -> load the next level (a new
-     * ss_level set) + reset the player to the start, looping rounds. The flow
-     * state machine here is the natural place to host a FLOW_ROUND_CLEAR phase. */
+     * ROUND PROGRESSION is implemented above: the FLOW_ALIVE case detects the
+     * level-end finish (camera maxed + the hero pushing the right wall for
+     * ROUND_CLEAR_DWELL frames) -> FLOW_ROUND_CLEAR; that beat shows the ROUND
+     * CLEAR banner + plays the round music, then round_advance() bumps the round,
+     * rebuilds the level, re-seeds entities at the new difficulty, and resumes
+     * ALIVE -- so the game is an ongoing round loop.
+     *
+     * TODO: distinct per-round level data (capture more ss_level slices from
+     * levelcap / the arcade). For now every round re-runs the single captured
+     * ss_level slice with the per-round difficulty ramp; multi-level content is a
+     * separate task (ROADMAP Phase 5 level data). See round_advance(). */
     return FALSE;
 }
 
@@ -688,39 +801,50 @@ void game_render(void)
      * resident columns under the visible window for any cameraX. */
     VDP_setHorizontalScroll(BG_A, (s16)(-g_game.cameraX));
 
-    /* --- FPS readout (top-left corner) ---
-     * SYS_getFPS() returns serviced frames/sec; ~60 = full speed. Drawn on the
-     * unscrolled Plane B (pinned) with the PAL3 font palette; it shows through
-     * the blanked HUD band (level rows 0-4 are transparent on Plane A). */
+    /* --- HUD readout (top row, Plane B) ---
+     * One compact row across the H32 (32-col) display, pinned on the unscrolled
+     * Plane B with the PAL3 font palette; it shows through the blanked HUD band
+     * (level rows 0-4 are transparent on Plane A). Fields, left to right, fit in
+     * 32 columns:  RND nn (0..5) | FPS nn (7..12) | SC nnnnn (14..21) | Lxn (23..25).
+     * SYS_getFPS() returns serviced frames/sec; ~60 = full speed. Labels are
+     * shortened from the older layout to make room for the ROUND field without
+     * overrunning the right edge. */
     {
         char buf[12];
         u32 fps = SYS_getFPS();
+
+        /* ROUND number (HUD headline, left). 2-digit field so a two-digit round
+         * never leaves a stale digit; round is 1-based and bumped per clear. */
+        intToStr((s32)g_game.round, buf, 2);
+        VDP_drawText("RND", 0, 1);
+        VDP_drawText(buf, 4, 1);           /* cols 4..5                         */
+
         if (fps > 99) fps = 99;            /* keep it a tidy 2-digit field     */
         intToStr((s32)fps, buf, 2);
-        VDP_drawText("FPS", 1, 1);
-        VDP_drawText(buf, 5, 1);
+        VDP_drawText("FPS", 7, 1);
+        VDP_drawText(buf, 11, 1);          /* cols 11..12                       */
 
-        /* Score readout (Plane B HUD, like the FPS field). Incremented by
-         * entity defeats / item pickups in entity_update_all. */
+        /* Score readout. Incremented by entity defeats / item pickups in
+         * entity_update_all. */
         intToStr((s32)g_game.score, buf, 5);
-        VDP_drawText("SC", 11, 1);
-        VDP_drawText(buf, 14, 1);          /* 5 digits: cols 14..18             */
+        VDP_drawText("SC", 14, 1);
+        VDP_drawText(buf, 17, 1);          /* 5 digits: cols 17..21             */
 
-        /* --- LIVES readout (HUD, right of SCORE) ---
-         * Compact "Px N" field (P = the hero, "xN" = lives remaining), chosen to
-         * fit the H32 (32-col) display alongside FPS + SCORE without overrunning
-         * the right edge. We redraw it every frame and pad the count to a fixed
-         * width so a shrinking value never leaves a stale digit. (lives is the
-         * count IN HAND incl. the current one, so it reads N while N-1 are in
-         * reserve -- matches the arcade marker count which includes the hero.) */
-        VDP_drawText("LIVES", 21, 1);      /* cols 21..25                        */
+        /* --- LIVES readout (HUD, right) ---
+         * Compact "Lx N" field (L = the hero/lives, "xN" = lives remaining),
+         * chosen to fit the 32-col display alongside ROUND + FPS + SCORE without
+         * overrunning the right edge. We redraw it every frame and pad the count
+         * to a fixed width so a shrinking value never leaves a stale digit.
+         * (lives is the count IN HAND incl. the current one, so it reads N while
+         * N-1 are in reserve -- matches the arcade marker count incl. the hero.) */
         {
             char lv[4];
             lv[0] = 'x';
             lv[1] = (char)('0' + (g_game.lives <= 9 ? g_game.lives : 9));
             lv[2] = ' ';                   /* clear any prior 2nd digit/artifact */
             lv[3] = 0;
-            VDP_drawText(lv, 27, 1);       /* "xN" at cols 27..28               */
+            VDP_drawText("L", 23, 1);      /* col 23                            */
+            VDP_drawText(lv, 24, 1);       /* "xN" at cols 24..25               */
         }
     }
 
@@ -732,6 +856,33 @@ void game_render(void)
      * overlay can never linger into the next life or the next session. */
     if (g_game.flow == FLOW_GAME_OVER)
         VDP_drawText("GAME OVER", 11, 13);   /* H32: (32-9)/2 ~= 11 -> centered  */
+
+    /* --- ROUND CLEAR banner (Plane B, centered) ---
+     * Shown for the whole FLOW_ROUND_CLEAR beat over the (frozen-input) level.
+     * Two centered lines: "ROUND CLEAR" and the round just finished ("ROUND n").
+     * g_game.round is still the cleared round during the beat (round_advance bumps
+     * it only when the beat ends), so the number reads as the round the player
+     * just completed. We blank the two banner rows ONCE on the frame the beat
+     * ends (prevFlow tracks the transition) so the text never lingers into the
+     * next round's play -- the beat -> round_advance path doesn't repaint these
+     * rows, and clearing every frame would be wasted VRAM writes. */
+    {
+        static u8 prevFlow = FLOW_ALIVE;
+        if (g_game.flow == FLOW_ROUND_CLEAR)
+        {
+            char buf[12];
+            VDP_drawText("ROUND CLEAR", 10, 12);  /* H32: (32-11)/2 ~= 10 centered */
+            intToStr((s32)g_game.round, buf, 2);
+            VDP_drawText("ROUND", 13, 14);        /* "ROUND nn" line               */
+            VDP_drawText(buf, 19, 14);
+        }
+        else if (prevFlow == FLOW_ROUND_CLEAR)
+        {
+            VDP_clearText(10, 12, 12);            /* clear "ROUND CLEAR" once       */
+            VDP_clearText(13, 14, 8);             /* clear "ROUND nn" once          */
+        }
+        prevFlow = g_game.flow;
+    }
 }
 
 /* ---------------------------------------------------------------------------

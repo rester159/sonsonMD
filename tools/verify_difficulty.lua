@@ -9,12 +9,15 @@
 -- bits 5-6: difficulty = 3 - ((dsw2>>5)&3) = 3), then read slot-0 enemy vx in
 -- game. vx == -384 proves the hook changed it from the Normal default -256.
 --
--- Symbols: g_config.dsw2 @ 0xFF0001. g_entities @ 0xFF07B4, sizeof(Entity)=20,
---   type @ +1 (1=ET_ENEMY_A), vx @ +10 (s16). g_game.flow @ 0xFF07AB.
+-- Symbols (layout updated 2026-06-17 for round progression; g_entities @ 0xFF0812):
+--   g_config.dsw2 @ 0xFF0001. g_entities @ 0xFF0812, sizeof(Entity)=20,
+--   type @ +1 (1=ET_ENEMY_A), vx @ +10 (s16). g_game.flow @ 0xFF0807.
+-- NOTE: ROUND 1 adds zero per-round speed bonus, so the VeryHard expectation
+-- (-384) is unchanged by the round ramp (the ramp only kicks in from round 2+).
 
 local DSW2  = 0xFF0001
-local ENT0  = 0xFF07B4
-local FLOW  = 0xFF07AB
+local ENT0  = 0xFF0812
+local FLOW  = 0xFF0807
 
 local mem
 local function rds16(a)

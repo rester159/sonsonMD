@@ -143,12 +143,42 @@ static const u16 k_enemy_speed_by_diff[4] =
     (u16)(ENEMY_SPEED * 3 / 2)      /* Very Hard ~1.50 px/frame                 */
 };
 
-/* Resolve the current enemy march speed from g_config.difficulty (clamped). */
+/* ---- Per-ROUND difficulty ramp (Phase 5 round progression) ----------------
+ * Each cleared round nudges the enemies up a notch on TOP of the difficulty
+ * base, so a round loop gets subtly harder. We add ROUND_SPEED_STEP (1/256-px/
+ * frame) per round past round 1 to the march speed, capped at ROUND_SPEED_MAX_
+ * BONUS so even a deep run keeps the chasers under the player's ~2px/frame run
+ * (he can always out-pace a single one). Round 1 adds nothing (the base feel). */
+static u16 round_speed_bonus(void)
+{
+    u16 r = g_game.round;
+    u16 bonus;
+    if (r <= 1) return 0;
+    bonus = (u16)((r - 1) * ROUND_SPEED_STEP);
+    if (bonus > ROUND_SPEED_MAX_BONUS) bonus = ROUND_SPEED_MAX_BONUS;
+    return bonus;
+}
+
+/* Resolve the current enemy march speed from g_config.difficulty (clamped) plus
+ * the per-round ramp bonus. Read at spawn/recycle time so a fresh wave each round
+ * picks up that round's pace. */
 static u16 enemy_march_speed(void)
 {
     u8 d = g_config.difficulty;
     if (d > 3) d = 3;
-    return k_enemy_speed_by_diff[d];
+    return (u16)(k_enemy_speed_by_diff[d] + round_speed_bonus());
+}
+
+/* Thrower fire cadence shortens slightly per round (more frequent lobs = the
+ * thrower's per-round difficulty ramp; its threat is the projectiles, not its
+ * march). 4 frames quicker per round past 1, floored so it never machine-guns. */
+#define THROWER_FIRE_PERIOD_MIN  34         /* never lob faster than this (frames) */
+static u8 thrower_fire_period(void)
+{
+    u16 r = g_game.round;
+    s16 p = (s16)(THROWER_FIRE_PERIOD - (s16)((r > 1 ? r - 1 : 0) * 4));
+    if (p < THROWER_FIRE_PERIOD_MIN) p = THROWER_FIRE_PERIOD_MIN;
+    return (u8)p;
 }
 
 /* The ENEMY now ANIMATES: its tile each frame comes from the baked faithful
@@ -234,7 +264,7 @@ Entity *entity_spawn(u8 type, s16 x, s16 y)
                 e->facing = 1;             /* marches LEFT toward the player       */
                 e->state  = 0;             /* 0 = approach, 1 = fire-stance, 2 dying*/
                 e->vx     = (s16)(-THROWER_SPEED);
-                e->timer  = THROWER_FIRE_PERIOD;    /* first-lob cadence countdown */
+                e->timer  = thrower_fire_period();  /* first-lob cadence (per round) */
                 anim_restart(&e->av, SS_ANIM_THROWER_IDLE);
                 e->tile   = THROWER_TILE;
                 break;
@@ -547,7 +577,7 @@ static void entity_update_one(Entity *e, const Player *p)
                 {
                     /* LOB from the thrower's mid-body toward the player */
                     thrower_lob((s16)(e->x + 4), (s16)(e->y + 4), p);
-                    e->timer     = THROWER_FIRE_PERIOD;   /* next-lob cadence      */
+                    e->timer     = thrower_fire_period(); /* next-lob cadence (round) */
                     e->fireTimer = THROWER_THROW_ANIM;    /* show the throw pose   */
                     anim_restart(&e->av, SS_ANIM_THROWER_THROW);
                 }
@@ -564,7 +594,7 @@ static void entity_update_one(Entity *e, const Player *p)
                 e->x     = (s16)(g_game.cameraX + SCREEN_W + 16);
                 e->xSub  = 0;
                 e->state = 0;
-                e->timer = THROWER_FIRE_PERIOD;
+                e->timer = thrower_fire_period();
             }
             break;
         }

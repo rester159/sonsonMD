@@ -10,15 +10,18 @@
 -- We poke the request rather than navigating the player into an enemy so the
 -- test is deterministic. Snapshots: in-game HUD (lives), GAME OVER overlay, and
 -- the re-entered selector. Symbols (out/symbol.txt, mask e0ff.. -> 0xFF..):
---   g_player_dead_request @ 0xFF0072   g_player_invuln @ 0xFF0073
---   g_game @ 0xFF0794  ->  score +18 (0xFF07A6), lives +22 (0xFF07AA),
---                          flow +23 (0xFF07AB), flowTimer +24 (0xFF07AC,u16)
--- flow enum: 0 ALIVE, 1 DYING, 2 RESPAWNING, 3 GAME_OVER.
+--   g_player_dead_request @ 0xFF07E8   g_player_invuln @ 0xFF07E9
+--   g_game @ 0xFF07EC  ->  score +22 (0xFF0802), lives +26 (0xFF0806),
+--                          flow +27 (0xFF0807), flowTimer +28 (0xFF0808,u16),
+--                          round +30 (0xFF080A), endDwell +31 (0xFF080B).
+-- (Layout updated 2026-06-17: Player grew to 22 bytes (Anim av) + GameState gained
+--  round/endDwell for round progression; verified vs g_entities @ 0xFF0812.)
+-- flow enum: 0 ALIVE, 1 DYING, 2 RESPAWNING, 3 GAME_OVER, 4 ROUND_CLEAR.
 
-local DEAD_REQ = 0xFF0072
-local INVULN   = 0xFF0073
-local LIVES    = 0xFF07AA
-local FLOW     = 0xFF07AB
+local DEAD_REQ = 0xFF07E8
+local INVULN   = 0xFF07E9
+local LIVES    = 0xFF0806
+local FLOW     = 0xFF0807
 
 local mem
 local function rd(a) return mem:read_u8(a) end
@@ -44,7 +47,7 @@ press(F_SEL + 90, "P1 Start", 10)   -- confirm DIP -> game
 
 local F_INGAME = 960       -- by here we are in the game loop (FPS 60)
 
-local flagname = {[0]="ALIVE",[1]="DYING",[2]="RESPAWNING",[3]="GAME_OVER"}
+local flagname = {[0]="ALIVE",[1]="DYING",[2]="RESPAWNING",[3]="GAME_OVER",[4]="ROUND_CLEAR"}
 local fr = 0
 local phase = "boot"
 local snaps = {}
