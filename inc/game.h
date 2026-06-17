@@ -12,18 +12,24 @@
 #define GAME_H
 
 #include <genesis.h>
+#include "ss_level.h"    /* wide baked level: SS_LEVEL_COLS, ss_level_map, tiles */
 
 /* ---- World / level geometry (pixels) -------------------------------------
- * The captured scene is one 32x32-cell screen of BG = 256x256 px. The visible
- * window is 256x224 (H32). We give the "level" a little horizontal slack so the
- * camera has something to follow; the BG plane is 32 cells (256px) wide and
- * wraps, so for Phase 3 we clamp the world to the single painted screen and let
- * the camera scroll within it. LEVEL_W can grow once multi-screen level data is
- * wired (Phase 5). */
+ * Phase 4: the world is the WIDE baked level (ss_level.h), reconstructed from
+ * the arcade's scrolling level-1 (SS_LEVEL_COLS columns x 32 rows of BG cells).
+ * LEVEL_W is the real level pixel width, so the player's perpetual forward creep
+ * scrolls through ~5 screens of authentic level. The Genesis Plane A is 64 cols
+ * wide (max), so for a level wider than 64 cols the BG is drawn as a 64-col
+ * sliding window via COLUMN STREAMING (see game.c). The visible window is
+ * 256x224 (H32). */
 #define SCREEN_W            256
 #define SCREEN_H            224
-#define LEVEL_W             SCREEN_W      /* one painted screen for now        */
+#define LEVEL_W             (SS_LEVEL_COLS * 8)   /* real wide-level pixel width */
 #define LEVEL_H             SCREEN_H
+
+/* Plane A is a 64-col sliding window over the wide level. */
+#define PLANE_COLS          64
+#define PLANE_COL_MASK      (PLANE_COLS - 1)      /* col % 64 via & mask        */
 
 /* Player sprite is 16x16 (SPRITE_SIZE(2,2)), same as every arcade game sprite. */
 #define PLAYER_W            16
@@ -132,6 +138,14 @@ typedef struct
 {
     Player player;
     s16    cameraX;    /* world x at the left edge of the screen (px)        */
+    /* --- column-streaming window state ---
+     * The 64-col Plane A is a ring buffer over the wide level. loadedMinCol /
+     * loadedMaxCol is the inclusive range of LEVEL columns currently resident in
+     * the plane (a level column L lives at plane column L & PLANE_COL_MASK). As
+     * the camera advances, newly-revealed columns are decoded + DMA'd in and the
+     * range slides. -1 = nothing loaded yet (cold start fills the first window). */
+    s16    loadedMinCol;
+    s16    loadedMaxCol;
 } GameState;
 
 extern GameState g_game;

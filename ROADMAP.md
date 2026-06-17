@@ -45,5 +45,20 @@ Side-by-side vs arcade (look + feel), tuning, and the headline: sustained **GF ~
 
 ---
 
-## The hard problem to watch: palette fitting
-The arcade's indirect palette allows far more simultaneous color combinations than the Genesis's 4 palettes × 16 colors. The transliteration port hides this with a runtime tile cache. A native game must **pre-assign** palettes. Phase 1 must analyze real per-scene color-bank usage (the port's caches + MAME palette traces are evidence) and either fit within 4×16 or swap palettes per region/line. If a scene genuinely needs >64 colors, we approximate to the nearest faithful set. This is the main risk to "looks identical."
+### Phase 8 — Presentation & front-end wrapper (owner directive, 2026-06-17)
+The native build must ship the **full presentation**, ported from the existing verified front-end (already mostly native SGDK C — this is reuse + re-wiring, not invention). Boot flow:
+
+**SEGA splash → CAPCOM logo intro → Arcade/Home selector ("PORTED BY RESTER159 2026") → [ Arcade: DIP-switch config → game | Home: title menu + options + credits → game ]**
+
+- **SEGA opening** — reuse `../sonson/port/src/sega_logo.{c,h}` + `sega_splash.c` (Sonic-1 SEGA screen; `sega_logo_shinobi.*` = the Shinobi-logo splash v7 variant). Refs: sonic1-sega-splash-extraction, shinobi-sega-intro-extraction.
+- **CAPCOM opening** — reuse `../sonson/port/src/capcom_logo.{c,h}` + `capcom_splash.c` (source kit `../../_capcom logo intro/`, register-exact FM jingle; gotcha: 68k→YM needs the Z80 bus held). Ref: capcom-intro-extraction.
+- **Arcade/Home selector + RESTER credit** — reuse `../sonson/port/src/home.c` + `home_title_data.c` + `../sonson/port/FRONTEND_SPEC.md`. Ref: sonson-home-frontend.
+- **Arcade mode** — expose the arcade DIP switches (lives / difficulty / bonus-life / coinage…) as a config screen; the native engine reads them as game parameters.
+- **Home mode** — title menu + options + credits (the home front-end).
+- **Wiring** — the native engine exposes a config struct (lives, difficulty, …) the DIP/options screens set; `main.c` runs the boot-flow state machine before entering the game loop. Port the *presentation* verbatim; re-point any "start the game" hook from the old transliteration loop to the native engine.
+- **Verify:** boot → SEGA → CAPCOM → selector → both modes reach the native game; RESTER credit present; DIPs/options change params; all at 60fps.
+
+---
+
+## Palette fitting — SOLVED (Phase 1; see tools/PIPELINE_SPEC.md)
+Resolved benignly: SonSon's indirect palette is a *remap within two fixed 16-color sets* — chars use hw colors 0-15 (→ PAL0), sprites 16-31 (→ PAL1). Two Genesis palettes cover all 96 banks; **PAL2/PAL3 stay free for the HUD + front-end**. No per-level swaps, no approximation beyond the unavoidable 4→3-bit channel quant. The indirection's real cost is VRAM tiles (one baked tile per used (code,bank)) — and the working set fits (~29% of VRAM).

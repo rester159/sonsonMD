@@ -24,7 +24,9 @@ int main(bool hardReset)
     (void)hardReset;
 
     VDP_setScreenWidth256();              /* SonSon is 256x224 (H32) */
-    VDP_setPlaneSize(32, 32, TRUE);
+    /* Plane A = 64x32: the wide level scrolls through it as a 64-col sliding
+     * window (column streaming -- see game.c). 64 is the max VDP plane width. */
+    VDP_setPlaneSize(64, 32, TRUE);
 
     game_init();
 

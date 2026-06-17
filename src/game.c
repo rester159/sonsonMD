@@ -1,19 +1,24 @@
 #include <genesis.h>
 #include "game.h"
 #include "ss_gfx.h"
+#include "ss_level.h"
 
 /* ===========================================================================
- *  SON SON  --  NATIVE engine, Phase 3 skeleton (game loop + player + camera)
+ *  SON SON  --  NATIVE engine, Phase 4 (wide SCROLLING level)
  * ===========================================================================
  *  CLEAN NATIVE C. Real structs + locals, world coords in pixels, direct VDP
- *  writes. This is explicitly NOT a transliteration of the arcade 6809 -- there
- *  is no source-CPU RAM array, no per-frame palette/tile re-scan. The Phase-2
- *  baked scene (ss_gfx.c: fixed PAL0/PAL1 palettes, tiles at VRAM base 0, a
- *  32x32 nametable, 24 scene sprites) is consumed read-only; we just drive a
- *  player around it and scroll the camera, at full 60fps.
+ *  writes. NOT a transliteration of the arcade 6809 -- no source-CPU RAM array,
+ *  no per-frame palette/tile re-scan.
  *
- *  Phase 3b will replace the placeholder movement with the faithful arcade
- *  run-along-lanes + climb-between-lanes mechanic (see the TODO in game_update).
+ *  Phase 4 replaces the single static screen with a WIDE baked level
+ *  (ss_level.c: SS_LEVEL_COLS x 32 BG cells, ~5 screens, baked from the arcade's
+ *  scrolling level-1). The 64-col Genesis Plane A is driven as a COLUMN-STREAMED
+ *  sliding window over that level (ring buffer; see stream_column / bg_stream):
+ *  as the player's perpetual forward creep advances the camera, newly-revealed
+ *  columns are decoded + DMA'd in at the seam (1 column/frame, tear-free) and
+ *  the BG hardware-scrolls -- so the forward run travels through the whole level
+ *  at full 60fps. The player keeps its screen-band pin and a baked ss_gfx sprite
+ *  tile; the FPS readout stays on the unscrolled Plane B.
  * =========================================================================== */
 
 GameState g_game;
@@ -26,9 +31,54 @@ GameState g_game;
 
 /* FPS-readout text palette. The SGDK system font lives at a high VRAM tile
  * index (TILE_FONT_INDEX ~= 1376), so it never collides with the scene tiles
- * at 0..134. We give the font its own palette (PAL3) so the readable ramp does
- * not fight the arcade art palettes (PAL0 chars / PAL1 sprites). */
+ * at 0..134 or the level tiles at 135..(135+SS_LEVEL_TILE_COUNT). We give the
+ * font its own palette (PAL3) so the readable ramp does not fight the arcade
+ * art palettes (PAL0 chars / PAL1 sprites). */
 #define FPS_PAL       PAL3
+
+/* ---------------------------------------------------------------------------
+ *  Column streaming -- write ONE wide-level column into the 64-col Plane A.
+ *
+ *  The wide level (ss_level_map, ROW-MAJOR, SS_LEVEL_COLS wide) is shown through
+ *  the 64-col plane as a ring buffer: level column L maps to plane column
+ *  (L & PLANE_COL_MASK). To reveal a column we copy its 32 nametable words
+ *  (one per BG row, strided by SS_LEVEL_COLS in the source) into a contiguous
+ *  scratch buffer and DMA it down the plane column (VRAM stride = plane width
+ *  = 64 words). Off-level columns (L<0 or L>=SS_LEVEL_COLS) are written blank
+ *  so the seam never shows stale ring data.
+ *
+ *  DMA_QUEUE (not immediate): queued transfers are flushed inside V-blank by
+ *  SYS_doVBlankProcess, so a column written THIS frame lands before the next
+ *  active display -- no tearing at the scroll seam (same discipline the sibling
+ *  port uses for its scroll-seam column). One strided DMA per revealed column.
+ * ------------------------------------------------------------------------- */
+static void stream_column(s16 levelCol, TransferMethod tm)
+{
+    static u16 colbuf[SS_LEVEL_ROWS];          /* one plane column (32 words)  */
+    u16 planeCol = (u16)(levelCol & PLANE_COL_MASK);
+    u16 row;
+
+    if (levelCol < 0 || levelCol >= SS_LEVEL_COLS)
+    {
+        for (row = 0; row < SS_LEVEL_ROWS; row++) colbuf[row] = 0;   /* blank   */
+    }
+    else
+    {
+        const u16 *src = &ss_level_map[(u16)levelCol];     /* row 0 of this col */
+        for (row = 0; row < SS_LEVEL_ROWS; row++)
+            colbuf[row] = src[row * SS_LEVEL_COLS];        /* stride a whole row */
+    }
+
+    /* Strided VRAM write: 32 words down one plane column. VDP_setTileMapDataColumnFast
+     * (plane, data, column, y, h, tm) takes our pre-arranged contiguous buffer and
+     * writes plane column `planeCol`, rows 0..31. The streaming caller uses
+     * DMA_QUEUE (flushed in the next V-blank -> tear-free at the scroll seam);
+     * the cold-fill uses immediate DMA so the whole first window is resident
+     * before the loop starts.  NOTE colbuf is reused per call: with DMA_QUEUE the
+     * transfer reads colbuf at flush time, so we issue at most ONE queued column
+     * per frame (the camera advances <1 tile/frame), keeping the buffer valid. */
+    VDP_setTileMapDataColumnFast(BG_A, colbuf, planeCol, 0, SS_LEVEL_ROWS, tm);
+}
 
 /* ---------------------------------------------------------------------------
  *  game_init -- one-time scene + player setup.
@@ -56,16 +106,34 @@ void game_init(void)
         VDP_setTextPalette(FPS_PAL);
     }
 
-    /* Baked scene tiles -> VRAM at the documented absolute base (0). The
-     * nametable words + sprite tile indices below are absolute (include base). */
-    VDP_loadTileData(ss_scene_tiles, SS_SCENE_TILE_BASE, SS_SCENE_TILE_COUNT, DMA);
+    /* FPS readout goes on Plane B. The wide scrolling level lives on Plane A;
+     * Plane B is otherwise unused and we never scroll it (its H/V scroll stays
+     * 0), so text drawn there stays pinned at the top while the level scrolls
+     * underneath. Plane B priority/transparency: its blank cells are transparent
+     * so the level shows through everywhere except the readout glyphs. */
+    VDP_setTextPlane(BG_B);
+    VDP_clearTextArea(0, 0, 40, 4);
 
-    /* Paint the captured 32x32 arcade tilemap straight into Plane A (the BG). */
+    /* VRAM tile layout (no overlap, all below the SGDK font/sprite-engine tiles
+     * up near ~1376):
+     *   scene tiles  [0 .. SS_SCENE_TILE_COUNT)            -- only the player
+     *                                                         sprite is used now
+     *   level tiles  [SS_LEVEL_TILE_BASE .. +SS_LEVEL_TILE_COUNT)  (base = 135)
+     * The scene's static BG is dropped; the WIDE level replaces it. We still load
+     * the scene tiles because the player sprite borrows ss_scene_sprites[0].tile. */
+    VDP_loadTileData(ss_scene_tiles, SS_SCENE_TILE_BASE, SS_SCENE_TILE_COUNT, DMA);
+    VDP_loadTileData(ss_level_tiles, SS_LEVEL_TILE_BASE, SS_LEVEL_TILE_COUNT, DMA);
+
+    /* Cold-fill the 64-col Plane A window with the first 64 level columns
+     * (columns 0..63 of the wide level). game_render streams new columns in as
+     * the camera advances past each tile boundary. */
     {
-        u16 row;
-        for (row = 0; row < 32; row++)
-            VDP_setTileMapDataRow(BG_A, &ss_scene_nametable[row * 32], row, 0, 32, DMA);
+        s16 col;
+        for (col = 0; col < PLANE_COLS; col++)
+            stream_column(col, DMA);           /* immediate: resident before loop */
     }
+    g_game.loadedMinCol = 0;
+    g_game.loadedMaxCol = PLANE_COLS - 1;
 
     /* Spawn the player standing on the bottom lane (lane 0), pinned at the left
      * edge of the arcade screen band -- the SonSon hero starts low-left and runs
@@ -218,24 +286,61 @@ void game_update(void)
 }
 
 /* ---------------------------------------------------------------------------
- *  game_render -- direct hardware SAT build + scroll + FPS readout.
+ *  bg_stream -- keep the wide level resident in the 64-col Plane A window.
  *
- *  Mirrors the verified port's present_sprites direct-SAT layout exactly:
+ *  The 64-col plane is a ring buffer over the SS_LEVEL_COLS-wide level: level
+ *  column L lives at plane column L & PLANE_COL_MASK. We must keep every column
+ *  the visible 256px window can show resident. The window shows level columns
+ *  [cameraX/8 .. cameraX/8 + 32]; the 64-wide plane gives 32 cols of slack, so
+ *  we extend the loaded range to keep a healthy lead column ahead of the right
+ *  edge. As the camera advances past a tile boundary we stream the newly-needed
+ *  column(s) -- typically 0 or 1 per frame (the forward creep is < 1 tile/frame),
+ *  so streaming touches just the new seam column, never a full repaint -> 60fps.
+ *
+ *  SEAM SAFETY: a freshly-streamed level column L overwrites plane column
+ *  L & 63, which previously held level column L-64 -- already 32+ cols off the
+ *  LEFT of the visible window, so the overwrite is never visible. New columns
+ *  are queued (DMA_QUEUE) and flushed in V-blank before they scroll into view.
+ * ------------------------------------------------------------------------- */
+static void bg_stream(void)
+{
+    /* Lead column = rightmost level column we want resident: the visible right
+     * edge (cameraX + SCREEN_W)/8 plus a 1-col lead so it's down before shown. */
+    s16 leadCol = (s16)((g_game.cameraX + SCREEN_W) / 8 + 1);
+    /* Don't run past the ring's capacity behind the current left edge. */
+    s16 firstVisCol = (s16)(g_game.cameraX / 8);
+
+    /* Extend forward: stream any columns between loadedMaxCol+1 .. leadCol.
+     * Bounded by PLANE_COLS new columns max (cold safety); steady state = 0/1. */
+    while (g_game.loadedMaxCol < leadCol)
+    {
+        s16 newCol = (s16)(g_game.loadedMaxCol + 1);
+        stream_column(newCol, DMA_QUEUE);
+        g_game.loadedMaxCol = newCol;
+        /* keep the resident span within one plane width (64 cols) */
+        if (g_game.loadedMaxCol - g_game.loadedMinCol >= PLANE_COLS)
+            g_game.loadedMinCol = (s16)(g_game.loadedMaxCol - PLANE_COLS + 1);
+        /* never strand the visible left edge (paranoia; leadCol math keeps it) */
+        if (firstVisCol < g_game.loadedMinCol)
+            g_game.loadedMinCol = firstVisCol;
+    }
+}
+
+/* ---------------------------------------------------------------------------
+ *  game_render -- column-stream the BG + direct SAT + scroll + FPS readout.
+ *
+ *  The player SAT uses the verified port's direct-SAT word layout:
  *    word0 = y + 0x80           (sprite Y, +0x80 SAT bias)
  *    word1 = SPRITE_SIZE(2,2)<<8 | link
  *    word2 = TILE_ATTR_FULL(PAL1, prio, flipV, flipH, tile)
  *    word3 = x + 0x80           (sprite X, +0x80 SAT bias)
- *  We re-emit the static scene sprites (so the scene still populates) and add
- *  the player as the front-most sprite, then DMA the whole SAT in one transfer.
+ *  The wide level replaces the old static scene BG, so we no longer re-emit the
+ *  captured scene sprites; we keep the player (its tile borrowed from the baked
+ *  ss_gfx sprite set) as the single front sprite.
  * ------------------------------------------------------------------------- */
 void game_render(void)
 {
-    /* SAT: player (slot 0) + the 24 baked scene sprites. */
-    static u16 sat[(1 + SS_SCENE_SPRITE_COUNT) * 4];
-    u16 *sb = sat;
-    u16 link = 0;
-    u16 i;
-
+    static u16 sat[1 * 4];                      /* just the player for now      */
     const Player *p = &g_game.player;
 
     /* The player is drawn in SCREEN space: world position minus the camera.
@@ -244,39 +349,29 @@ void game_render(void)
     s16 px = (s16)(p->x - g_game.cameraX);
     s16 py = p->y;
 
-    /* --- player sprite (front of the link chain) --- */
-    sb[0] = (u16)((0x80 + py) & 0x3FF);
-    sb[1] = (u16)((SPRITE_SIZE(2, 2) << 8) | (++link));
-    sb[2] = (u16)TILE_ATTR_FULL(PAL1, 0, 0, p->facing, p->tile);
-    sb[3] = (u16)((0x80 + px) & 0x1FF);
-    sb += 4;
+    /* Stream any newly-revealed level columns into the plane window FIRST, so
+     * the queued column DMAs flush in the same V-blank as the scroll update. */
+    bg_stream();
 
-    /* --- re-emit the baked scene sprites so the captured scene still shows.
-     * They are static world objects, so they scroll with the camera too. --- */
-    for (i = 0; i < SS_SCENE_SPRITE_COUNT; i++)
-    {
-        const SSSprite *s = &ss_scene_sprites[i];
-        s16 sx = (s16)(s->x - g_game.cameraX);
-        sb[0] = (u16)((0x80 + s->y) & 0x3FF);
-        sb[1] = (u16)((SPRITE_SIZE(2, 2) << 8) | (++link));
-        sb[2] = (u16)TILE_ATTR_FULL(PAL1, 0, s->flipV, s->flipH, s->tile);
-        sb[3] = (u16)((0x80 + sx) & 0x1FF);
-        sb += 4;
-    }
+    /* --- player sprite (single-entry link chain) --- */
+    sat[0] = (u16)((0x80 + py) & 0x3FF);
+    sat[1] = (u16)((SPRITE_SIZE(2, 2) << 8) | 0);    /* link 0 = chain end       */
+    sat[2] = (u16)TILE_ATTR_FULL(PAL1, 0, 0, p->facing, p->tile);
+    sat[3] = (u16)((0x80 + px) & 0x1FF);
 
-    /* Terminate the link chain (last sprite links to 0). */
-    sat[(1 + SS_SCENE_SPRITE_COUNT - 1) * 4 + 1] &= 0xFF00;
+    /* One DMA of the SAT to the hardware sprite list. */
+    DMA_queueDma(DMA_VRAM, sat, VDP_getSpriteListAddress(), 1 * 4, 2);
 
-    /* One DMA of the whole SAT to the hardware sprite list. */
-    DMA_queueDma(DMA_VRAM, sat, VDP_getSpriteListAddress(),
-                 (1 + SS_SCENE_SPRITE_COUNT) * 4, 2);
-
-    /* BG horizontal scroll: shift Plane A left by the camera. */
+    /* BG horizontal scroll: shift Plane A left by the camera. The 64-col plane
+     * is 512px wide and the HScroll register wraps mod 512, which matches the
+     * ring layout (level col L at plane col L&63) -- so -cameraX aligns the
+     * resident columns under the visible window for any cameraX. */
     VDP_setHorizontalScroll(BG_A, (s16)(-g_game.cameraX));
 
     /* --- FPS readout (top-left corner) ---
      * SYS_getFPS() returns serviced frames/sec; ~60 = full speed. Drawn on the
-     * BG plane with the PAL3 font palette set in game_init. */
+     * unscrolled Plane B (pinned) with the PAL3 font palette; it shows through
+     * the blanked HUD band (level rows 0-4 are transparent on Plane A). */
     {
         char buf[8];
         u32 fps = SYS_getFPS();
