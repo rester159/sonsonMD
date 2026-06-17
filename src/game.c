@@ -1,5 +1,6 @@
 #include <genesis.h>
 #include "game.h"
+#include "entity.h"
 #include "ss_gfx.h"
 #include "ss_level.h"
 
@@ -22,6 +23,13 @@
  * =========================================================================== */
 
 GameState g_game;
+
+/* Free-running game-loop tick: incremented once per game_update(). Used by the
+ * headless FPS probe (tools/entity_fps.lua) to measure the actual game-frame
+ * rate -- if the loop holds 60fps this advances at 60Hz; any slowdown shows as
+ * a lower rate (the loop runs less often than the 60Hz V-blank). Harmless in
+ * the shipped game (a single counter). */
+volatile u32 g_frameCounter = 0;
 
 /* Mode chosen at the front-end selector (set by main.c after selector_run).
  * Defaults to MODE_ARCADE (0). The game can read this for mode-specific
@@ -170,10 +178,15 @@ void game_init(void)
         p->facing    = FACING_RIGHT;
         p->anim      = 0;
         p->animTimer = PLAYER_ANIM_PERIOD;
+        p->firePrev  = 0;
         p->tile      = PLAYER_TILE;
     }
 
     g_game.cameraX = 0;
+    g_game.score   = 0;
+
+    /* Spawn the Phase-4 entity wave (ground enemies + a couple of fruit). */
+    entity_init();
 }
 
 /* ---------------------------------------------------------------------------
@@ -195,6 +208,8 @@ void game_update(void)
 {
     Player *p = &g_game.player;
     u16 pad = JOY_readJoypad(JOY_1);
+
+    g_frameCounter++;          /* headless FPS probe tick (see g_frameCounter) */
 
     /* ----- HORIZONTAL: run = commanded velocity + the constant forward drift.
      * Arcade ($A9C5/$A9A7): worldX-fraction gets += $008D every frame (perpetual
@@ -303,6 +318,24 @@ void game_update(void)
     /* TODO: bake + swap player anim frames (walk N-frame + climb cycle). The
      * sprite cell is currently the single baked PLAYER_TILE; p->anim/p->climbing
      * already carry the state to select the right frame once tiles exist. */
+
+    /* ----- FIRE: spawn a player shot on the press edge (arcade B1F3 -> B25A).
+     * SonSon fires with B/C. The arcade gates fire on a "fire-once" flag so a
+     * held button emits a single shot per press; we reproduce that with a
+     * press-edge debounce (firePrev). The shot leaves from the player's
+     * mid-body in the current facing direction (entity_player_fire). ----- */
+    {
+        u8 fire = (u8)((pad & (BUTTON_B | BUTTON_C)) != 0);
+        if (fire && !p->firePrev)
+        {
+            /* mid-body launch point (sprite is 16x16) */
+            entity_player_fire((s16)(p->x + 4), (s16)(p->y + 4), p->facing);
+        }
+        p->firePrev = fire;
+    }
+
+    /* ----- ENTITIES: AI + motion + collision + scoring for the whole pool. */
+    entity_update_all();
 }
 
 /* ---------------------------------------------------------------------------
@@ -360,8 +393,13 @@ static void bg_stream(void)
  * ------------------------------------------------------------------------- */
 void game_render(void)
 {
-    static u16 sat[1 * 4];                      /* just the player for now      */
+    /* SAT for the player (slot 0) + the entity pool (slots 1..). Sized for the
+     * player plus ENTITY_SAT_MAX entities; well under the 80-sprite hardware
+     * ceiling. */
+    static u16 sat[(1 + ENTITY_SAT_MAX) * 4];
     const Player *p = &g_game.player;
+    u16 nEnt;
+    u16 totalSprites;
 
     /* The player is drawn in SCREEN space: world position minus the camera.
      * (The BG scrolls via VDP_setHorizontalScroll below; sprites are not
@@ -373,14 +411,34 @@ void game_render(void)
      * the queued column DMAs flush in the same V-blank as the scroll update. */
     bg_stream();
 
-    /* --- player sprite (single-entry link chain) --- */
-    sat[0] = (u16)((0x80 + py) & 0x3FF);
-    sat[1] = (u16)((SPRITE_SIZE(2, 2) << 8) | 0);    /* link 0 = chain end       */
-    sat[2] = (u16)TILE_ATTR_FULL(PAL1, 0, 0, p->facing, p->tile);
-    sat[3] = (u16)((0x80 + px) & 0x1FF);
+    /* --- entity pool first: append visible entities at slots 1.. and get the
+     * count back so we can chain the player's link to them (or terminate). --- */
+    nEnt = entity_render_all(sat, 1);
 
-    /* One DMA of the SAT to the hardware sprite list. */
-    DMA_queueDma(DMA_VRAM, sat, VDP_getSpriteListAddress(), 1 * 4, 2);
+    /* --- player sprite at slot 0 ---
+     * Hurt-flash: while g_player_hurt is up, blink the player by skipping the
+     * sprite every other frame (a real life-loss/respawn is game-flow -- TODO).
+     * When blinked-off we still emit a (link-only) entry by parking it off-screen
+     * so the sprite chain stays intact. */
+    if (g_player_hurt && (g_player_hurt & 2))
+    {
+        sat[0] = (u16)((0x80 + 240) & 0x3FF);        /* parked off-screen (blink) */
+        sat[3] = (u16)0x80;
+    }
+    else
+    {
+        sat[0] = (u16)((0x80 + py) & 0x3FF);
+        sat[3] = (u16)((0x80 + px) & 0x1FF);
+    }
+    /* link the player to the first entity sprite (slot 1) if any were emitted,
+     * else terminate the chain at the player. */
+    sat[1] = (u16)((SPRITE_SIZE(2, 2) << 8) | (nEnt ? 1 : 0));
+    sat[2] = (u16)TILE_ATTR_FULL(PAL1, 0, 0, p->facing, p->tile);
+
+    /* One DMA of the whole SAT (player + entities) to the hardware sprite list. */
+    totalSprites = (u16)(1 + nEnt);
+    DMA_queueDma(DMA_VRAM, sat, VDP_getSpriteListAddress(),
+                 (u16)(totalSprites * 4), 2);
 
     /* BG horizontal scroll: shift Plane A left by the camera. The 64-col plane
      * is 512px wide and the HScroll register wraps mod 512, which matches the
@@ -393,11 +451,17 @@ void game_render(void)
      * unscrolled Plane B (pinned) with the PAL3 font palette; it shows through
      * the blanked HUD band (level rows 0-4 are transparent on Plane A). */
     {
-        char buf[8];
+        char buf[12];
         u32 fps = SYS_getFPS();
         if (fps > 99) fps = 99;            /* keep it a tidy 2-digit field     */
         intToStr((s32)fps, buf, 2);
         VDP_drawText("FPS", 1, 1);
         VDP_drawText(buf, 5, 1);
+
+        /* Score readout (Plane B HUD, like the FPS field). Incremented by
+         * entity defeats / item pickups in entity_update_all. */
+        intToStr((s32)g_game.score, buf, 6);
+        VDP_drawText("SCORE", 14, 1);
+        VDP_drawText(buf, 20, 1);
     }
 }

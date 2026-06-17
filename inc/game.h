@@ -127,6 +127,7 @@ typedef struct
     u8  facing;        /* FACING_LEFT / FACING_RIGHT -> SAT flipH            */
     u8  anim;          /* walk/climb-cycle frame index (drives future frames)*/
     u8  animTimer;     /* counts down to the next anim step                  */
+    u8  firePrev;      /* fire button state last frame (press-edge debounce) */
     u16 tile;          /* absolute VRAM base tile (SPRITE_SIZE(2,2))        */
 } Player;
 
@@ -137,6 +138,7 @@ typedef struct
 typedef struct
 {
     Player player;
+    u32    score;      /* running score (enemy defeats + item pickups)       */
     s16    cameraX;    /* world x at the left edge of the screen (px)        */
     /* --- column-streaming window state ---
      * The 64-col Plane A is a ring buffer over the wide level. loadedMinCol /
