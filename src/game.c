@@ -164,7 +164,7 @@ static void level_restart(void)
     /* Select the level for the CURRENT round (loads its tiles at base 135, sets
      * g_curLevel + g_levelW). game_init sets round=1 first; round_advance bumps it
      * before calling here -- so each round shows its own captured level, cycling
-     * through ss_levels[] (round 1->level1, 2->level2, 3->level3, 4->level1...). */
+     * through ss_levels[] (round 1->level1 ... round 8->level8, then round 9->level1). */
     level_select(g_game.round);
 
     /* Cold-fill the 64-col Plane A window with the first 64 level columns
@@ -337,10 +337,12 @@ static void player_respawn(void)
  *  round-intro music cue. The caller (game_update) then flips the flow back to
  *  ALIVE so play resumes at the (new) level start.
  *
- *  TODO: capture the remaining arcade levels (8 exist; we ship 3) and the per-
- *  level vertical "climb to advance" end sections -- see ss_level_cap2.lua. With
- *  more captures, just bake them into ss_levels[] (gen_level.py --multi); the
- *  cycling here picks them up automatically. */
+ *  All 8 arcade levels are now captured + baked into ss_levels[] (SS_LEVEL_COUNT
+ *  = 8; gen_level.py --multi level1..level8 from real md=02 gameplay). Rounds
+ *  cycle round1->level1 ... round8->level8, then wrap. The only per-round VRAM
+ *  resident set is the active level's tiles (max 91, base 135) -- see level_select.
+ *  TODO(remaining): the per-level vertical "climb to advance" end sections (the
+ *  arcade's tower finish) are not yet captured. */
 static void round_advance(void)
 {
     if (g_game.round < 255) g_game.round++;       /* next round (HUD + difficulty) */
@@ -724,10 +726,10 @@ bool game_update(void)
      * rebuilds the level, re-seeds entities at the new difficulty, and resumes
      * ALIVE -- so the game is an ongoing round loop.
      *
-     * TODO: distinct per-round level data (capture more ss_level slices from
-     * levelcap / the arcade). For now every round re-runs the single captured
-     * ss_level slice with the per-round difficulty ramp; multi-level content is a
-     * separate task (ROADMAP Phase 5 level data). See round_advance(). */
+     * Distinct per-round level data is DONE: all 8 arcade levels are captured +
+     * baked into ss_levels[] (SS_LEVEL_COUNT = 8) and round_advance() cycles them
+     * (round1->level1 ... round8->level8, then wrap) with the per-round difficulty
+     * ramp on top. See round_advance() / level_select(). */
     return FALSE;
 }
 
