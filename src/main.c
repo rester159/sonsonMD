@@ -21,13 +21,20 @@
  *  CAPCOM/SEGA cards are laid out for 40 columns), drawing its own tiles +
  *  palette and tearing the VDP/sound hardware back to black on return. Only
  *  AFTER the front-end do we switch to the game's H32 (256px) video mode and
- *  call game_init(), which fully re-initialises the palettes / tiles / planes
+ *  call game_run(), which fully re-initialises the palettes / tiles / planes
  *  -- so the front-end and the game never need to share VRAM or palette state.
  *
- *  The game itself is unchanged from Phase 3/4: a clean native loop --
- *  read input + simulate (game_update), build the SAT + scroll + FPS readout
- *  (game_render), then hand the frame to SGDK (SYS_doVBlankProcess) which
- *  flushes the DMA queue and waits for V-blank (the single 60Hz timebase).
+ *  RE-ENTRY (Phase 8c game-flow): the game now has STAKES -- lose all your lives
+ *  and it's GAME OVER, after which the boot flow returns to the SELECTOR for a
+ *  fresh session (selector -> play -> die -> game-over -> selector). This mirrors
+ *  the arcade's game-over unwind back to attract (project memory: the front-end
+ *  "re-entry for(;;) loop in main()"). So the boot is split:
+ *    - SEGA + CAPCOM run ONCE (boot-only branding), then
+ *    - a for(;;) SESSION loop: selector -> per-mode config -> game_run().
+ *  game_run() returns when the game is over; the loop restores the front-end's
+ *  H40 video mode and falls back to the selector. The mode + g_config are
+ *  re-chosen from the selector + its config screen on every re-entry, so the
+ *  player can switch ARCADE/HOME and re-pick LIVES/difficulty between sessions.
  * =========================================================================== */
 
 int main(bool hardReset)
@@ -47,34 +54,47 @@ int main(bool hardReset)
      * 6-button TH-detect phantom presses at power-on. */
     JOY_init();
 
-    /* ---- BOOT FRONT-END (default H40) ---- */
+    /* ---- BOOT BRANDING (ONCE, default H40) ----
+     * SEGA + CAPCOM are the power-on splashes; they play a single time and are
+     * NOT part of the re-entry loop (a game-over returns to the selector, not
+     * the logos). */
     sega_splash_run();                    /* SEGA opening (Sonic-1 + chant)    */
     capcom_splash_run();                  /* CAPCOM logo + register-exact FM   */
-    g_mode = selector_run();              /* ARCADE / HOME + RESTER credit     */
 
-    /* Phase 8b: per-mode config screen. ARCADE shows the authentic arcade DIP
-     * bank (Coinage/Lives/Bonus/Difficulty/Demo/Flip/...); HOME shows the
-     * console-style options subset (Lives/Bonus/Difficulty/Demo Sounds). Both
-     * are blocking, run in the front-end H40 text mode, write g_config (game.h),
-     * and tear back to a blank screen before the game video mode is set up. The
-     * native engine reads g_config (lives/difficulty/...) as game-flow lands. */
-    if (g_mode == MODE_ARCADE) dip_screen_run();   /* arcade DIP / service     */
-    else                       options_run();      /* home console options     */
-
-    /* ---- GAME VIDEO MODE (after the front-end) ----
-     * SonSon is 256x224 (H32). Plane A = 64x32: the wide level scrolls through
-     * it as a 64-col sliding window (column streaming -- see game.c). 64 is the
-     * max VDP plane width. (The front-end ran in H40; switch now.) */
-    VDP_setScreenWidth256();
-    VDP_setPlaneSize(64, 32, TRUE);
-
-    game_init();                          /* re-inits palettes/tiles/planes    */
-
+    /* ---- SESSION LOOP: selector -> config -> play -> (game over) -> selector */
     while (TRUE)
     {
-        game_update();
-        game_render();
-        SYS_doVBlankProcess();
+        /* Restore the front-end's video mode every iteration. The first pass
+         * inherits SGDK's power-on default (H40, plane 64x32), but a returning
+         * pass comes back from the game's H32 / 64x32 column-streamed mode, so
+         * re-assert H40 + the default plane so the selector + config screens
+         * (laid out for 40 columns) render exactly as on the first boot. */
+        VDP_setScreenWidth320();
+        VDP_setPlaneSize(64, 32, TRUE);
+
+        g_mode = selector_run();          /* ARCADE / HOME + RESTER credit     */
+
+        /* Phase 8b: per-mode config screen. ARCADE shows the authentic arcade
+         * DIP bank (Coinage/Lives/Bonus/Difficulty/Demo/Flip/...); HOME shows
+         * the console-style options subset (Lives/Bonus/Difficulty/Demo Sounds).
+         * Both are blocking, run in the front-end H40 text mode, write g_config
+         * (game.h), and tear back to a blank screen before the game video mode.
+         * The engine reads g_config (lives/difficulty/...) in game_init. */
+        if (g_mode == MODE_ARCADE) dip_screen_run();   /* arcade DIP / service */
+        else                       options_run();      /* home console options */
+
+        /* ---- GAME VIDEO MODE (after the front-end) ----
+         * SonSon is 256x224 (H32). Plane A = 64x32: the wide level scrolls
+         * through it as a 64-col sliding window (column streaming -- see game.c).
+         * 64 is the max VDP plane width. (The front-end ran in H40; switch now.) */
+        VDP_setScreenWidth256();
+        VDP_setPlaneSize(64, 32, TRUE);
+
+        /* Play one session. game_run() does game_init() (re-inits palettes /
+         * tiles / planes + reads g_config.lives) then runs the update/render/
+         * V-blank loop, returning here when the game is over -> back to the
+         * selector for the next session. */
+        game_run();
     }
     return 0;
 }

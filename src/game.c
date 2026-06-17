@@ -185,12 +185,46 @@ void game_init(void)
     g_game.cameraX = 0;
     g_game.score   = 0;
 
+    /* Life economy: the DIP/options LIVES setting now takes effect. g_config.lives
+     * is the arcade DSW2 0x03 field decoded by sync_from_dsw() (3 / 4 / 5 / 7);
+     * the front-end wrote it before game_init. We treat it as the STARTING life
+     * count (lives in hand, the current one included). Start ALIVE, no flow. */
+    g_game.lives     = g_config.lives;
+    g_game.flow      = FLOW_ALIVE;
+    g_game.flowTimer = 0;
+
     /* Spawn the Phase-4 entity wave (ground enemies + a couple of fruit). */
     entity_init();
 }
 
 /* ---------------------------------------------------------------------------
- *  game_update -- one frame of FAITHFUL SonSon locomotion.
+ *  player_respawn -- re-place the player at his start position (arcade B1C2).
+ *
+ *  The arcade respawn (sub_B1C2) re-inits the player record relative to the
+ *  current scroll (worldX = scroll + $F8, Y parked at $F8) with a fresh grace
+ *  timer (+$D = $20). We re-express that as: put the hero back on his start lane
+ *  pinned at the screen band's left (the native equivalent of "scroll-relative
+ *  re-placement" -- the camera is wherever the death left it), reset his motion,
+ *  and hand control back. The i-frame window is owned by the flow (RESPAWNING).
+ * ------------------------------------------------------------------------- */
+static void player_respawn(void)
+{
+    Player *p = &g_game.player;
+    p->lane      = 0;
+    p->y         = LANE_BASE_Y;
+    p->x         = (s16)(g_game.cameraX + BAND_LEFT);   /* scroll-relative re-place */
+    p->xSub      = 0;
+    p->vx        = 0;
+    p->laneTimer = 0;
+    p->climbing  = 0;
+    p->facing    = FACING_RIGHT;
+    p->anim      = 0;
+    p->animTimer = PLAYER_ANIM_PERIOD;
+    p->firePrev  = 0;
+}
+
+/* ---------------------------------------------------------------------------
+ *  player_control -- one frame of FAITHFUL SonSon locomotion (player only).
  *
  *  Re-expressed cleanly from the verified arcade player code (the oracle):
  *  ../sonson/port/src/{sub_A98A, sub_A9A7, sub_A9C5, sub_AB52, sub_AD10,
@@ -203,13 +237,16 @@ void game_init(void)
  *  B25A spawns a shot into $0E28) and terrain/enemy collision. The lane field
  *  here is free (no per-lane platform gating). The anim-state var is driven
  *  correctly so real walk/climb frames drop in trivially once baked.
+ *
+ *  `pad` is the joypad for this frame (0 = no input, so the player coasts) --
+ *  game_update passes a forced-zero pad while the player is DYING / in GAME OVER
+ *  so the hero stops responding during those beats, exactly like the arcade
+ *  where the death handler removes him from the input-driven active state. The
+ *  scrolling level + entities keep running underneath regardless.
  * ------------------------------------------------------------------------- */
-void game_update(void)
+static void player_control(u16 pad)
 {
     Player *p = &g_game.player;
-    u16 pad = JOY_readJoypad(JOY_1);
-
-    g_frameCounter++;          /* headless FPS probe tick (see g_frameCounter) */
 
     /* ----- HORIZONTAL: run = commanded velocity + the constant forward drift.
      * Arcade ($A9C5/$A9A7): worldX-fraction gets += $008D every frame (perpetual
@@ -333,9 +370,125 @@ void game_update(void)
         }
         p->firePrev = fire;
     }
+}
 
-    /* ----- ENTITIES: AI + motion + collision + scoring for the whole pool. */
+/* ---------------------------------------------------------------------------
+ *  game_update -- one frame of simulation + the death/respawn/game-over flow.
+ *
+ *  Flow (GameFlow state machine; constants in game.h, semantics from the arcade
+ *  RE -- player death sub_B286 / respawn sub_B1C2 / the front-end game-over
+ *  unwind):
+ *
+ *    FLOW_ALIVE      normal play. After the entity pass, a lethal enemy contact
+ *                    (g_player_dead_request, raised by entity.c only when the
+ *                    player is NOT invulnerable) costs one life. If a life
+ *                    remains -> DYING; else -> GAME_OVER.
+ *    FLOW_DYING      the hero is disabled (forced-zero pad) + blinks ~1s; he is
+ *                    invulnerable so the still-marching enemies can't re-trigger.
+ *                    On timeout he respawns (arcade B1C2 re-place) -> RESPAWNING.
+ *    FLOW_RESPAWNING controllable again but invulnerable + blinking for the
+ *                    i-frame grace window (~2.5s). On timeout -> ALIVE.
+ *    FLOW_GAME_OVER  input frozen, GAME OVER overlay shown ~2.5s; the scene
+ *                    keeps scrolling underneath. On timeout game_update returns
+ *                    TRUE so game_run() leaves the loop and main.c re-enters the
+ *                    selector.
+ *
+ *  Returns TRUE only on the frame the GAME OVER beat finishes (caller should
+ *  exit the game loop); FALSE otherwise.
+ *
+ *  The scrolling level + the entity pool ALWAYS update (so the world stays alive
+ *  during death/respawn/game-over); only the PLAYER's input-driven control is
+ *  gated by the flow. g_player_invuln is published to the entity collision pass
+ *  so contact is ignored during DYING + RESPAWNING.
+ * ------------------------------------------------------------------------- */
+bool game_update(void)
+{
+    g_frameCounter++;          /* headless FPS probe tick (see g_frameCounter) */
+
+    /* Publish invulnerability to the entity collision pass: the player can't be
+     * hit while dying or in his respawn i-frames. */
+    g_player_invuln = (u8)(g_game.flow == FLOW_DYING ||
+                           g_game.flow == FLOW_RESPAWNING ||
+                           g_game.flow == FLOW_GAME_OVER);
+
+    /* Player control: live only while ALIVE or RESPAWNING (he moves during the
+     * i-frames). DYING / GAME_OVER coast on a zero pad (no input). */
+    if (g_game.flow == FLOW_ALIVE || g_game.flow == FLOW_RESPAWNING)
+        player_control(JOY_readJoypad(JOY_1));
+    else
+        player_control(0);
+
+    /* Entities always run (scene stays alive through every flow phase). */
     entity_update_all();
+
+    /* --- flow state machine --- */
+    switch (g_game.flow)
+    {
+        case FLOW_ALIVE:
+            /* A fresh lethal contact this frame? Consume it: lose a life. The
+             * request is only ever raised when not invulnerable (entity.c), so
+             * one touch == one life. lives is "lives in hand including current":
+             * losing the LAST one (lives reaches 0) is GAME OVER. */
+            if (g_player_dead_request)
+            {
+                g_player_dead_request = 0;
+                if (g_game.lives > 0) g_game.lives--;
+
+                if (g_game.lives == 0)
+                {
+                    g_game.flow      = FLOW_GAME_OVER;
+                    g_game.flowTimer = GAMEOVER_FRAMES;
+                }
+                else
+                {
+                    g_game.flow      = FLOW_DYING;
+                    g_game.flowTimer = DEATH_FRAMES;
+                }
+            }
+            break;
+
+        case FLOW_DYING:
+            if (--g_game.flowTimer == 0)
+            {
+                player_respawn();                 /* arcade B1C2 re-place        */
+                g_game.flow      = FLOW_RESPAWNING;
+                g_game.flowTimer = RESPAWN_IFRAMES;
+            }
+            break;
+
+        case FLOW_RESPAWNING:
+            if (--g_game.flowTimer == 0)
+                g_game.flow = FLOW_ALIVE;         /* i-frames over, back to play */
+            break;
+
+        case FLOW_GAME_OVER:
+            if (--g_game.flowTimer == 0)
+                return TRUE;                      /* leave the loop -> front-end */
+            break;
+
+        default:
+            break;
+    }
+
+    /* Stray request raised while not ALIVE (e.g. an overlap that began the same
+     * frame the flow changed): drop it -- the invuln gate already covers the
+     * common case, this is belt-and-braces so it can't leak into the next life. */
+    g_player_dead_request = 0;
+
+    /* TODO(extend-life): award a bonus life when the score crosses the arcade
+     * Bonus-Life thresholds. g_config.bonusLife is the decoded DSW2 0x18 table
+     * index (dipswitch.c labels: 20K/80K/100K, etc.); track a "next bonus score"
+     * and on crossing it do g_game.lives++ (capped) + the bonus jingle. The DIP
+     * is already plumbed end-to-end (front-end -> g_config.bonusLife) -- only the
+     * threshold table + the score-cross check remain.
+     *
+     * TODO(level-complete / round-progression): the slice runs one endless wide
+     * level. The arcade advances rounds (LET'S GO TENJIKU intro per round -- see
+     * project memory's mode model). Add a level-clear condition (reach the level
+     * end / clear the wave) -> a round-clear beat -> load the next level (a new
+     * ss_level set) + reset the player to the start, looping rounds. The flow
+     * state machine here is the natural place to host a FLOW_ROUND_CLEAR phase. */
+    return FALSE;
 }
 
 /* ---------------------------------------------------------------------------
@@ -416,19 +569,31 @@ void game_render(void)
     nEnt = entity_render_all(sat, 1);
 
     /* --- player sprite at slot 0 ---
-     * Hurt-flash: while g_player_hurt is up, blink the player by skipping the
-     * sprite every other frame (a real life-loss/respawn is game-flow -- TODO).
-     * When blinked-off we still emit a (link-only) entry by parking it off-screen
-     * so the sprite chain stays intact. */
-    if (g_player_hurt && (g_player_hurt & 2))
+     * Blink the player while he is in a transient life-cycle phase:
+     *   - the brief on-contact hurt-flash (g_player_hurt), and
+     *   - the death beat + respawn i-frame window (flow DYING / RESPAWNING),
+     * by skipping the sprite on alternate frames. We blink off the player's own
+     * flowTimer during DYING/RESPAWNING (so the whole death->respawn grace reads
+     * as one continuous blink) and off g_player_hurt during the contact flash.
+     * When blinked-off we still emit a (link-only) entry parked off-screen so the
+     * sprite chain to the entities stays intact. */
     {
-        sat[0] = (u16)((0x80 + 240) & 0x3FF);        /* parked off-screen (blink) */
-        sat[3] = (u16)0x80;
-    }
-    else
-    {
-        sat[0] = (u16)((0x80 + py) & 0x3FF);
-        sat[3] = (u16)((0x80 + px) & 0x1FF);
+        u8 blink = 0;
+        if (g_game.flow == FLOW_DYING || g_game.flow == FLOW_RESPAWNING)
+            blink = (u8)((g_game.flowTimer & BLINK_MASK) != 0);
+        else if (g_player_hurt)
+            blink = (u8)((g_player_hurt & BLINK_MASK) != 0);
+
+        if (blink)
+        {
+            sat[0] = (u16)((0x80 + 240) & 0x3FF);    /* parked off-screen (blink) */
+            sat[3] = (u16)0x80;
+        }
+        else
+        {
+            sat[0] = (u16)((0x80 + py) & 0x3FF);
+            sat[3] = (u16)((0x80 + px) & 0x1FF);
+        }
     }
     /* link the player to the first entity sprite (slot 1) if any were emitted,
      * else terminate the chain at the player. */
@@ -460,8 +625,64 @@ void game_render(void)
 
         /* Score readout (Plane B HUD, like the FPS field). Incremented by
          * entity defeats / item pickups in entity_update_all. */
-        intToStr((s32)g_game.score, buf, 6);
-        VDP_drawText("SCORE", 14, 1);
-        VDP_drawText(buf, 20, 1);
+        intToStr((s32)g_game.score, buf, 5);
+        VDP_drawText("SC", 11, 1);
+        VDP_drawText(buf, 14, 1);          /* 5 digits: cols 14..18             */
+
+        /* --- LIVES readout (HUD, right of SCORE) ---
+         * Compact "Px N" field (P = the hero, "xN" = lives remaining), chosen to
+         * fit the H32 (32-col) display alongside FPS + SCORE without overrunning
+         * the right edge. We redraw it every frame and pad the count to a fixed
+         * width so a shrinking value never leaves a stale digit. (lives is the
+         * count IN HAND incl. the current one, so it reads N while N-1 are in
+         * reserve -- matches the arcade marker count which includes the hero.) */
+        VDP_drawText("LIVES", 21, 1);      /* cols 21..25                        */
+        {
+            char lv[4];
+            lv[0] = 'x';
+            lv[1] = (char)('0' + (g_game.lives <= 9 ? g_game.lives : 9));
+            lv[2] = ' ';                   /* clear any prior 2nd digit/artifact */
+            lv[3] = 0;
+            VDP_drawText(lv, 27, 1);       /* "xN" at cols 27..28               */
+        }
+    }
+
+    /* --- GAME OVER overlay (Plane B, centered) ---
+     * Shown for the whole FLOW_GAME_OVER beat over the still-scrolling level.
+     * Drawn on the unscrolled text plane so it stays pinned + centered. No need
+     * to clear it afterwards: a game-over returns to the selector (main.c), and
+     * a fresh session's game_init re-inits Plane B (VDP_clearTextArea) -- so the
+     * overlay can never linger into the next life or the next session. */
+    if (g_game.flow == FLOW_GAME_OVER)
+        VDP_drawText("GAME OVER", 11, 13);   /* H32: (32-9)/2 ~= 11 -> centered  */
+}
+
+/* ---------------------------------------------------------------------------
+ *  game_run -- a whole game SESSION: init, then the update/render/V-blank loop,
+ *  returning to the caller (main.c) when the game is over.
+ *
+ *  This is the native mirror of the arcade's "game over unwinds back to the
+ *  attract/selector" (project memory: the front-end re-entry for(;;) loop in
+ *  main()). main.c calls game_run() inside its own boot for(;;): SEGA/CAPCOM run
+ *  ONCE before the loop; the loop body is selector -> config -> game_run, so a
+ *  game-over returns here and main.c falls back to the selector for the next
+ *  session. game_update returns TRUE once the GAME OVER beat is done, which is
+ *  our cue to stop and return.
+ *
+ *  The per-frame discipline is unchanged from the old main loop: simulate
+ *  (game_update), build SAT + scroll + HUD (game_render), then hand the frame to
+ *  SGDK (SYS_doVBlankProcess -- flush the DMA queue + wait for V-blank, the
+ *  single 60Hz timebase). Holding 60fps: the flow logic is a handful of byte
+ *  compares + one branch per frame, and death/respawn/HUD add no per-pixel work,
+ *  so the busy-scene frame budget is untouched. */
+void game_run(void)
+{
+    game_init();
+    while (TRUE)
+    {
+        bool done = game_update();
+        game_render();
+        SYS_doVBlankProcess();
+        if (done) break;           /* GAME OVER finished -> back to the selector */
     }
 }

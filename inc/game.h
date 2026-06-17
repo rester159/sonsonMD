@@ -104,6 +104,52 @@
 /* Walk-anim: frames between anim-step increments while moving (sub_9617 cadence). */
 #define PLAYER_ANIM_PERIOD  6
 
+/* ===========================================================================
+ *  GAME-FLOW CONSTANTS -- death / respawn / game-over, from the arcade RE.
+ * ===========================================================================
+ *  Sourced from the verified sibling port (../sonson/port/src) + the front-end
+ *  spec (project memory: lives come from DSW2 0x03; "credits/lives gone => game
+ *  over until power-cycle"; the game-over path unwinds back to the front-end):
+ *
+ *   - Player DEATH handler  sub_B286.c : zeroes the player slot's state bytes
+ *     (clra/clrb -> stb -$10,x ; std -$F,x) -- i.e. the player is removed and
+ *     stops moving. We model that as a DEAD phase: the player is disabled and
+ *     blinks for a short beat before the respawn re-inits him.
+ *
+ *   - Player RESPAWN handler sub_B1C2.c : re-inits the player record -- worldX =
+ *     scroll($90) + $00F8 (re-placed relative to the current scroll), Y parked
+ *     at #$F8, and the slot's per-entity timer +$D loaded with #$20 (0x20 = 32
+ *     frames) as a fresh-spawn grace/anim countdown. We re-express that grace as
+ *     an i-frame (invulnerable) window with a blink, and respawn the player on
+ *     his start lane pinned at the screen band -- the native equivalent of the
+ *     arcade's scroll-relative re-placement.
+ *
+ *   - GAME OVER : when the last life is lost the arcade unwinds out of the game
+ *     loop; the front-end re-entry (memory: "GAME-OVER UNWIND fix = re-entry
+ *     for(;;) loop in main()") returns to the attract/selector. We mirror that:
+ *     a brief GAME OVER overlay, then game_run() returns and main.c loops back
+ *     to selector_run().
+ *
+ *  Durations are in 60fps frames; tuned to feel like the arcade beats (the
+ *  arcade's exact death-anim length is foreground-paced and not load-bearing --
+ *  see the native-port doctrine: plays-right over cycle-exactness). */
+#define DEATH_FRAMES        60      /* ~1.0s disabled+blink before respawn       */
+#define RESPAWN_IFRAMES     150     /* ~2.5s invulnerable + blink after respawn  */
+#define GAMEOVER_FRAMES     150     /* ~2.5s GAME OVER overlay before returning  */
+#define BLINK_MASK          2       /* sprite shown when (timer & BLINK_MASK)==0 */
+
+/* Game-flow phase: the player's life-cycle state machine driven each frame in
+ * game_update. ALIVE is normal play; DYING runs the death beat; RESPAWNING is
+ * the post-respawn i-frame window; GAME_OVER shows the overlay then signals the
+ * loop to return to the front-end. */
+typedef enum
+{
+    FLOW_ALIVE = 0,
+    FLOW_DYING,
+    FLOW_RESPAWNING,
+    FLOW_GAME_OVER
+} GameFlow;
+
 /* Facing flags (maps straight to the SAT flipH bit). */
 #define FACING_RIGHT        0
 #define FACING_LEFT         1
@@ -139,6 +185,15 @@ typedef struct
 {
     Player player;
     u32    score;      /* running score (enemy defeats + item pickups)       */
+    /* --- life economy / flow (Phase 8c game-flow) ---
+     * lives    = remaining lives, initialised from g_config.lives in game_init
+     *            (so the DIP/options LIVES setting takes effect). A life is lost
+     *            on lethal enemy contact; when it would drop below 0 -> GAME OVER.
+     * flow     = the death/respawn/game-over state machine (GameFlow).
+     * flowTimer= frame countdown for the current non-ALIVE phase.            */
+    u8     lives;
+    u8     flow;       /* GameFlow                                            */
+    u16    flowTimer;  /* frames left in the current DYING/RESPAWNING/GAMEOVER */
     s16    cameraX;    /* world x at the left edge of the screen (px)        */
     /* --- column-streaming window state ---
      * The 64-col Plane A is a ring buffer over the wide level. loadedMinCol /
@@ -217,9 +272,22 @@ extern GameConfig g_config;
  * dipswitch.c; called by both config screens after they finish editing. */
 void sync_from_dsw(void);
 
-/* Lifecycle (called from main.c). */
-void game_init(void);      /* palettes, tiles, BG nametable, player spawn    */
-void game_update(void);    /* read pad, move player, advance anim, camera    */
-void game_render(void);    /* direct SAT build + scroll + FPS readout        */
+/* Lifecycle.
+ *  game_init   -- one-time scene + player + life-economy setup (reads g_config).
+ *  game_update -- one frame of simulation + the death/respawn/game-over flow.
+ *                 Returns TRUE once the game is over AND the GAME OVER overlay
+ *                 has finished, i.e. the caller should leave the game loop and
+ *                 return to the front-end. FALSE while the game continues.
+ *  game_render -- direct SAT build + scroll + HUD (score / lives / FPS) +
+ *                 the GAME OVER overlay.
+ *  game_run    -- the whole game session: game_init then the update/render/
+ *                 V-blank loop, returning to the caller (main.c) when the game
+ *                 is over so the boot flow can re-enter the selector. This is
+ *                 the native mirror of the arcade's game-over unwind-to-attract
+ *                 (project memory: the "re-entry for(;;) loop in main()").     */
+void game_init(void);
+bool game_update(void);
+void game_render(void);
+void game_run(void);
 
 #endif /* GAME_H */

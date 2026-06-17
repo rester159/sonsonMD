@@ -26,6 +26,10 @@
 Entity g_entities[ENTITY_MAX];
 u8 g_player_hurt = 0;
 
+/* Game-flow bridge (see entity.h): game.c owns the life economy. */
+u8 g_player_invuln       = 0;   /* set by game.c during death/respawn i-frames */
+u8 g_player_dead_request = 0;   /* set here on a lethal contact, cleared by game.c */
+
 /* ---- Tunables (re-expressed from the arcade RE, in native units) ----------
  * The arcade enemyA marches by adding a small per-frame delta to its 24-bit X;
  * we drive a velocity in 1/256-px/frame. ENEMY_SPEED gives a brisk ~1.0 px/frame
@@ -55,6 +59,32 @@ u8 g_player_hurt = 0;
 /* Score awards. */
 #define SCORE_ENEMY         200         /* defeat a ground enemy                 */
 #define SCORE_ITEM          500         /* collect a fruit                       */
+
+/* ---- DIFFICULTY hook (arcade DSW2 0x60 -> g_config.difficulty 0..3) --------
+ * SonSon's Difficulty switch makes the enemies more aggressive. We re-express
+ * that subtly + faithfully by scaling the ground-enemy march speed by the
+ * selected tier: Easy a touch slower than the baseline 1.0px/frame, Normal the
+ * baseline, Hard/Very-Hard progressively brisker. The scale is applied to
+ * ENEMY_SPEED at spawn time (and on recycle), so the DIP setting changes how
+ * fast enemies close on the player without altering the rest of the feel.
+ *   idx 0 Easy = x0.75   1 Normal = x1.00   2 Hard = x1.25   3 VeryHard = x1.50
+ * (1/256-px units; values chosen so even Very Hard stays under the player's
+ * ~2px/frame run so he can always out-pace a single chaser.) */
+static const u16 k_enemy_speed_by_diff[4] =
+{
+    (u16)(ENEMY_SPEED * 3 / 4),     /* Easy      ~0.75 px/frame                 */
+    (u16)(ENEMY_SPEED),             /* Normal     1.00 px/frame                 */
+    (u16)(ENEMY_SPEED * 5 / 4),     /* Hard      ~1.25 px/frame                 */
+    (u16)(ENEMY_SPEED * 3 / 2)      /* Very Hard ~1.50 px/frame                 */
+};
+
+/* Resolve the current enemy march speed from g_config.difficulty (clamped). */
+static u16 enemy_march_speed(void)
+{
+    u8 d = g_config.difficulty;
+    if (d > 3) d = 3;
+    return k_enemy_speed_by_diff[d];
+}
 
 /* Sprite tiles borrowed from the baked scene set (ss_gfx). These are real
  * arcade actor tiles captured in the scene; a single static cell per type is
@@ -100,7 +130,7 @@ Entity *entity_spawn(u8 type, s16 x, s16 y)
             case ET_ENEMY_A:
                 e->hp     = ENEMY_HP;
                 e->facing = 1;             /* enemyA marches LEFT (toward player) */
-                e->vx     = (s16)(-ENEMY_SPEED);
+                e->vx     = (s16)(-(s16)enemy_march_speed());  /* difficulty-scaled */
                 e->tile   = ENEMY_TILE;
                 break;
 
@@ -157,7 +187,9 @@ void entity_init(void)
 {
     u16 i;
     for (i = 0; i < ENTITY_MAX; i++) g_entities[i].active = 0;
-    g_player_hurt = 0;
+    g_player_hurt         = 0;
+    g_player_invuln       = 0;
+    g_player_dead_request = 0;
     spawn_initial_wave();
 }
 
@@ -322,11 +354,17 @@ static void collision_pass(const Player *p)
 
         if (en->type == ET_ENEMY_A && en->state != 1)
         {
-            if (aabb(p->x, p->y, PLAYER_W, PLAYER_H, en->x, en->y, BODY_W, BODY_H))
+            /* Lethal contact (arcade DCAC): an enemy body overlapping the player
+             * costs a life -- but ONLY when the player is not in his death/respawn
+             * i-frame window (g_player_invuln, set by game.c). We raise a one-shot
+             * death REQUEST that game.c consumes to run the life-loss flow; the
+             * invuln gate + the "already pending" guard make one touch == one
+             * life. The brief hurt-flash flag is still raised for the on-contact
+             * blink, but the life economy is entirely game.c's. */
+            if (!g_player_invuln && !g_player_dead_request &&
+                aabb(p->x, p->y, PLAYER_W, PLAYER_H, en->x, en->y, BODY_W, BODY_H))
             {
-                /* keep it simple per the brief: raise a hurt-flash flag (a real
-                 * life-loss / knockback is game-flow -- TODO). Don't re-arm it
-                 * every frame of an overlap; let the window decay first. */
+                g_player_dead_request = 1;          /* game.c owns the consequence */
                 if (g_player_hurt == 0) g_player_hurt = HURT_FRAMES;
             }
         }

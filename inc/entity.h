@@ -97,8 +97,30 @@ u16  entity_render_all(u16 *sat, u16 firstSlot);
 void entity_player_fire(s16 px, s16 py, u8 facing);
 
 /* Player hit/flash state, raised by player<->enemy contact (arcade DCAC poke).
- * game.c reads g_player_hurt to flash the sprite; full life-loss is game-flow
- * (TODO). It decays on its own timer inside entity_update_all. */
+ * game.c reads g_player_hurt to flash the sprite during the hurt window. It
+ * decays on its own timer inside entity_update_all. (The hurt-flash is the
+ * brief on-contact blink; the LIFE-LOSS / death state is owned by game.c and
+ * driven off g_player_dead_request below.) */
 extern u8 g_player_hurt;     /* >0 => player is in the hurt-flash window      */
+
+/* ---- Game-flow bridge between the entity collision pass and game.c --------
+ * The collision pass (entity.c) detects PLAYER<->ENEMY contact but does NOT own
+ * the life economy -- that is game.c's job (lives / death anim / respawn /
+ * game-over). The bridge is two one-byte globals:
+ *
+ *   g_player_invuln  -- WRITTEN by game.c, READ by the collision pass. Nonzero
+ *       while the player is in a death/respawn i-frame window; collision then
+ *       ignores enemy contact entirely (no hurt, no death request). Re-expresses
+ *       the arcade respawn-grace timer (sub_B1C2 parks +$D = #$20 on (re)spawn).
+ *
+ *   g_player_dead_request -- WRITTEN (set to 1) by the collision pass on a fresh
+ *       lethal contact, READ + CLEARED by game.c, which then runs the death ->
+ *       respawn / game-over flow. A request is only raised when NOT invulnerable
+ *       and not already pending, so one contact == one life lost.
+ *
+ * This keeps the entity pool free of game-state knowledge (clean separation)
+ * while letting a single enemy touch cost exactly one life, faithfully. */
+extern u8 g_player_invuln;        /* set by game.c: 1 => contact is ignored    */
+extern u8 g_player_dead_request;  /* set by entity.c on lethal contact         */
 
 #endif /* ENTITY_H */
