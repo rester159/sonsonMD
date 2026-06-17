@@ -27,6 +27,7 @@
 #define ENTITY_H
 
 #include <genesis.h>
+#include "anim_rt.h"     /* shared animation runtime (consumes baked ss_anim.h) */
 
 /* ---- Entity types --------------------------------------------------------
  * Only the Phase-4 vertical-slice set. The arcade has ~55 archetypes (census);
@@ -59,8 +60,9 @@ typedef struct
     u8  timer;      /* per-type countdown (death anim / fire cadence)        */
     u8  hp;         /* hit points (enemies); 0 => defeated                   */
     u8  facing;     /* 0 = faces/moves right, 1 = faces/moves left (flipH)   */
-    u8  anim;       /* anim-cell index (drives frame select; cadence below)  */
-    u8  animTimer;  /* counts down to the next anim step                     */
+    u8  anim;       /* legacy anim-cell index (kept; AI state still uses it)  */
+    u8  animTimer;  /* legacy counts down to the next anim step               */
+    Anim av;        /* faithful animation cursor (walk / death) -- enemyA     */
     u16 tile;       /* absolute VRAM base tile (SPRITE_SIZE(2,2))            */
 } Entity;
 

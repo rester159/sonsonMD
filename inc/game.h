@@ -13,6 +13,7 @@
 
 #include <genesis.h>
 #include "ss_level.h"    /* wide baked level: SS_LEVEL_COLS, ss_level_map, tiles */
+#include "anim_rt.h"     /* shared animation runtime (consumes baked ss_anim.h) */
 
 /* ---- World / level geometry (pixels) -------------------------------------
  * Phase 4: the world is the WIDE baked level (ss_level.h), reconstructed from
@@ -171,9 +172,11 @@ typedef struct
     u8  laneTimer;     /* counts down to the next allowed lane step          */
     u8  climbing;      /* nonzero while a lane change is in progress (anim)   */
     u8  facing;        /* FACING_LEFT / FACING_RIGHT -> SAT flipH            */
-    u8  anim;          /* walk/climb-cycle frame index (drives future frames)*/
-    u8  animTimer;     /* counts down to the next anim step                  */
+    u8  anim;          /* walk/climb-cycle frame index (legacy state var)    */
+    u8  animTimer;     /* counts down to the next anim step (legacy)         */
     u8  firePrev;      /* fire button state last frame (press-edge debounce) */
+    u8  fireAnim;      /* frames left to keep showing the FIRE anim (recoil) */
+    Anim av;           /* faithful animation cursor (run/climb/fire/death)   */
     u16 tile;          /* absolute VRAM base tile (SPRITE_SIZE(2,2))        */
 } Player;
 

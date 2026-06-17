@@ -2,6 +2,7 @@
 #include "game.h"
 #include "entity.h"
 #include "ss_gfx.h"
+#include "ss_anim.h"     /* baked player/enemy animation frames + table */
 
 /* ===========================================================================
  *  SON SON  --  NATIVE entity system (Phase 4)
@@ -86,14 +87,14 @@ static u16 enemy_march_speed(void)
     return k_enemy_speed_by_diff[d];
 }
 
-/* Sprite tiles borrowed from the baked scene set (ss_gfx). These are real
- * arcade actor tiles captured in the scene; a single static cell per type is
- * fine for the slice (the anim STATE is driven for when frames get baked).
- *   ss_scene_sprites[13].tile (103) = a bank-9 lane actor   -> enemy body
- *   ss_scene_sprites[22].tile (127) = a small bank-1 sprite -> shot/item
- * TODO(faithful-anim): bake the enemy walk cycle + the shot frames and swap on
- *   anim/state instead of a single cell. */
-#define ENEMY_TILE          (ss_scene_sprites[13].tile)
+/* The ENEMY now ANIMATES: its tile each frame comes from the baked faithful
+ * animation set (ss_anim.c -- ENEMY_WALK / ENEMY_DEATH), driven by the Anim
+ * cursor e->av. ENEMY_TILE is just the cold-start frame (walk frame 0).
+ *
+ * SHOT + ITEM keep a single borrowed scene tile (no anim baked for them yet --
+ * see TODO). ss_scene_sprites[22].tile = a small bank-1 sprite (shot/item),
+ * ss_scene_sprites[17].tile a bank-2 actor (item). */
+#define ENEMY_TILE          (ss_anims[SS_ANIM_ENEMY_WALK].frames[0].tile)
 #define SHOT_TILE           (ss_scene_sprites[22].tile)
 #define ITEM_TILE           (ss_scene_sprites[17].tile)   /* bank-2 actor (119) */
 
@@ -124,6 +125,7 @@ Entity *entity_spawn(u8 type, s16 x, s16 y)
         e->facing    = 0;
         e->anim      = 0;
         e->animTimer = ENEMY_ANIM_PERIOD;
+        anim_restart(&e->av, SS_ANIM_ENEMY_WALK);   /* default; per-type below   */
 
         switch (type)
         {
@@ -131,6 +133,7 @@ Entity *entity_spawn(u8 type, s16 x, s16 y)
                 e->hp     = ENEMY_HP;
                 e->facing = 1;             /* enemyA marches LEFT (toward player) */
                 e->vx     = (s16)(-(s16)enemy_march_speed());  /* difficulty-scaled */
+                anim_restart(&e->av, SS_ANIM_ENEMY_WALK);      /* start walking   */
                 e->tile   = ENEMY_TILE;
                 break;
 
@@ -252,8 +255,10 @@ static void entity_update_one(Entity *e, const Player *p)
          * (arcade DD78 death sequence). */
         case ET_ENEMY_A:
         {
-            if (e->state == 1)             /* dying: flash then despawn          */
+            if (e->state == 1)             /* dying: play DEATH anim then despawn */
             {
+                anim_set(&e->av, SS_ANIM_ENEMY_DEATH);
+                e->tile = anim_tick(&e->av);
                 if (--e->timer == 0) e->active = 0;
                 break;
             }
@@ -268,7 +273,9 @@ static void entity_update_one(Entity *e, const Player *p)
             if      (e->y < p->y) e->y += 1;
             else if (e->y > p->y) e->y -= 1;
 
-            anim_step(e, ENEMY_ANIM_PERIOD);
+            /* faithful walk cycle (captured arcade cadence) */
+            anim_set(&e->av, SS_ANIM_ENEMY_WALK);
+            e->tile = anim_tick(&e->av);
 
             /* recycle when it has marched well past the left edge of the view
              * (arcade DD52: off-screen-left recycle). Re-seed it ahead on the
@@ -433,9 +440,9 @@ u16 entity_render_all(u16 *sat, u16 firstSlot)
         if (sx <= -BODY_W || sx >= SCREEN_W || sy <= -BODY_H || sy >= SCREEN_H)
             continue;
 
-        /* dying enemies flash: blink (skip) every other frame of the death win */
-        if (e->type == ET_ENEMY_A && e->state == 1 && (e->timer & 1))
-            continue;
+        /* (dying enemies no longer blink: the baked ENEMY_DEATH animation -- the
+         * 307->308->309->310 collapse, driven in entity_update_one -- IS the
+         * death feedback now, so we draw every frame of it.) */
 
         sat[slot * 4 + 0] = (u16)((0x80 + sy) & 0x3FF);
         /* link to the NEXT slot; the loop tail patches the final link to 0 */

@@ -3,6 +3,7 @@
 #include "entity.h"
 #include "ss_gfx.h"
 #include "ss_level.h"
+#include "ss_anim.h"     /* baked player/enemy animation frames + table */
 
 /* ===========================================================================
  *  SON SON  --  NATIVE engine, Phase 4 (wide SCROLLING level)
@@ -51,11 +52,10 @@ GameConfig g_config =
     0             /* flipScreen = off                                           */
 };
 
-/* The player's sprite tile: a recognizable 16x16 actor from the baked scene
- * set (SPRITE_SIZE(2,2) = 4 col-major 8x8 tiles). ss_scene_sprites[0] is the
- * first arcade spriteram slot; we borrow its tile as a stand-in player frame.
- * A single static frame is fine for Phase 3 -- faithful animation is later. */
-#define PLAYER_TILE   (ss_scene_sprites[0].tile)
+/* The player now ANIMATES: its sprite tile each frame comes from the baked
+ * faithful animation set (ss_anim.c -- run/climb/fire/death), driven by the
+ * Anim cursor p->av. PLAYER_TILE is just the cold-start frame (run frame 0). */
+#define PLAYER_TILE   (ss_anims[SS_ANIM_PLAYER_RUN].frames[0].tile)
 
 /* FPS-readout text palette. The SGDK system font lives at a high VRAM tile
  * index (TILE_FONT_INDEX ~= 1376), so it never collides with the scene tiles
@@ -151,6 +151,11 @@ void game_init(void)
      * the scene tiles because the player sprite borrows ss_scene_sprites[0].tile. */
     VDP_loadTileData(ss_scene_tiles, SS_SCENE_TILE_BASE, SS_SCENE_TILE_COUNT, DMA);
     VDP_loadTileData(ss_level_tiles, SS_LEVEL_TILE_BASE, SS_LEVEL_TILE_COUNT, DMA);
+    /* Faithful player + enemy animation frames, loaded at a fresh VRAM base
+     * (346) past the scene (0..134) and level (135..345) tiles -- well below the
+     * SGDK font/sprite-engine tiles near ~1376. The baked anim table's per-frame
+     * tile indices are ABSOLUTE (already include SS_ANIM_TILE_BASE). */
+    VDP_loadTileData(ss_anim_tiles, SS_ANIM_TILE_BASE, SS_ANIM_TILE_COUNT, DMA);
 
     /* Cold-fill the 64-col Plane A window with the first 64 level columns
      * (columns 0..63 of the wide level). game_render streams new columns in as
@@ -179,6 +184,8 @@ void game_init(void)
         p->anim      = 0;
         p->animTimer = PLAYER_ANIM_PERIOD;
         p->firePrev  = 0;
+        p->fireAnim  = 0;
+        anim_restart(&p->av, SS_ANIM_PLAYER_RUN);   /* start in the run cycle */
         p->tile      = PLAYER_TILE;
     }
 
@@ -221,6 +228,8 @@ static void player_respawn(void)
     p->anim      = 0;
     p->animTimer = PLAYER_ANIM_PERIOD;
     p->firePrev  = 0;
+    p->fireAnim  = 0;
+    anim_restart(&p->av, SS_ANIM_PLAYER_RUN);       /* respawn in the run cycle */
 }
 
 /* ---------------------------------------------------------------------------
@@ -367,9 +376,47 @@ static void player_control(u16 pad)
         {
             /* mid-body launch point (sprite is 16x16) */
             entity_player_fire((s16)(p->x + 4), (s16)(p->y + 4), p->facing);
+            /* show the fire/recoil pose for the anim's full length */
+            p->fireAnim = (u8)(ss_anims[SS_ANIM_PLAYER_FIRE].frames[0].dur +
+                               ss_anims[SS_ANIM_PLAYER_FIRE].frames[1].dur);
         }
         p->firePrev = fire;
     }
+}
+
+/* ---------------------------------------------------------------------------
+ *  player_animate -- pick the player's animation from its state and advance it.
+ *
+ *  Selection priority (matches the arcade's anim-state precedence): DEATH while
+ *  the flow is DYING (the death beat) > FIRE for the brief recoil window after a
+ *  shot > CLIMB while a lane change is in progress > RUN otherwise. The chosen
+ *  anim is ticked by its baked per-frame durations (the captured arcade cadence)
+ *  and the resulting absolute VRAM tile is stored in p->tile, which game_render
+ *  feeds straight into the SAT. Facing still drives flipH at render time.
+ *
+ *  `dying` is TRUE only on the FLOW_DYING beat (passed from game_update after the
+ *  flow logic), so the death tumble plays while the hero is disabled + blinking.
+ * ------------------------------------------------------------------------- */
+static void player_animate(u8 dying)
+{
+    Player *p = &g_game.player;
+    u8 id;
+
+    if (p->fireAnim) p->fireAnim--;
+
+    if (dying)                 id = SS_ANIM_PLAYER_DEATH;
+    else if (p->fireAnim)      id = SS_ANIM_PLAYER_FIRE;
+    else if (p->climbing)      id = SS_ANIM_PLAYER_CLIMB;
+    else                       id = SS_ANIM_PLAYER_RUN;
+
+    /* anim_set restarts only on a CHANGE of id; FIRE/DEATH are one-shots we want
+     * to (re)start cleanly when newly entered. */
+    if (id == SS_ANIM_PLAYER_DEATH && p->av.id != SS_ANIM_PLAYER_DEATH)
+        anim_restart(&p->av, id);
+    else
+        anim_set(&p->av, id);
+
+    p->tile = anim_tick(&p->av);
 }
 
 /* ---------------------------------------------------------------------------
@@ -417,6 +464,12 @@ bool game_update(void)
         player_control(JOY_readJoypad(JOY_1));
     else
         player_control(0);
+
+    /* Advance the player's faithful animation (run / climb / fire / death). The
+     * death tumble plays while the flow is DYING (the hero is disabled + blinks);
+     * every other phase animates off his live motion/fire state. This is a table
+     * lookup + a counter -- no per-pixel work, so the frame budget is untouched. */
+    player_animate((u8)(g_game.flow == FLOW_DYING));
 
     /* Entities always run (scene stays alive through every flow phase). */
     entity_update_all();
