@@ -385,7 +385,12 @@ static void player_respawn(void)
     p->y         = SS_TIER_Y[PLAYER_START_TIER];    /* seated on the tier        */
     p->ySub      = 0;
     p->vy        = 0;
-    p->x         = (s16)(g_game.cameraX + BAND_LEFT);   /* scroll-relative re-place */
+    /* RESPAWN at the RIGHT band edge -- arcade sub_B1C2 ($B1CD) sets the hero's
+     * worldX = scroll($90) + $F8, i.e. screenX 248 which the band-clamp pulls to
+     * BAND_RIGHT (208): the hero re-enters at the FRONT (right), where he was
+     * pushing, not restarting from the back/left. (Arcade respawn Y = b<<2 is
+     * data-dependent/murky; the mid-tier default above is a faithful-enough Y.) */
+    p->x         = (s16)(g_game.cameraX + BAND_RIGHT);
     p->xSub      = 0;
     p->vx        = 0;
     p->climbing  = 0;
