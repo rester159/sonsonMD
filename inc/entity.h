@@ -168,6 +168,14 @@ void entity_schedule_init(void);              /* (re)arm the scheduler for the  
                                                * current round (game.c round set)*/
 void entity_schedule_tick(void);              /* per-frame: spawn scheduled waves*/
 
+/* SEAMLESS-RIBBON coordinate wrap: when game.c wraps cameraX by the ribbon width
+ * (so s16 never overflows over a long looping session), shift EVERY live entity's
+ * world-X AND the scheduler's spawn cursor by the same delta, so all the
+ * cameraX-relative spawn/recycle math stays consistent across the wrap. dx is the
+ * signed pixels to add (game.c passes -g_ribbonW). Invisible: the same delta is
+ * applied to cameraX, so on-screen positions (x - cameraX) are unchanged. */
+void entity_shift_worldx(s16 dx);
+
 /* ---- Lifecycle (called from game.c) -------------------------------------- */
 void entity_init(void);                       /* clear the pool + spawn waves  */
 Entity *entity_spawn(u8 type, s16 x, s16 y);  /* allocate + init a slot (or 0) */

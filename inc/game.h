@@ -25,12 +25,11 @@
  * 256x224 (H32). */
 #define SCREEN_W            256
 #define SCREEN_H            224
-/* The level pixel width is now PER-ROUND (Phase 5 multi-level): each round shows
- * a different baked level (ss_levels[round]) and they differ in column count, so
- * the wide-level width is a runtime value (g_levelW = current level cols * 8),
- * set by level_select() in game.c. Use g_levelW wherever the old single-level
- * LEVEL_W constant was used (camera clamp, etc.). */
-extern u16 g_levelW;                              /* current level pixel width   */
+/* The world is now ONE SEAMLESS LOOPING RIBBON (the 8 baked levels concatenated;
+ * see game.c). g_levelW carries the RIBBON pixel width (SS_RIBBON_COLS*8); it is set
+ * once in game_init and kept under this name purely as the documented nonzero
+ * "in-game" probe word for the headless harnesses (volatile so LTO keeps it). */
+extern volatile u16 g_levelW;                     /* ribbon pixel width (in-game flag) */
 #define LEVEL_H             SCREEN_H
 
 /* Plane A is a 64-col sliding window over the wide level. */
@@ -217,17 +216,18 @@ extern u16 g_levelW;                              /* current level pixel width  
  *  is no goal, boss, temple, or finish wall -- the perpetual forward creep
  *  (RUN_DRIFT_SUBPX, applied every frame in player_control) IS the advance.
  *
- *  The native engine re-expresses that over its 8 baked sceneries: the creep
- *  carries the hero to the end of the current level (no wall to push, no dwell --
- *  just travel), then a BRIEF transition swaps in the next baked scenery (round R
- *  -> ss_levels[(R-1)%8]) and the stage counter ticks up. The transition is short
- *  (it only masks the one-frame scenery cold-fill), NOT the old 2-second banner
- *  that required pushing into a finish wall -- an interaction the arcade never had.
+ *  The native engine reproduces this as ONE SEAMLESS LOOPING RIBBON: the 8 baked
+ *  sceneries are concatenated into a single ribbon of SS_RIBBON_COLS columns (all
+ *  tilesets co-resident in VRAM), streamed continuously. The creep carries the hero
+ *  forward forever; the scenery flows from one segment straight into the next with
+ *  NO transition/cold-fill (a level seam is just another streamed column), and the
+ *  ribbon wraps after the last segment back to the first. The HUD "round" tracks the
+ *  segment under the camera; the saturating stage counter ticks up each time a seam
+ *  scrolls in (segment_advance). No finish wall, no dwell -- exactly the arcade feel.
  *
- *  ADVANCE CONDITION: the camera has been carried to the level end
- *  (cameraX >= maxCam = LEVEL_W - SCREEN_W). No player push, no dwell -- the creep
- *  alone trips it, exactly the arcade's "the scroll carries you forward." */
-#define ROUND_CLEAR_FRAMES  36      /* ~0.6s transition mask (scenery cold-fill)   */
+ *  ADVANCE: there is no explicit advance condition any more -- the scroll itself is
+ *  the advance. game_update tracks the on-camera segment and, on each level seam,
+ *  ticks the stage + re-arms the wave + fires the boundary music cue (game.c). */
 
 /* STAGE difficulty: the arcade's $005A counter increments once per advance and
  * SATURATES at 0x1C (28) -- difficulty ramps then plateaus, it never runs away.
@@ -253,8 +253,9 @@ typedef enum
     FLOW_ALIVE = 0,
     FLOW_DYING,
     FLOW_RESPAWNING,
-    FLOW_GAME_OVER,
-    FLOW_ROUND_CLEAR    /* level traversed: brief transition, then next scenery  */
+    FLOW_GAME_OVER
+    /* (No FLOW_ROUND_CLEAR: the seamless looping ribbon never pauses between
+     * sceneries -- the scroll just continues. See game.c game_update.) */
 } GameFlow;
 
 /* Facing flags (maps straight to the SAT flipH bit). */
@@ -325,19 +326,21 @@ typedef struct
     u8     bonusNextIdx;
     u8     flow;       /* GameFlow                                            */
     u16    flowTimer;  /* frames left in the current DYING/RESPAWNING/GAMEOVER */
-    /* --- round / stage progression (Phase 5 + faithful auto-scroll) ---
-     * round    = current LEVEL pass, 1-based. Starts at 1; bumped each time the
-     *            auto-scroll carries the hero to the level end. Selects the baked
-     *            scenery (round R -> ss_levels[(R-1)%8]) + the HUD readout.
+    /* --- round / stage progression (seamless looping ribbon) ---
+     * round    = the ribbon SEGMENT (baked scenery) currently under the camera,
+     *            1-based (segIdx+1, cycles 1..8). Set by segment_advance() the
+     *            moment a level seam scrolls in; drives the HUD readout. The scroll
+     *            is continuous -- this just tracks which scenery is on screen.
      * stage    = the arcade's saturating difficulty counter ($005A, cap 0x1C=28).
-     *            Increments once per level-advance and SATURATES at STAGE_MAX, so
+     *            Increments once per segment seam and SATURATES at STAGE_MAX, so
      *            difficulty ramps then plateaus exactly like the arcade -- it never
      *            climbs forever. entity.c reads this for the speed/wave/cadence ramp.
      *            Faithful model: SonSon advances by traversed scroll, NOT a finish
      *            line -- see tools/LEVEL_END_SPEC.md (the perpetual creep IS it). */
     u8     round;
     u8     stage;
-    s16    cameraX;    /* world x at the left edge of the screen (px)        */
+    s16    cameraX;    /* world x at the left edge of the screen (px); wraps at  *
+                        * the ribbon width (g_ribbonW) for the endless loop      */
     /* --- column-streaming window state ---
      * The 64-col Plane A is a ring buffer over the wide level. loadedMinCol /
      * loadedMaxCol is the inclusive range of LEVEL columns currently resident in

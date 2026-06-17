@@ -950,6 +950,19 @@ void entity_schedule_tick(void)
     }
 }
 
+/* SEAMLESS-RIBBON coordinate wrap (see entity.h). Shift every live entity's world
+ * X and the scheduler's spawn cursor by dx. Called from game.c the frame it wraps
+ * cameraX by the ribbon width; because cameraX gets the same dx, screen positions
+ * (x - cameraX) are unchanged -> the wrap is invisible. */
+void entity_shift_worldx(s16 dx)
+{
+    u16 i;
+    for (i = 0; i < ENTITY_MAX; i++)
+        if (g_entities[i].active)
+            g_entities[i].x = (s16)(g_entities[i].x + dx);
+    s_sched_next_x = (s16)(s_sched_next_x + dx);
+}
+
 /* ------------------------------------------------------------------------- */
 /* Seed the AMBIENT, non-wave entities (the SonSon FRUIT variety) at level start.
  * The marching enemy WAVES come from the faithful scheduler (entity_schedule_*);

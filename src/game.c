@@ -14,32 +14,82 @@
  *  writes. NOT a transliteration of the arcade 6809 -- no source-CPU RAM array,
  *  no per-frame palette/tile re-scan.
  *
- *  Phase 4 replaces the single static screen with a WIDE baked level; Phase 5
- *  ships SS_LEVEL_COUNT DISTINCT levels (ss_level.c: ss_levels[], ~5 screens each,
- *  baked from REAL arcade gameplay -- md=02, the CLEAN playfields, NOT the attract
- *  demo). Each round plays a different one (round 1->level1, 2->level2, ..., then
- *  it cycles; see level_select / round_advance). The 64-col Genesis Plane A is
- *  driven as a COLUMN-STREAMED sliding window over the active level (ring buffer;
- *  see stream_column / bg_stream):
- *  as the player's perpetual forward creep advances the camera, newly-revealed
- *  columns are decoded + DMA'd in at the seam (1 column/frame, tear-free) and
- *  the BG hardware-scrolls -- so the forward run travels through the whole level
- *  at full 60fps. The player keeps its screen-band pin and a baked ss_gfx sprite
- *  tile; the FPS readout stays on the unscrolled Plane B.
+ *  Phase 4 replaced the single static screen with a WIDE baked level; the SonSon
+ *  ribbon step concatenates SS_LEVEL_COUNT DISTINCT baked levels (ss_level.c:
+ *  ss_levels[], ~5 screens each, baked from REAL arcade gameplay -- md=02, the CLEAN
+ *  playfields) into ONE SEAMLESS LOOPING RIBBON (tools/LEVEL_END_SPEC.md). All 8
+ *  tilesets are CO-RESIDENT in VRAM (each at its own SsLevel.tileBase, loaded once in
+ *  game_init), so the 64-col Genesis Plane A is driven as a COLUMN-STREAMED sliding
+ *  window over the whole ribbon (ring buffer; see stream_column / ribbon_locate /
+ *  bg_stream): as the player's perpetual forward creep advances the camera, newly-
+ *  revealed columns are decoded + DMA'd in at the seam (1 column/frame, tear-free) --
+ *  including the level-to-level seams, with NO transition/cold-fill -- and the BG
+ *  hardware-scrolls. The ribbon wraps after the last segment back to the first
+ *  (cameraX wrap + ribbon_refill). The player keeps its screen-band pin and a baked
+ *  ss_gfx sprite tile; the FPS readout stays on the unscrolled Plane B.
  * =========================================================================== */
 
 GameState g_game;
 
-/* Current level descriptor + its pixel width (Phase 5 multi-level). g_curLevel
- * points into ss_levels[] for the round being played; g_levelW = cols*8. Both are
- * set by level_select() below (called from level_restart / round_advance). They
- * default to level 1 so any code reading them before the first select is sane. */
+/* SEAMLESS SINGLE-RIBBON model (replaces the per-round discrete-level swap).
+ * The 8 baked levels are concatenated into ONE endless LOOPING ribbon of
+ * SS_RIBBON_COLS columns (tools/LEVEL_END_SPEC.md: the arcade is one looping
+ * ribbon). All 8 tilesets are CO-RESIDENT in VRAM (each at its own SsLevel.tileBase,
+ * loaded once in game_init), so the scroll streams continuously across level
+ * boundaries with NO tile reload and NO cold-fill pause -- inherently tear-free.
+ *
+ * g_curLevel  -- the level (ribbon SEGMENT) currently UNDER THE CAMERA (its tiles
+ *                are resident alongside all the others). Tracked each frame from
+ *                cameraX; read by code that wants "which scenery is on screen now".
+ * g_levelW    -- the RIBBON pixel width (SS_RIBBON_COLS*8). Kept under this name so
+ *                the existing harnesses (verify_autoscroll.lua etc.) still read a
+ *                nonzero "in-game" width here; it stays constant during play now.
+ * g_levelIdx  -- index of g_curLevel (the on-camera segment); tier_solid() resolves
+ *                collision against whatever segment a given ribbon column lands in,
+ *                so the player/enemies keep working across every seam. */
 const SsLevel *g_curLevel = &ss_levels[0];
-u16            g_levelW   = 0;
-
-/* Index of the level resident this round (round R -> ss_levels[(R-1)%8]); set by
- * level_select(), read by tier_solid() to pick ss_collision[g_levelIdx]. */
+/* volatile so it survives LTO as the documented "in-game" probe word (the headless
+ * harnesses gate on g_levelW != 0; see tools/play_check.lua / verify_autoscroll.lua).
+ * It is set once per session to the ribbon pixel width and read by no C code now. */
+volatile u16   g_levelW   = 0;
 static u8      g_levelIdx = 0;
+
+/* RIBBON GEOMETRY (px). Computed once in game_init from ss_ribbon_col0[]. The
+ * ribbon LOOPS at g_ribbonW: cameraX (and the player / entities / spawn cursor)
+ * are wrapped by this so a long session never overflows s16 -- the wrap is
+ * invisible because column (ribbonCol % SS_RIBBON_COLS) is identical either side. */
+static s16     g_ribbonW = 0;       /* SS_RIBBON_COLS * 8 (ribbon pixel width)     */
+
+/* ribbon_locate -- map a (wrapped) ribbon COLUMN to its level index + local column.
+ * ribbon col rc in [0..SS_RIBBON_COLS) -> the level i with
+ * ss_ribbon_col0[i] <= rc < ss_ribbon_col0[i+1], local col = rc - ss_ribbon_col0[i].
+ * Linear scan over 8 segments (cheap, called once per streamed column / collision
+ * test). Returns the level index; writes the local column through *localCol. */
+static u8 ribbon_locate(u16 rc, u16 *localCol)
+{
+    u8 i;
+    for (i = 0; i < SS_LEVEL_COUNT; i++)
+    {
+        if (rc < ss_ribbon_col0[i + 1])
+        {
+            *localCol = (u16)(rc - ss_ribbon_col0[i]);
+            return i;
+        }
+    }
+    /* rc >= SS_RIBBON_COLS should never happen (callers wrap first); clamp to the
+     * last column of the last level as a safe fallback. */
+    *localCol = (u16)(ss_levels[SS_LEVEL_COUNT - 1].cols - 1);
+    return (u8)(SS_LEVEL_COUNT - 1);
+}
+
+/* Wrap a ribbon column into [0..SS_RIBBON_COLS). Negatives wrap up (the band
+ * clamp keeps cameraX>=0, but the lead/streamer can probe a few cols either side). */
+static inline u16 ribbon_wrap_col(s16 c)
+{
+    while (c < 0)                       c = (s16)(c + SS_RIBBON_COLS);
+    while (c >= (s16)SS_RIBBON_COLS)    c = (s16)(c - SS_RIBBON_COLS);
+    return (u16)c;
+}
 
 /* Free-running game-loop tick: incremented once per game_update(). Used by the
  * headless FPS probe (tools/entity_fps.lua) to measure the actual game-frame
@@ -125,37 +175,44 @@ static void check_extra_life(void)
 #define FPS_PAL       PAL3
 
 /* ---------------------------------------------------------------------------
- *  Column streaming -- write ONE wide-level column into the 64-col Plane A.
+ *  Column streaming -- write ONE RIBBON column into the 64-col Plane A.
  *
- *  The wide level (ss_level_map, ROW-MAJOR, SS_LEVEL_COLS wide) is shown through
- *  the 64-col plane as a ring buffer: level column L maps to plane column
- *  (L & PLANE_COL_MASK). To reveal a column we copy its 32 nametable words
- *  (one per BG row, strided by SS_LEVEL_COLS in the source) into a contiguous
- *  scratch buffer and DMA it down the plane column (VRAM stride = plane width
- *  = 64 words). Off-level columns (L<0 or L>=SS_LEVEL_COLS) are written blank
- *  so the seam never shows stale ring data.
+ *  The 8 levels form ONE logical ribbon (SS_RIBBON_COLS wide) shown through the
+ *  64-col plane as a ring buffer: ribbon column rc maps to plane column
+ *  (rc & PLANE_COL_MASK). To reveal a column we wrap rc into [0..SS_RIBBON_COLS),
+ *  find which level (ribbon SEGMENT) + local column it lands in (ribbon_locate),
+ *  copy that level's 32 nametable words (one per BG row, strided by the level's
+ *  width) into a contiguous scratch buffer, and DMA it down the plane column
+ *  (VRAM stride = plane width = 64 words). The map words are ABSOLUTE to that
+ *  level's OWN VRAM base and ALL 8 tilesets are co-resident (game_init), so every
+ *  column references a loaded tile -- no per-seam tile reload, no blank/garbage
+ *  column at a level boundary. The ribbon wraps after the last level back to the
+ *  first, so there are no off-ribbon columns.
  *
  *  DMA_QUEUE (not immediate): queued transfers are flushed inside V-blank by
  *  SYS_doVBlankProcess, so a column written THIS frame lands before the next
- *  active display -- no tearing at the scroll seam (same discipline the sibling
- *  port uses for its scroll-seam column). One strided DMA per revealed column.
- * ------------------------------------------------------------------------- */
-static void stream_column(s16 levelCol, TransferMethod tm)
+ *  active display -- no tearing at the scroll seam (the same discipline used at
+ *  every column boundary, now including the level-to-level seams). One strided
+ *  DMA per revealed column. ------------------------------------------------- */
+static void stream_column(s16 ribbonCol, TransferMethod tm)
 {
     static u16 colbuf[SS_LEVEL_ROWS];          /* one plane column (32 words)  */
-    u16 planeCol = (u16)(levelCol & PLANE_COL_MASK);
-    u16 cols     = g_curLevel->cols;           /* current level width (Phase 5) */
+    u16 planeCol = (u16)(ribbonCol & PLANE_COL_MASK);
+    u16 rc       = ribbon_wrap_col(ribbonCol); /* wrap into [0..SS_RIBBON_COLS) */
+    u16 localCol;
+    u8  lvl      = ribbon_locate(rc, &localCol);   /* which level + local col   */
+    const SsLevel *L = &ss_levels[lvl];
+    u16 cols     = L->cols;
     u16 row;
 
-    if (levelCol < 0 || levelCol >= (s16)cols)
     {
-        for (row = 0; row < SS_LEVEL_ROWS; row++) colbuf[row] = 0;   /* blank   */
-    }
-    else
-    {
-        const u16 *src = &g_curLevel->map[(u16)levelCol];  /* row 0 of this col */
+        /* Read that level's map column. The map words are ABSOLUTE to that level's
+         * own VRAM base (all 8 tilesets co-resident), so no rebasing is needed --
+         * the tile referenced is always loaded. The ribbon never has off-level
+         * columns (it wraps), so every plane column shows real scenery. */
+        const u16 *src = &L->map[localCol];        /* row 0 of this col          */
         for (row = 0; row < SS_LEVEL_ROWS; row++)
-            colbuf[row] = src[row * cols];                 /* stride a whole row */
+            colbuf[row] = src[row * cols];         /* stride a whole row         */
     }
 
     /* Strided VRAM write: 32 words down one plane column. VDP_setTileMapDataColumnFast
@@ -170,56 +227,40 @@ static void stream_column(s16 levelCol, TransferMethod tm)
 }
 
 /* ---------------------------------------------------------------------------
- *  level_select -- choose the baked level for a given round and make it active.
+ *  ribbon_track_camera -- update which ribbon SEGMENT (baked level) is under the
+ *  camera, for collision + per-segment difficulty/scenery readout.
  *
- *  Phase 5 multi-level: the engine ships SS_LEVEL_COUNT distinct levels captured
- *  from REAL arcade gameplay (ss_levels[], see ss_level.c). Round R (1-based)
- *  plays ss_levels[(R-1) % SS_LEVEL_COUNT] -- round 1->level1, 2->level2, ...,
- *  then it cycles. Selecting a level: point g_curLevel at it, set the runtime
- *  level width g_levelW (= cols*8, used by the camera clamp), and DMA its deduped
- *  tiles into the shared level-tile VRAM region at SS_LEVEL_TILE_BASE (only ONE
- *  level is resident at a time -- the per-round tile budget is max(per-level),
- *  not the sum). The level's map words are absolute (base+local), so they're
- *  consistent for whichever level is loaded at SS_LEVEL_TILE_BASE.
- *
- *  Tiles are loaded with immediate DMA so they're resident before level_restart
- *  cold-fills the plane from this level's map. Caller then streams the map. */
-static void level_select(u8 round)
+ *  In the seamless-ribbon model there is no per-round tile swap: all 8 tilesets
+ *  are co-resident (loaded once in game_init). This just keeps g_curLevel /
+ *  g_levelIdx pointing at the level occupying the camera's LEFT edge, so
+ *  tier_solid() and entity.c's per-level difficulty resolve to the on-screen
+ *  scenery. Cheap (one ribbon_locate per frame). g_levelW stays the RIBBON width. */
+static void ribbon_track_camera(void)
 {
-    u8 idx = (u8)((round - 1) % SS_LEVEL_COUNT);   /* round 1 -> level 0, cycle */
+    u16 localCol;
+    u16 rc  = ribbon_wrap_col((s16)(g_game.cameraX >> 3));   /* camera left col   */
+    u8  idx = ribbon_locate(rc, &localCol);
     g_curLevel = &ss_levels[idx];
-    g_levelIdx = idx;                              /* -> ss_collision[idx]       */
-    g_levelW   = (u16)(g_curLevel->cols * 8);
-
-    /* Load THIS level's tiles into the shared level region (base 135). The level
-     * tile count varies per level but all fit in SS_LEVEL_MAX_TILES slots, which
-     * sit below the resident anim tiles (SS_ANIM_TILE_BASE) -- no overlap. */
-    VDP_loadTileData(g_curLevel->tiles, SS_LEVEL_TILE_BASE,
-                     g_curLevel->tileCount, DMA);
+    g_levelIdx = idx;
 }
 
 /* ---------------------------------------------------------------------------
- *  level_restart -- (re)build the level window + place the player at the start.
+ *  level_restart -- cold-fill the ribbon window + place the player at the start.
  *
- *  Factored out of game_init so the ROUND-CLEAR advance can reuse the exact same
- *  level setup: cold-fill the 64-col Plane A window with the first 64 level
- *  columns (immediate DMA so it's resident before the loop streams the rest in),
- *  reset the column-streaming range, park the camera at the level start, and
- *  spawn the player low-left on lane 0 pinned at the band -- the SonSon hero's
- *  start pose. Used by game_init (first round) and the round advance (each new
- *  round runs THIS round's level -- level_select picked it). Does NOT touch
- *  score / lives / round / flow -- those are the caller's policy. */
+ *  Called ONCE from game_init (the seamless ribbon never re-fills mid-session --
+ *  the scroll is continuous). Cold-fill the 64-col Plane A window with the first
+ *  64 RIBBON columns (immediate DMA so it's resident before the loop streams the
+ *  rest in), reset the column-streaming range, park the camera at the ribbon
+ *  start, and spawn the player low-left pinned at the band -- the SonSon hero's
+ *  start pose. `keepPose` is retained for signature compatibility (always FALSE
+ *  now). Does NOT touch score / lives / round / flow -- the caller's policy. */
 static void level_restart(bool keepPose)
 {
-    /* Select the level for the CURRENT round (loads its tiles at base 135, sets
-     * g_curLevel + g_levelW). game_init sets round=1 first; round_advance bumps it
-     * before calling here -- so each round shows its own captured level, cycling
-     * through ss_levels[] (round 1->level1 ... round 8->level8, then round 9->level1). */
-    level_select(g_game.round);
+    ribbon_track_camera();                 /* set g_curLevel/idx for the start col */
 
-    /* Cold-fill the 64-col Plane A window with the first 64 level columns
-     * (columns 0..63 of the wide level). game_render streams new columns in as
-     * the camera advances past each tile boundary. */
+    /* Cold-fill the 64-col Plane A window with the first 64 RIBBON columns
+     * (columns 0..63 of the concatenated ribbon). game_render streams new columns
+     * in as the camera advances past each tile boundary. */
     {
         s16 col;
         for (col = 0; col < PLANE_COLS; col++)
@@ -272,6 +313,26 @@ static void level_restart(bool keepPose)
 }
 
 /* ---------------------------------------------------------------------------
+ *  ribbon_refill -- rebuild the full 64-col Plane A window at the current camera.
+ *
+ *  Called once per full ribbon loop, the frame game_update wraps cameraX by a whole
+ *  ribbon. The wrap shifts the 64-col ring phase (a full ribbon is not a multiple of
+ *  64 cols), so we re-stream every plane column from the post-wrap coordinates and
+ *  reset the resident range. Tear-free because the pre- and post-wrap scenery are
+ *  identical (the wrap is exactly one ribbon) -- each plane cell is rewritten with
+ *  the same tile it already held. Streams the window covering the camera plus the
+ *  one-column lead, matching bg_stream's resident span. */
+static void ribbon_refill(void)
+{
+    s16 firstCol = (s16)(g_game.cameraX >> 3);          /* visible left column     */
+    s16 col;
+    for (col = firstCol; col < (s16)(firstCol + PLANE_COLS); col++)
+        stream_column(col, DMA);                        /* immediate: this frame   */
+    g_game.loadedMinCol = firstCol;
+    g_game.loadedMaxCol = (s16)(firstCol + PLANE_COLS - 1);
+}
+
+/* ---------------------------------------------------------------------------
  *  game_init -- one-time scene + player setup.
  * ------------------------------------------------------------------------- */
 void game_init(void)
@@ -305,37 +366,46 @@ void game_init(void)
     VDP_setTextPlane(BG_B);
     VDP_clearTextArea(0, 0, 40, 4);
 
-    /* VRAM tile layout (no overlap, all below the SGDK font/sprite-engine tiles
-     * up near ~1376):
+    /* VRAM tile layout for the SEAMLESS RIBBON (no overlap, all below the SGDK
+     * font/sprite-engine tiles up near ~1376):
      *   scene tiles  [0 .. SS_SCENE_TILE_COUNT)            -- only the player
      *                                                         sprite is used now
-     *   level tiles  [SS_LEVEL_TILE_BASE .. +SS_LEVEL_MAX_TILES)  (base = 135)
-     *                  -- ONE round's level resident at a time (level_select DMAs
-     *                     the active round's tiles here); max 91 tiles.
-     *   anim tiles   [SS_ANIM_TILE_BASE .. )               (base = 346)
-     * The scene's static BG is dropped; the WIDE per-round level replaces it. We
-     * still load the scene tiles because the player sprite borrows
-     * ss_scene_sprites[0].tile. The level tiles are loaded per-round by
-     * level_select() (called from level_restart via the round below). */
+     *   anim tiles   [SS_ANIM_TILE_BASE .. +SS_ANIM_TILE_COUNT)   (base = 346)
+     *   level tiles  [SS_LEVEL_TILE_BASE .. SS_LEVEL_TILE_TOP)    (base = 562)
+     *                  -- ALL 8 levels CO-RESIDENT, each at its own SsLevel.tileBase
+     *                     (~645 tiles total, 562..1206). Loaded ONCE here; the ribbon
+     *                     streams continuously across seams with no reload.
+     * The scene's static BG is dropped; the wide RIBBON replaces it. We still load
+     * the scene tiles because the player sprite borrows ss_scene_sprites[0].tile. */
     VDP_loadTileData(ss_scene_tiles, SS_SCENE_TILE_BASE, SS_SCENE_TILE_COUNT, DMA);
-    /* Faithful player + enemy animation frames, loaded at a fresh VRAM base
-     * (346) past the scene (0..134) and level (135..225, max) tiles -- well below
-     * the SGDK font/sprite-engine tiles near ~1376. The baked anim table's
-     * per-frame tile indices are ABSOLUTE (already include SS_ANIM_TILE_BASE). */
+    /* Faithful player + enemy animation frames at SS_ANIM_TILE_BASE (346); the
+     * baked anim table's per-frame tile indices are ABSOLUTE (include the base). */
     VDP_loadTileData(ss_anim_tiles, SS_ANIM_TILE_BASE, SS_ANIM_TILE_COUNT, DMA);
+    /* ALL 8 ribbon segments' tilesets, co-resident -- each at its OWN VRAM base so
+     * its map words (absolute) reference loaded tiles for the whole session. This
+     * is what makes the level-to-level seams tear-free with no runtime DMA. */
+    {
+        u8 i;
+        for (i = 0; i < SS_LEVEL_COUNT; i++)
+            VDP_loadTileData(ss_levels[i].tiles, ss_levels[i].tileBase,
+                             ss_levels[i].tileCount, DMA);
+    }
 
-    /* Round progression: a NEW game (from the selector) always starts at round 1.
-     * The round number drives the HUD readout, the per-round LEVEL select
-     * (level_restart -> level_select), and entity.c's per-round difficulty ramp.
-     * Set it BEFORE level_restart so the right level (level 1) is loaded. */
+    /* RIBBON geometry: one endless looping ribbon of SS_RIBBON_COLS columns. The
+     * ribbon LOOPS at g_ribbonW; g_levelW carries the ribbon width (kept under this
+     * name so the in-game harness probes still read a nonzero width here). */
+    g_ribbonW = (s16)(SS_RIBBON_COLS * 8);
+    g_levelW  = (u16)g_ribbonW;
+
+    /* Round progression: a NEW game always starts at round 1 (the HUD "RND" + the
+     * scenery cycle base) with the difficulty stage at 0. The round now tracks the
+     * ribbon segment under the camera (advanced seamlessly as you travel). */
     g_game.round = 1;
     g_game.stage = 0;                 /* difficulty counter ($005A) starts at 0     */
 
-    /* Build the level window + place the player at the start (shared with the
-     * round advance -- see level_restart). level_restart selects round 1's level
-     * (loads its tiles at base 135 + sets g_levelW), cold-fills Plane A from its
-     * map, resets the stream range + camera, and spawns the hero low-left. FALSE =
-     * full cold-start pose (round_advance passes TRUE to keep the pose across a swap). */
+    /* Build the ribbon window + place the player at the start (level_restart cold-
+     * fills Plane A from the first 64 ribbon columns, resets the stream range +
+     * camera, and spawns the hero low-left). FALSE = full cold-start pose. */
     level_restart(FALSE);
 
     g_game.score   = 0;
@@ -363,7 +433,7 @@ void game_init(void)
     /* Round-intro music cue (arcade plays 0x16 then 0x10 at a round start). This
      * is the "round 1 begins" flourish layered over the main BGM start; both are
      * verified command numbers. (Routed to the music slot, so it does not disturb
-     * the SFX channel.) Subsequent rounds re-arm this via round_advance(). */
+     * the SFX channel.) Each ribbon segment seam re-arms this via segment_advance(). */
     snd_play_round();
 }
 
@@ -403,66 +473,61 @@ static void player_respawn(void)
 }
 
 /* ---------------------------------------------------------------------------
- *  round_advance -- swap in the NEXT scenery after the auto-scroll reaches the end.
+ *  segment_advance -- cross a ribbon SEGMENT (level) boundary, SEAMLESSLY.
  *
- *  The native engine ships SS_LEVEL_COUNT DISTINCT captured levels (ss_levels[],
- *  baked from real arcade gameplay). Advancing: bump the round counter (selects the
- *  next scenery) AND tick the saturating stage counter (difficulty), then rebuild
- *  via level_restart(TRUE) -- which calls level_select(round) to load the NEW
- *  round's level (round 1->level1 ... then it cycles), cold-fill Plane A from that
- *  level's map, and re-pin the hero at the band start WITHOUT re-posing him (his
- *  lane / facing / anim carry over -- the arcade scroll never re-poses at a segment
- *  boundary). We also clear + re-seed the entity pool (entity_init re-runs the spawn
- *  wave; the fresh enemies pick up the new STAGE's difficulty at spawn) and replay
- *  the boundary music cue. The caller (game_update) flips the flow back to ALIVE.
+ *  The arcade is one endless LOOPING auto-scroll ribbon (tools/LEVEL_END_SPEC.md):
+ *  there is NO finish line, NO cold-fill, NO transition screen -- the scroll just
+ *  continues and a saturating stage counter ($005A) ramps difficulty as you travel.
+ *  The native ribbon reproduces that exactly: all 8 sceneries are concatenated and
+ *  streamed continuously, so when the camera crosses from one segment into the next
+ *  there is nothing to rebuild -- the scenery already flowed in column-by-column.
  *
- *  All 8 arcade levels are captured + baked into ss_levels[] (SS_LEVEL_COUNT = 8;
- *  gen_level.py --multi level1..level8 from real md=02 gameplay); rounds cycle
- *  round1->level1 ... round8->level8 then wrap. The only per-round VRAM resident set
- *  is the active level's tiles (max 91, base 135) -- see level_select.
- *
- *  FAITHFULNESS NOTE: the RE proved SonSon has NO discrete level-end / "climb to
- *  advance" tower finish -- it is one endless LOOPING auto-scroll ribbon whose
- *  saturating $005A stage counter ramps difficulty as you travel (tools/
- *  LEVEL_END_SPEC.md). This re-expresses that over the 8 baked sceneries: the creep
- *  carries the hero forward (no wall to push) and a brief transition swaps scenery.
- *  TODO(seamless ribbon): a future step can concatenate the 8 maps into one
- *  continuously-streamed looping ribbon (no per-level cold-fill) for a truly seam-
- *  free scroll -- needs an all-levels-resident tileset (tile rebasing) or seam
- *  reloads; deferred as its own milestone (the s16 coordinate model stays as-is). */
-static void round_advance(void)
+ *  This is called (from game_update) the frame the camera's segment index changes.
+ *  It does the per-boundary BOOKKEEPING ONLY -- NO plane rebuild, NO camera reset,
+ *  NO pose change, NO entity flush:
+ *    - HUD "round" tracks the segment now under the camera (1-based, cycles 1..8);
+ *    - the saturating difficulty stage ticks up (arcade $005A, cap STAGE_MAX);
+ *    - the wave scheduler re-arms for the new segment's per-level program +
+ *      difficulty group (entity_schedule_init -- it does NOT clear live enemies, so
+ *      the marching wave carries across the seam too);
+ *    - the boundary music cue fires (arcade fires a sound command at segment
+ *      boundaries: 0x16 then 0x10). */
+static void segment_advance(u8 newSegIdx)
 {
-    if (g_game.round < 255)       g_game.round++; /* next scenery + HUD pass       */
-    if (g_game.stage < STAGE_MAX) g_game.stage++; /* saturating difficulty ($005A) */
+    g_game.round = (u8)(newSegIdx + 1);           /* 1-based scenery # for the HUD  */
+    if (g_game.stage < STAGE_MAX) g_game.stage++; /* saturating difficulty ($005A)  */
 
-    level_restart(TRUE);                          /* swap scenery, KEEP the pose   */
-    entity_init();                                /* clear + re-seed the wave      */
+    entity_schedule_init();                       /* re-arm waves for the new seg   */
 
-    /* Boundary music cue (arcade fires a sound command at segment boundaries;
-     * 0x16 then 0x10 -- the round flourish). Re-armed for the new scenery. */
+    /* Boundary music cue (arcade segment-boundary flourish: 0x16 then 0x10). */
     snd_play_round();
 }
 
 /* ===========================================================================
- *  TERRAIN COLLISION -- the native sub_A847 ($A847).
+ *  TERRAIN COLLISION -- the native sub_A847 ($A847), RIBBON-AWARE.
  * ===========================================================================
  *  The arcade A847 maps the hero's worldX (-$B) + scroll ($90) to a 32-col ring
  *  column, then tests the per-column 4-byte solidity mask at RAM $0100 with a row
- *  bit (Y>>3). We re-express that on the native per-column collision table
- *  (ss_collision[level], one 6-bit mask/column; bit t = tier t solid). The native
- *  level's columns ARE world columns (worldX/8), so the lookup is direct -- no
- *  ring wrap (the native streams the whole wide level, not a 32-col ring). */
+ *  bit (Y>>3). We re-express that on the per-column collision tables
+ *  (ss_collision[segment], one 6-bit mask/column; bit t = tier t solid). In the
+ *  SEAMLESS-RIBBON model a world column belongs to whichever SEGMENT (baked level)
+ *  occupies that part of the ribbon, so we map worldX -> ribbon column -> (segment,
+ *  local col) and index that segment's collision table -- collision tracks the
+ *  scenery on screen across every seam, exactly like the BG streamer does. */
 
-/* Is tier `tier` (0=bottom..5=top) SOLID at world X `worldX`? Out-of-level columns
- * read as solid (so the hero never falls off the level's left/right end -- the
- * camera clamps the left and the auto-advance handles the right). */
+/* Is tier `tier` (0=bottom..5=top) SOLID at world X `worldX`? worldX is wrapped
+ * into the ribbon (the ribbon loops, so there are no off-world columns). */
 static u8 tier_solid(s16 worldX, u8 tier)
 {
-    u16 cols = ss_collision_cols[g_levelIdx];
-    s16 col  = (s16)(worldX >> 3);          /* world column = px/8 (A847 cellX>>3) */
-    if (col < 0 || col >= (s16)cols) return 1;
-    if (tier >= SS_COLLISION_TIERS)  return 0;
-    return (u8)((ss_collision[g_levelIdx][col] >> tier) & 1);
+    u16 localCol;
+    u16 rc;
+    u8  seg;
+    if (tier >= SS_COLLISION_TIERS) return 0;
+    rc  = ribbon_wrap_col((s16)(worldX >> 3));  /* world col = px/8, wrapped       */
+    seg = ribbon_locate(rc, &localCol);         /* which segment + local column    */
+    /* localCol is always in range (ribbon_locate guarantees it); index that
+     * segment's per-column collision mask. */
+    return (u8)((ss_collision[seg][localCol] >> tier) & 1);
 }
 
 /* The hero's collision column uses his sprite mid-X (+8), like A847 (worldX+8). */
@@ -687,15 +752,17 @@ static void player_control(u16 pad)
     /* ----- CAMERA + horizontal screen-band clamp (arcade sub_AB52).
      * The hero is pinned to the band [BAND_LEFT..BAND_RIGHT] in SCREEN space;
      * the world scrolls to keep him there. We move the camera so screenX stays
-     * inside the band, clamp ONLY the LEFT edge (the level start), and re-pin the
+     * inside the band, clamp ONLY the LEFT edge (the ribbon start), and re-pin the
      * player's *world* X to the band there.
      *
-     * FAITHFUL AUTO-SCROLL -- no right wall: the camera follows the hero (carried by
-     * the perpetual creep) WITHOUT clamping at the level's right edge. game_update
-     * advances to the next scenery the frame the creep reaches the end (cameraX >=
-     * maxCam), which resets cameraX to 0, so it never needs a right clamp and never
-     * overshoots by more than one frame's creep before the swap. This removes the
-     * old "run into the finish wall and push" interaction the arcade never had. ----- */
+     * SEAMLESS LOOPING RIBBON -- no right wall, no reset: the camera follows the hero
+     * (carried by the perpetual creep) endlessly to the right. There is no level-end
+     * stop -- the scenery just flows from one segment into the next. game_update
+     * WRAPS cameraX (and the player + entities) by the ribbon width once it passes
+     * the end, so the world loops back to the first segment with no visible jump
+     * (the wrap subtracts a whole ribbon, and column % SS_RIBBON_COLS is identical).
+     * The left clamp at 0 only matters on the very first frames before the creep has
+     * moved; after the first wrap cameraX never returns below 0. ----- */
     {
         s16 screenX;
 
@@ -707,7 +774,7 @@ static void player_control(u16 pad)
         if (g_game.cameraX < 0) g_game.cameraX = 0;   /* clamp ONLY the left edge   */
 
         /* re-pin the player's world X to the band so he never escapes the visible
-         * window at the level START (cameraX==0); the right edge no longer walls. */
+         * window at the ribbon START (cameraX==0); the right edge never walls. */
         screenX = (s16)(p->x - g_game.cameraX);
         if (screenX < BAND_LEFT)
         {
@@ -837,13 +904,11 @@ bool game_update(void)
     g_frameCounter++;          /* headless FPS probe tick (see g_frameCounter) */
 
     /* Publish invulnerability to the entity collision pass: the player can't be
-     * hit while dying, in his respawn i-frames, during the game-over beat, or
-     * during the ROUND CLEAR interlude (a non-combat beat -- the still-marching
-     * enemies must not cost a life on the finish line). */
+     * hit while dying, in his respawn i-frames, or during the game-over beat. (The
+     * seamless ribbon has no round-clear interlude -- play never pauses.) */
     g_player_invuln = (u8)(g_game.flow == FLOW_DYING ||
                            g_game.flow == FLOW_RESPAWNING ||
-                           g_game.flow == FLOW_GAME_OVER ||
-                           g_game.flow == FLOW_ROUND_CLEAR);
+                           g_game.flow == FLOW_GAME_OVER);
 
     /* Player control: live only while ALIVE or RESPAWNING (he moves during the
      * i-frames). DYING / GAME_OVER coast on a zero pad (no input). */
@@ -861,6 +926,44 @@ bool game_update(void)
     /* Entities always run (scene stays alive through every flow phase). */
     entity_update_all();
 
+    /* ===== SEAMLESS LOOPING RIBBON bookkeeping (runs EVERY phase so the world
+     * keeps scrolling during death/respawn/game-over, exactly like the arcade). =====
+     *
+     * (1) WRAP the coordinate system at the ribbon end. The camera free-runs right
+     *     forever; once it passes ONE FULL RIBBON width, subtract a whole ribbon from
+     *     the camera, the player, every live entity, and the spawn cursor. Because the
+     *     wrap is EXACTLY one ribbon, the scenery at cameraX and cameraX-ribbonW is
+     *     IDENTICAL (same column % SS_RIBBON_COLS) and every on-screen position
+     *     (x - cameraX) is preserved -- so the wrap is invisible. It keeps cameraX
+     *     (s16) bounded over an endless looping session.
+     *
+     *     The 64-col ring maps plane col = streamCol & 63, and a full ribbon (1418
+     *     cols) is NOT a multiple of 64, so the wrap shifts the ring phase. We absorb
+     *     that by REFILLING the whole 64-col window from the post-wrap coordinates in
+     *     this one frame (ribbon_refill). It is tear-free precisely because the pre-
+     *     and post-wrap scenery are identical -- every plane cell ends up holding the
+     *     same tile it already showed. One refill per full loop (~75-220s of travel). */
+    if (g_ribbonW > 0 && g_game.cameraX >= g_ribbonW)
+    {
+        s16 dx = (s16)(-g_ribbonW);
+        g_game.cameraX     = (s16)(g_game.cameraX + dx);
+        g_game.player.x    = (s16)(g_game.player.x + dx);
+        entity_shift_worldx(dx);                 /* shift all entities + spawn cursor */
+        ribbon_refill();                         /* rebuild the 64-col window, no tear */
+    }
+
+    /* (2) SEGMENT (scenery) tracking: keep g_curLevel/g_levelIdx pointing at the
+     *     segment under the camera, and when that segment INDEX changes (a level-to-
+     *     level seam just scrolled in), do the per-boundary bookkeeping (HUD round,
+     *     saturating difficulty stage, wave re-arm, music cue) WITHOUT any pause or
+     *     rebuild. Only the index change matters; the scroll already flowed across. */
+    {
+        u8 prevSeg = g_levelIdx;
+        ribbon_track_camera();                   /* updates g_curLevel + g_levelIdx   */
+        if (g_levelIdx != prevSeg)
+            segment_advance(g_levelIdx);
+    }
+
     /* --- flow state machine --- */
     switch (g_game.flow)
     {
@@ -868,9 +971,7 @@ bool game_update(void)
             /* A fresh lethal contact this frame? Consume it: lose a life. The
              * request is only ever raised when not invulnerable (entity.c), so
              * one touch == one life. lives is "lives in hand including current":
-             * losing the LAST one (lives reaches 0) is GAME OVER. DEATH takes
-             * priority over a round-clear: a fatal hit on the finish line still
-             * costs the life (so dying mid-level never short-circuits to a clear). */
+             * losing the LAST one (lives reaches 0) is GAME OVER. */
             if (g_player_dead_request)
             {
                 g_player_dead_request = 0;
@@ -893,24 +994,10 @@ bool game_update(void)
                 }
                 break;
             }
-
-            /* FAITHFUL ADVANCE: the perpetual creep has carried the camera to the
-             * level end -- NO wall to push, NO dwell. The scroll itself is the
-             * advance (LEVEL_END_SPEC.md: SonSon has no finish line). maxCam is the
-             * scroll position showing the level's last screen; the moment cameraX
-             * reaches it, trip the BRIEF transition that swaps in the next baked
-             * scenery + ticks the saturating stage. Only checked while ALIVE, so a
-             * death / respawn beat can never be mistaken for an advance. */
-            {
-                s16 maxCam = (s16)((s16)g_levelW - SCREEN_W);  /* current level width */
-                if (maxCam < 0) maxCam = 0;
-                if (g_game.cameraX >= maxCam)
-                {
-                    g_game.flow      = FLOW_ROUND_CLEAR;
-                    g_game.flowTimer = ROUND_CLEAR_FRAMES;
-                    snd_play_round();             /* boundary cue (0x16+0x10)      */
-                }
-            }
+            /* SEAMLESS RIBBON: there is NO level-end / round-clear here. The scroll
+             * runs forever and the scenery flows from one segment into the next; the
+             * per-segment difficulty/HUD/music bookkeeping happens above (segment
+             * tracking) the moment a seam scrolls in -- play never pauses. */
             break;
 
         case FLOW_DYING:
@@ -932,20 +1019,6 @@ bool game_update(void)
                 return TRUE;                      /* leave the loop -> front-end */
             break;
 
-        case FLOW_ROUND_CLEAR:
-            /* BRIEF scenery transition (~0.6s): input is frozen (player_control got
-             * a 0 pad above) just long enough to mask the next level's one-frame
-             * cold-fill; a short STAGE flash shows (game_render). On timeout,
-             * round_advance() swaps the scenery (keeping the hero's pose), ticks the
-             * saturating stage, re-seeds entities at the new stage, and resumes play
-             * -- the auto-scroll carries straight on into the next ribbon section. */
-            if (--g_game.flowTimer == 0)
-            {
-                round_advance();
-                g_game.flow = FLOW_ALIVE;         /* next scenery begins         */
-            }
-            break;
-
         default:
             break;
     }
@@ -963,41 +1036,41 @@ bool game_update(void)
      * every frame (score only grows during ALIVE play, so this is safe anywhere). */
     check_extra_life();
     /*
-     * AUTO-SCROLL PROGRESSION is implemented above: the FLOW_ALIVE case advances
-     * the moment the perpetual creep carries the camera to the level end (cameraX
-     * >= maxCam -- NO wall to push, NO dwell) -> FLOW_ROUND_CLEAR; that BRIEF
-     * transition masks the scenery cold-fill, then round_advance() bumps the round
-     * (next scenery) + the saturating stage (difficulty), swaps the level keeping
-     * the hero's pose, re-seeds entities at the new stage, and resumes ALIVE -- so
-     * the game is an endless forced auto-scroll, faithful to the arcade ribbon.
-     *
-     * All 8 arcade levels are captured + baked into ss_levels[] (SS_LEVEL_COUNT =
-     * 8) and round_advance() cycles them (round1->level1 ... round8->level8, then
-     * wrap) with the saturating per-stage difficulty ramp on top. The arcade's
-     * single seamless LOOPING ribbon is re-expressed here as these 8 sceneries
-     * chained by a brief transition; a future step can concatenate them into one
-     * continuously-streamed ribbon (round_advance() TODO). See round_advance() /
-     * level_select() / tools/LEVEL_END_SPEC.md. */
+     * SEAMLESS LOOPING RIBBON: the 8 baked sceneries are concatenated into ONE
+     * endless looping ribbon (SS_RIBBON_COLS), all tilesets co-resident, streamed
+     * continuously by bg_stream/stream_column. The perpetual creep carries the camera
+     * forward forever; the scenery flows from one segment straight into the next with
+     * NO transition/cold-fill (the seam is just another streamed column), and the
+     * ribbon wraps after the last segment back to the first (the cameraX wrap above,
+     * tear-free via ribbon_refill). The per-segment bookkeeping (HUD round, saturating
+     * difficulty stage, wave re-arm, music cue) fires the moment a seam scrolls in
+     * (segment tracking above) -- faithful to the arcade's one looping ribbon whose
+     * saturating $005A stage ramps difficulty as you travel (tools/LEVEL_END_SPEC.md).
+     * See stream_column / ribbon_locate / segment_advance / ribbon_refill. */
     return FALSE;
 }
 
 /* ---------------------------------------------------------------------------
- *  bg_stream -- keep the wide level resident in the 64-col Plane A window.
+ *  bg_stream -- keep the RIBBON resident in the 64-col Plane A window.
  *
- *  The 64-col plane is a ring buffer over the SS_LEVEL_COLS-wide level: level
- *  column L lives at plane column L & PLANE_COL_MASK. We must keep every column
- *  the visible 256px window can show resident. The window shows level columns
- *  [cameraX/8 .. cameraX/8 + 32]; the 64-wide plane gives 32 cols of slack, so
- *  we extend the loaded range to keep a healthy lead column ahead of the right
- *  edge. As the camera advances past a tile boundary we stream the newly-needed
- *  column(s) -- typically 0 or 1 per frame (the forward creep is < 1 tile/frame),
- *  so streaming touches just the new seam column, never a full repaint -> 60fps.
+ *  The 64-col plane is a ring buffer over the ribbon: stream column S lives at
+ *  plane column S & PLANE_COL_MASK (S is a MONOTONIC counter in the camera frame --
+ *  it is NOT wrapped to the ribbon width here; stream_column wraps the SOURCE column
+ *  by SS_RIBBON_COLS internally, so the ribbon's own scenery loop -- last segment
+ *  back to the first -- is seamless regardless of the ring phase). We keep every
+ *  column the visible 256px window can show resident: the window shows columns
+ *  [cameraX/8 .. cameraX/8 + 32]; the 64-wide plane gives 32 cols of slack, so we
+ *  extend the loaded range a lead column ahead of the right edge. As the camera
+ *  advances past a tile boundary we stream the newly-needed column(s) -- typically
+ *  0 or 1 per frame (the forward creep is < 1 tile/frame), so streaming touches just
+ *  the new seam column, never a full repaint -> 60fps. (Once per full ribbon loop,
+ *  ribbon_refill rebuilds the whole window when the cameraX wrap shifts the ring.)
  *
- *  SEAM SAFETY: a freshly-streamed level column L overwrites plane column
- *  L & 63, which previously held level column L-64 -- already 32+ cols off the
- *  LEFT of the visible window, so the overwrite is never visible. New columns
- *  are queued (DMA_QUEUE) and flushed in V-blank before they scroll into view.
- * ------------------------------------------------------------------------- */
+ *  SEAM SAFETY: a freshly-streamed column S overwrites plane column S & 63, which
+ *  previously held column S-64 -- already 32+ cols off the LEFT of the visible
+ *  window, so the overwrite is never visible. This holds at LEVEL-TO-LEVEL seams
+ *  too (the next segment's columns stream in exactly like any other). New columns
+ *  are queued (DMA_QUEUE) and flushed in V-blank before they scroll into view. */
 static void bg_stream(void)
 {
     /* Lead column = rightmost level column we want resident: the visible right
@@ -1162,31 +1235,10 @@ void game_render(void)
     if (g_game.flow == FLOW_GAME_OVER)
         VDP_drawText("GAME OVER", 11, 13);   /* H32: (32-9)/2 ~= 11 -> centered  */
 
-    /* --- AREA-TRANSITION banner (Plane B, centered) ---
-     * A brief (~0.6s) flash during the FLOW_ROUND_CLEAR scenery transition. SonSon
-     * has no "round clear" (the scroll is continuous -- tools/LEVEL_END_SPEC.md), so
-     * this is a light "entering the next area" cue while the next level's one-frame
-     * cold-fill is masked -- faithful to the arcade's brief round/area intros, NOT a
-     * finish-line banner. g_game.round is still the just-traversed pass during the
-     * beat (round_advance bumps it at the end), so we show round+1 = the area being
-     * entered. Blanked ONCE on the frame the beat ends (prevFlow tracks the edge) so
-     * the text never lingers into the next area's play. */
-    {
-        static u8 prevFlow = FLOW_ALIVE;
-        if (g_game.flow == FLOW_ROUND_CLEAR)
-        {
-            char buf[12];
-            u16 nextRound = (u16)(g_game.round < 255 ? g_game.round + 1 : 255);
-            intToStr((s32)nextRound, buf, 2);
-            VDP_drawText("ROUND", 13, 13);        /* single centered "ROUND nn" line */
-            VDP_drawText(buf, 19, 13);
-        }
-        else if (prevFlow == FLOW_ROUND_CLEAR)
-        {
-            VDP_clearText(13, 13, 8);             /* clear "ROUND nn" once           */
-        }
-        prevFlow = g_game.flow;
-    }
+    /* (No area-transition banner: the seamless ribbon never pauses -- the scenery
+     * flows continuously from one segment into the next, so there is no round-clear
+     * interlude to flash. The HUD "RND" field (above) tracks the segment under the
+     * camera, updated live as each seam scrolls in.) */
 }
 
 /* ---------------------------------------------------------------------------
