@@ -1,0 +1,253 @@
+fr=1080 s96=00 5A=00 g67=00 spr_active=0 clusterMaxSoFar=0 | enemyMain=6
+fr=1200 s96=00 5A=00 g67=00 spr_active=9 clusterMaxSoFar=5 | enemyMain=6
+fr=1320 s96=00 5A=00 g67=00 spr_active=9 clusterMaxSoFar=8 | enemyMain=7
+fr=1440 s96=04 5A=04 g67=00 spr_active=12 clusterMaxSoFar=8 | enemyMain=10
+fr=1560 s96=04 5A=04 g67=00 spr_active=2 clusterMaxSoFar=8 | 
+fr=1680 s96=04 5A=04 g67=00 spr_active=2 clusterMaxSoFar=8 | 
+fr=1800 s96=04 5A=04 g67=00 spr_active=2 clusterMaxSoFar=8 | 
+fr=1920 s96=04 5A=04 g67=00 spr_active=2 clusterMaxSoFar=8 | 
+fr=2040 s96=04 5A=04 g67=00 spr_active=8 clusterMaxSoFar=8 | classH=6
+fr=2160 s96=04 5A=04 g67=00 spr_active=7 clusterMaxSoFar=8 | classH=5
+fr=2280 s96=04 5A=04 g67=00 spr_active=6 clusterMaxSoFar=8 | classI=4
+fr=2400 s96=04 5A=04 g67=00 spr_active=10 clusterMaxSoFar=8 | classH=6 classI=4
+fr=2520 s96=04 5A=04 g67=00 spr_active=10 clusterMaxSoFar=8 | classH=4 classI=4
+fr=2640 s96=04 5A=04 g67=00 spr_active=1 clusterMaxSoFar=8 | 
+fr=2760 s96=04 5A=04 g67=00 spr_active=2 clusterMaxSoFar=8 | 
+fr=2880 s96=05 5A=05 g67=00 spr_active=8 clusterMaxSoFar=8 | classH=6
+fr=3000 s96=05 5A=05 g67=00 spr_active=11 clusterMaxSoFar=8 | classH=4 classI=4
+fr=3120 s96=06 5A=05 g67=00 spr_active=8 clusterMaxSoFar=8 | classH=1 classI=4
+fr=3240 s96=06 5A=05 g67=00 spr_active=5 clusterMaxSoFar=8 | classH=1 classI=1
+fr=3360 s96=06 5A=06 g67=01 spr_active=3 clusterMaxSoFar=8 | classH=1
+fr=3480 s96=06 5A=06 g67=01 spr_active=3 clusterMaxSoFar=8 | classH=1
+fr=3600 s96=07 5A=06 g67=01 spr_active=4 clusterMaxSoFar=8 | classF=1 classH=1
+fr=3720 s96=07 5A=06 g67=01 spr_active=4 clusterMaxSoFar=8 | classF=1 classH=1
+fr=3840 s96=08 5A=07 g67=01 spr_active=3 clusterMaxSoFar=8 | classH=1
+fr=3960 s96=08 5A=07 g67=01 spr_active=3 clusterMaxSoFar=8 | classH=1
+fr=4080 s96=08 5A=07 g67=01 spr_active=5 clusterMaxSoFar=8 | classF=4 classH=1
+fr=4200 s96=08 5A=07 g67=01 spr_active=5 clusterMaxSoFar=8 | classF=3
+fr=4320 s96=08 5A=07 g67=01 spr_active=7 clusterMaxSoFar=8 | classH=6
+fr=4440 s96=08 5A=07 g67=01 spr_active=6 clusterMaxSoFar=8 | classH=6
+fr=4560 s96=08 5A=07 g67=01 spr_active=6 clusterMaxSoFar=8 | classH=6
+fr=4680 s96=09 5A=08 g67=01 spr_active=4 clusterMaxSoFar=8 | classH=6
+fr=4800 s96=0B 5A=08 g67=01 spr_active=4 clusterMaxSoFar=8 | classH=6
+fr=4920 s96=0B 5A=08 g67=01 spr_active=2 clusterMaxSoFar=8 | classH=6
+fr=5040 s96=0B 5A=08 g67=01 spr_active=2 clusterMaxSoFar=8 | classH=6
+fr=5160 s96=0B 5A=08 g67=01 spr_active=2 clusterMaxSoFar=8 | classH=6
+fr=5280 s96=00 5A=00 g67=00 spr_active=12 clusterMaxSoFar=8 | enemyMain=6
+fr=5400 s96=00 5A=00 g67=00 spr_active=12 clusterMaxSoFar=8 | enemyMain=6
+fr=5520 s96=00 5A=00 g67=00 spr_active=2 clusterMaxSoFar=8 | 
+fr=5640 s96=01 5A=01 g67=00 spr_active=2 clusterMaxSoFar=8 | 
+fr=5760 s96=01 5A=01 g67=00 spr_active=3 clusterMaxSoFar=8 | 
+fr=5880 s96=02 5A=01 g67=00 spr_active=3 clusterMaxSoFar=8 | 
+fr=6000 s96=02 5A=01 g67=00 spr_active=12 clusterMaxSoFar=8 | classH=6
+fr=6120 s96=02 5A=01 g67=00 spr_active=16 clusterMaxSoFar=8 | classH=5 classI=4
+fr=6240 s96=02 5A=01 g67=00 spr_active=14 clusterMaxSoFar=8 | classH=4 classI=4
+fr=6360 s96=02 5A=01 g67=00 spr_active=12 clusterMaxSoFar=8 | classH=3 classI=3
+fr=6480 s96=03 5A=02 g67=00 spr_active=5 clusterMaxSoFar=8 | 
+fr=6600 s96=04 5A=02 g67=00 spr_active=9 clusterMaxSoFar=8 | classH=6
+fr=6720 s96=04 5A=02 g67=00 spr_active=9 clusterMaxSoFar=8 | classH=5
+fr=6840 s96=04 5A=02 g67=00 spr_active=9 clusterMaxSoFar=8 | classH=3 classI=4
+fr=6960 s96=04 5A=02 g67=00 spr_active=13 clusterMaxSoFar=8 | classH=3 classI=4
+fr=7080 s96=04 5A=02 g67=00 spr_active=10 clusterMaxSoFar=8 | classI=4
+fr=7200 s96=03 5A=03 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=7320 s96=03 5A=03 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=7440 s96=04 5A=04 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=7560 s96=04 5A=04 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=7680 s96=04 5A=04 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=7800 s96=04 5A=04 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=7920 s96=04 5A=04 g67=01 spr_active=4 clusterMaxSoFar=8 | classH=6
+fr=8040 s96=05 5A=04 g67=01 spr_active=4 clusterMaxSoFar=8 | classH=6
+fr=8160 s96=05 5A=04 g67=01 spr_active=2 clusterMaxSoFar=8 | classH=6
+fr=8280 s96=06 5A=05 g67=01 spr_active=2 clusterMaxSoFar=8 | classH=6
+fr=8400 s96=06 5A=05 g67=01 spr_active=2 clusterMaxSoFar=8 | classH=6
+fr=8520 s96=06 5A=05 g67=01 spr_active=2 clusterMaxSoFar=8 | classH=6
+fr=8640 s96=00 5A=00 g67=00 spr_active=8 clusterMaxSoFar=8 | enemyMain=6
+fr=8760 s96=00 5A=00 g67=00 spr_active=2 clusterMaxSoFar=8 | 
+fr=8880 s96=00 5A=00 g67=00 spr_active=6 clusterMaxSoFar=8 | 
+fr=9000 s96=00 5A=00 g67=00 spr_active=7 clusterMaxSoFar=8 | 
+fr=9120 s96=01 5A=00 g67=00 spr_active=7 clusterMaxSoFar=8 | 
+fr=9240 s96=02 5A=01 g67=00 spr_active=13 clusterMaxSoFar=8 | classH=6
+fr=9360 s96=03 5A=01 g67=00 spr_active=10 clusterMaxSoFar=8 | classH=5 classI=3
+fr=9480 s96=03 5A=01 g67=00 spr_active=11 clusterMaxSoFar=8 | classH=4 classI=4
+fr=9600 s96=03 5A=01 g67=00 spr_active=9 clusterMaxSoFar=8 | classH=4 classI=3
+fr=9720 s96=03 5A=01 g67=00 spr_active=3 clusterMaxSoFar=8 | classI=1
+fr=9840 s96=03 5A=01 g67=00 spr_active=12 clusterMaxSoFar=8 | classH=6
+fr=9960 s96=03 5A=01 g67=00 spr_active=11 clusterMaxSoFar=8 | classH=5
+fr=10080 s96=04 5A=02 g67=00 spr_active=14 clusterMaxSoFar=8 | classH=4 classI=4
+fr=10200 s96=04 5A=02 g67=00 spr_active=11 clusterMaxSoFar=8 | classH=1 classI=4
+fr=10320 s96=04 5A=02 g67=00 spr_active=7 clusterMaxSoFar=8 | classI=4
+fr=10440 s96=03 5A=03 g67=01 spr_active=7 clusterMaxSoFar=8 | classH=6
+fr=10560 s96=03 5A=03 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=10680 s96=03 5A=03 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=10800 s96=03 5A=03 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=10920 s96=03 5A=03 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=11040 s96=04 5A=04 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=11160 s96=04 5A=04 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=11280 s96=06 5A=04 g67=01 spr_active=4 clusterMaxSoFar=8 | classH=6
+fr=11400 s96=06 5A=04 g67=01 spr_active=2 clusterMaxSoFar=8 | classH=6
+fr=11520 s96=06 5A=04 g67=01 spr_active=2 clusterMaxSoFar=8 | classH=6
+fr=11640 s96=06 5A=04 g67=01 spr_active=2 clusterMaxSoFar=8 | classH=6
+fr=11760 s96=06 5A=04 g67=01 spr_active=2 clusterMaxSoFar=8 | classH=6
+fr=11880 s96=01 5A=01 g67=00 spr_active=12 clusterMaxSoFar=8 | enemyMain=6
+fr=12000 s96=01 5A=01 g67=00 spr_active=6 clusterMaxSoFar=8 | 
+fr=12120 s96=01 5A=01 g67=00 spr_active=7 clusterMaxSoFar=8 | 
+fr=12240 s96=01 5A=01 g67=00 spr_active=2 clusterMaxSoFar=8 | 
+fr=12360 s96=02 5A=01 g67=00 spr_active=3 clusterMaxSoFar=8 | 
+fr=12480 s96=02 5A=01 g67=00 spr_active=8 clusterMaxSoFar=8 | classH=6
+fr=12600 s96=02 5A=01 g67=00 spr_active=8 clusterMaxSoFar=8 | classH=5 classI=1
+fr=12720 s96=02 5A=01 g67=00 spr_active=14 clusterMaxSoFar=8 | classH=4 classI=4
+fr=12840 s96=03 5A=02 g67=00 spr_active=13 clusterMaxSoFar=8 | classH=4 classI=3
+fr=12960 s96=03 5A=02 g67=00 spr_active=10 clusterMaxSoFar=8 | classI=3
+fr=13080 s96=03 5A=02 g67=00 spr_active=11 clusterMaxSoFar=8 | classH=6
+fr=13200 s96=03 5A=02 g67=00 spr_active=7 clusterMaxSoFar=8 | classH=5
+fr=13320 s96=03 5A=02 g67=00 spr_active=9 clusterMaxSoFar=8 | classH=4 classI=2
+fr=13440 s96=03 5A=02 g67=00 spr_active=8 clusterMaxSoFar=8 | classH=2 classI=4
+fr=13560 s96=03 5A=02 g67=00 spr_active=7 clusterMaxSoFar=8 | classI=4
+fr=13680 s96=04 5A=04 g67=01 spr_active=11 clusterMaxSoFar=8 | classH=6 classI=2
+fr=13800 s96=04 5A=04 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=13920 s96=04 5A=04 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=14040 s96=04 5A=04 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=14160 s96=04 5A=04 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=14280 s96=04 5A=04 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=14400 s96=04 5A=04 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=14520 s96=04 5A=04 g67=01 spr_active=4 clusterMaxSoFar=8 | classH=6
+fr=14640 s96=07 5A=05 g67=01 spr_active=2 clusterMaxSoFar=8 | classH=6
+fr=14760 s96=07 5A=05 g67=01 spr_active=2 clusterMaxSoFar=8 | classH=6
+fr=14880 s96=07 5A=05 g67=01 spr_active=2 clusterMaxSoFar=8 | classH=6
+fr=15000 s96=07 5A=05 g67=01 spr_active=2 clusterMaxSoFar=8 | classH=6
+fr=15120 s96=00 5A=00 g67=00 spr_active=8 clusterMaxSoFar=8 | enemyMain=6
+fr=15240 s96=00 5A=00 g67=00 spr_active=10 clusterMaxSoFar=8 | enemyMain=6
+fr=15360 s96=00 5A=00 g67=00 spr_active=2 clusterMaxSoFar=8 | 
+fr=15480 s96=01 5A=01 g67=00 spr_active=3 clusterMaxSoFar=8 | 
+fr=15600 s96=01 5A=01 g67=00 spr_active=7 clusterMaxSoFar=8 | 
+fr=15720 s96=02 5A=01 g67=00 spr_active=10 clusterMaxSoFar=8 | classH=6
+fr=15840 s96=02 5A=01 g67=00 spr_active=11 clusterMaxSoFar=8 | classH=5
+fr=15960 s96=02 5A=01 g67=00 spr_active=16 clusterMaxSoFar=8 | classH=5 classI=4
+fr=16080 s96=03 5A=01 g67=00 spr_active=9 clusterMaxSoFar=8 | classH=4 classI=3
+fr=16200 s96=03 5A=01 g67=00 spr_active=6 clusterMaxSoFar=8 | classI=3
+fr=16320 s96=03 5A=01 g67=00 spr_active=2 clusterMaxSoFar=8 | 
+fr=16440 s96=04 5A=02 g67=00 spr_active=7 clusterMaxSoFar=8 | classH=5
+fr=16560 s96=04 5A=02 g67=00 spr_active=10 clusterMaxSoFar=8 | classH=4
+fr=16680 s96=04 5A=02 g67=00 spr_active=14 clusterMaxSoFar=8 | classH=3 classI=4
+fr=16800 s96=04 5A=02 g67=00 spr_active=13 clusterMaxSoFar=8 | classH=3 classI=4
+fr=16920 s96=04 5A=02 g67=00 spr_active=10 clusterMaxSoFar=8 | classI=4
+fr=17040 s96=03 5A=03 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=17160 s96=03 5A=03 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=17280 s96=04 5A=04 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=17400 s96=04 5A=04 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=17520 s96=04 5A=04 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=17640 s96=04 5A=04 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=17760 s96=04 5A=04 g67=01 spr_active=4 clusterMaxSoFar=8 | classH=6
+fr=17880 s96=05 5A=04 g67=01 spr_active=4 clusterMaxSoFar=8 | classH=6
+fr=18000 s96=05 5A=04 g67=01 spr_active=2 clusterMaxSoFar=8 | classH=6
+fr=18120 s96=05 5A=04 g67=01 spr_active=2 clusterMaxSoFar=8 | classH=6
+fr=18240 s96=06 5A=05 g67=01 spr_active=2 clusterMaxSoFar=8 | classH=6
+fr=18360 s96=00 5A=00 g67=00 spr_active=8 clusterMaxSoFar=8 | enemyMain=6
+fr=18480 s96=00 5A=00 g67=00 spr_active=12 clusterMaxSoFar=8 | enemyMain=6
+fr=18600 s96=00 5A=00 g67=00 spr_active=7 clusterMaxSoFar=8 | 
+fr=18720 s96=00 5A=00 g67=00 spr_active=6 clusterMaxSoFar=8 | 
+fr=18840 s96=00 5A=00 g67=00 spr_active=8 clusterMaxSoFar=8 | 
+fr=18960 s96=02 5A=00 g67=00 spr_active=4 clusterMaxSoFar=8 | 
+fr=19080 s96=03 5A=01 g67=00 spr_active=7 clusterMaxSoFar=8 | classH=5
+fr=19200 s96=03 5A=01 g67=00 spr_active=11 clusterMaxSoFar=8 | classH=5 classI=4
+fr=19320 s96=03 5A=01 g67=00 spr_active=9 clusterMaxSoFar=8 | classH=4 classI=3
+fr=19440 s96=03 5A=01 g67=00 spr_active=10 clusterMaxSoFar=8 | classH=1 classI=3
+fr=19560 s96=03 5A=01 g67=00 spr_active=8 clusterMaxSoFar=8 | 
+fr=19680 s96=03 5A=01 g67=00 spr_active=12 clusterMaxSoFar=8 | classH=5
+fr=19800 s96=03 5A=01 g67=00 spr_active=11 clusterMaxSoFar=8 | classH=5
+fr=19920 s96=04 5A=01 g67=00 spr_active=8 clusterMaxSoFar=8 | classH=2 classI=4
+fr=20040 s96=05 5A=02 g67=00 spr_active=8 clusterMaxSoFar=8 | classH=2 classI=4
+fr=20160 s96=05 5A=02 g67=00 spr_active=6 clusterMaxSoFar=8 | classI=4
+fr=20280 s96=03 5A=03 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=20400 s96=03 5A=03 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=20520 s96=03 5A=03 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=20640 s96=03 5A=03 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=20760 s96=03 5A=03 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=20880 s96=04 5A=04 g67=01 spr_active=0 clusterMaxSoFar=8 | classH=6
+fr=21000 s96=04 5A=04 g67=01 spr_active=4 clusterMaxSoFar=8 | classH=6
+
+=== STAGE PROGRESSION ===
+fr=1078 stage96=00 5A=00 gfx67=00
+fr=1395 stage96=04 5A=04 gfx67=00
+fr=2877 stage96=05 5A=05 gfx67=00
+fr=3120 stage96=06 5A=05 gfx67=00
+fr=3534 stage96=07 5A=06 gfx67=01
+fr=3777 stage96=08 5A=07 gfx67=01
+fr=4677 stage96=09 5A=08 gfx67=01
+fr=4727 stage96=0A 5A=08 gfx67=01
+fr=4728 stage96=0B 5A=08 gfx67=01
+fr=5270 stage96=00 5A=00 gfx67=00
+fr=5577 stage96=01 5A=01 gfx67=00
+fr=5825 stage96=02 5A=01 gfx67=00
+fr=6477 stage96=03 5A=02 gfx67=00
+fr=6569 stage96=04 5A=02 gfx67=00
+fr=7135 stage96=03 5A=03 gfx67=01
+fr=7377 stage96=04 5A=04 gfx67=01
+fr=8007 stage96=05 5A=04 gfx67=01
+fr=8277 stage96=06 5A=05 gfx67=01
+fr=8534 stage96=00 5A=00 gfx67=00
+fr=9088 stage96=01 5A=00 gfx67=00
+fr=9177 stage96=02 5A=01 gfx67=00
+fr=9248 stage96=03 5A=01 gfx67=00
+fr=10077 stage96=04 5A=02 gfx67=00
+fr=10399 stage96=03 5A=03 gfx67=01
+fr=10977 stage96=04 5A=04 gfx67=01
+fr=11270 stage96=06 5A=04 gfx67=01
+fr=11798 stage96=00 5A=00 gfx67=00
+fr=11877 stage96=01 5A=01 gfx67=00
+fr=12353 stage96=02 5A=01 gfx67=00
+fr=12777 stage96=03 5A=02 gfx67=00
+fr=13677 stage96=04 5A=04 gfx67=01
+fr=14534 stage96=06 5A=04 gfx67=01
+fr=14577 stage96=07 5A=05 gfx67=01
+fr=15062 stage96=00 5A=00 gfx67=00
+fr=15477 stage96=01 5A=01 gfx67=00
+fr=15616 stage96=02 5A=01 gfx67=00
+fr=16019 stage96=03 5A=01 gfx67=00
+fr=16377 stage96=04 5A=02 gfx67=00
+fr=16927 stage96=03 5A=03 gfx67=01
+fr=17277 stage96=04 5A=04 gfx67=01
+fr=17798 stage96=05 5A=04 gfx67=01
+fr=18177 stage96=06 5A=05 gfx67=01
+fr=18326 stage96=00 5A=00 gfx67=00
+fr=18880 stage96=01 5A=00 gfx67=00
+fr=18881 stage96=02 5A=00 gfx67=00
+fr=19077 stage96=03 5A=01 gfx67=00
+fr=19848 stage96=04 5A=01 gfx67=00
+fr=19977 stage96=05 5A=02 gfx67=00
+fr=20191 stage96=03 5A=03 gfx67=01
+fr=20877 stage96=04 5A=04 gfx67=01
+fr=21063 stage96=05 5A=04 gfx67=01
+
+=== PER-STAGE POOLS (max simultaneous active) ===
+stage 00 : enemyMain=7  classH=6
+stage 01 : enemyMain=6  classH=6
+stage 02 : classH=6  classI=4
+stage 03 : classH=6  classI=4
+stage 04 : enemyMain=10  classH=6  classI=4
+stage 05 : classH=6  classI=4
+stage 06 : classF=4  classH=6  classI=4
+stage 07 : classF=4  classH=6
+stage 08 : classF=4  classH=6
+stage 09 : classH=6
+stage 0A : classH=6
+stage 0B : classH=6
+
+=== GLOBAL MAX per pool ===
+  enemyMain  max=10
+  classC     max=0
+  classD     max=0
+  classE     max=0
+  classF     max=4
+  classG     max=0
+  classH     max=6
+  classI     max=4
+  objSingle  max=0
+  obj16x16   max=0
+  classK     max=0
+
+=== SPRITERAM CLUSTER ===
+max co-located hardware sprites (within 24px X, 32px Y): 8  (at stage 00)
+sample: [#15 y=180 x=154 code=FF attr=45] [#16 y=180 x=138 code=FE attr=88] [#17 y=180 x=122 code=DD attr=5F] [#18 y=200 x=170 code=81 attr=52] [#20 y=152 x=146 code=BA attr=60] [#21 y=168 x=146 code=BA attr=68] [#22 y=152 x=130 code=BA attr=77] [#23 y=168 x=130 code=BA attr=7F]
+(>=3 with a contiguous code run would indicate a multi-sprite composite body;
+ <=2 means every on-screen entity is a single 16x16 sprite.)

@@ -16,3 +16,5 @@ __pycache__/
 /tmp/
 snap/
 tools/ribbon_snaps/
+arcshots/
+natshots/

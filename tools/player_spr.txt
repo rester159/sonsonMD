@@ -1,0 +1,111 @@
+  PLAYER[0] act=41 scr=(0,9) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(0,5) code=00 attr=00 worldx=0000
+fr=1107 [idle] scroll=0000 spr: #15(y=200 x=249 c=FF a=4A) #16(y=200 x=248 c=FE a=84) #17(y=200 x=248 c=DD a=58) #18(y=200 x=13 c=C1 a=48) #19(y=200 x=248 c=C0 a=40) #20(y=120 x=21 c=BA a=60) #21(y=136 x=21 c=BA a=68) #22(y=120 x=5 c=BA a=75) #23(y=136 x=5 c=BA a=7B)
+  PLAYER[0] act=41 scr=(0,9) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(0,5) code=00 attr=00 worldx=0000
+fr=1137 [idle] scroll=0000 spr: #15(y=200 x=23 c=FF a=42) #16(y=200 x=255 c=FE a=83) #17(y=200 x=248 c=DD a=58) #18(y=200 x=43 c=C1 a=51) #19(y=200 x=248 c=C0 a=40) #20(y=120 x=36 c=BA a=60) #21(y=136 x=36 c=BA a=68) #22(y=120 x=20 c=BA a=75) #23(y=136 x=20 c=BA a=7B)
+  PLAYER[0] act=41 scr=(0,9) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(0,5) code=00 attr=00 worldx=0000
+fr=1167 [idle] scroll=0000 spr: #15(y=200 x=53 c=FF a=42) #16(y=200 x=29 c=FE a=83) #17(y=200 x=9 c=DD a=58) #18(y=200 x=73 c=C1 a=48) #19(y=200 x=253 c=C0 a=41) #20(y=120 x=51 c=BA a=61) #21(y=136 x=51 c=BA a=69) #22(y=120 x=35 c=BA a=76) #23(y=136 x=35 c=BA a=7E)
+  PLAYER[0] act=41 scr=(0,9) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(0,5) code=00 attr=00 worldx=0000
+fr=1197 [idle] scroll=0000 spr: #15(y=200 x=83 c=FF a=43) #16(y=200 x=59 c=FE a=84) #17(y=200 x=39 c=DD a=5A) #18(y=200 x=103 c=C1 a=51) #19(y=200 x=27 c=C0 a=41) #20(y=120 x=66 c=BA a=61) #21(y=136 x=66 c=BA a=69) #22(y=120 x=50 c=BA a=76) #23(y=136 x=50 c=BA a=7E)
+  PLAYER[0] act=41 scr=(0,9) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(0,5) code=00 attr=00 worldx=0000
+fr=1227 [idle] scroll=0000 spr: #15(y=200 x=113 c=FF a=43) #16(y=200 x=89 c=FE a=84) #17(y=200 x=69 c=DD a=5A) #18(y=200 x=133 c=C1 a=48) #19(y=200 x=57 c=C0 a=41) #20(y=121 x=81 c=BA a=60) #21(y=137 x=81 c=BA a=68) #22(y=121 x=65 c=BA a=77) #23(y=137 x=65 c=BA a=7F)
+  PLAYER[0] act=41 scr=(0,9) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(0,5) code=00 attr=00 worldx=0000
+fr=1257 [idle] scroll=0000 spr: #15(y=200 x=137 c=FF a=4A) #16(y=200 x=119 c=FE a=83) #17(y=200 x=99 c=DD a=59) #18(y=200 x=153 c=C1 a=48) #19(y=200 x=73 c=C0 a=40) #20(y=151 x=111 c=BA a=60) #21(y=167 x=111 c=BA a=68) #22(y=151 x=95 c=BA a=77) #23(y=167 x=95 c=BA a=7F)
+  PLAYER[0] act=41 scr=(0,9) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(0,5) code=00 attr=00 worldx=0000
+fr=1287 [run] scroll=0000 spr: #15(y=185 x=149 c=FF a=45) #16(y=185 x=133 c=FE a=88) #17(y=185 x=117 c=DD a=5F) #18(y=200 x=170 c=81 a=52) #19(y=200 x=55 c=C0 a=55) #20(y=157 x=141 c=BA a=61) #21(y=173 x=141 c=BA a=69) #22(y=157 x=125 c=BA a=76) #23(y=173 x=125 c=BA a=7E)
+  PLAYER[0] act=41 scr=(0,9) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(0,5) code=00 attr=00 worldx=0000
+fr=1317 [run] scroll=0000 spr: #15(y=155 x=179 c=FF a=45) #16(y=155 x=163 c=FE a=88) #17(y=155 x=147 c=DD a=5F) #18(y=200 x=188 c=C1 a=49) #19(y=200 x=73 c=C0 a=41) #20(y=127 x=171 c=BA a=61) #21(y=143 x=171 c=BA a=69) #22(y=127 x=155 c=BA a=76) #23(y=143 x=155 c=BA a=7E)
+  PLAYER[0] act=41 scr=(0,9) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(0,5) code=00 attr=00 worldx=0000
+fr=1347 [run] scroll=0000 spr: #15(y=125 x=209 c=FF a=44) #16(y=125 x=193 c=FE a=87) #17(y=125 x=177 c=DD a=5E) #18(y=200 x=218 c=C1 a=49) #19(y=200 x=103 c=C0 a=41) #20(y=97 x=201 c=BA a=60) #21(y=113 x=201 c=BA a=68) #22(y=97 x=185 c=BA a=75) #23(y=113 x=185 c=BA a=7B)
+  PLAYER[0] act=41 scr=(0,9) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(0,5) code=00 attr=00 worldx=0000
+fr=1377 [run] scroll=0000 spr: #15(y=95 x=239 c=FF a=44) #16(y=95 x=223 c=FE a=87) #17(y=95 x=207 c=DD a=5E) #18(y=200 x=219 c=C1 a=49) #19(y=200 x=133 c=C0 a=41) #20(y=67 x=231 c=BA a=60) #21(y=83 x=231 c=BA a=68) #22(y=67 x=215 c=BA a=75) #23(y=83 x=215 c=BA a=7B)
+  PLAYER[0] act=41 scr=(-3,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-3,5) code=00 attr=00 worldx=0000
+fr=1407 [run] scroll=0003 spr: #13(y=128 x=144 c=D6 a=DB) #14(y=128 x=128 c=D6 a=DA) #15(y=128 x=112 c=D6 a=D9) #16(y=128 x=96 c=D6 a=D8) #17(y=64 x=160 c=D6 a=D7) #18(y=64 x=144 c=D6 a=D6) #19(y=64 x=128 c=D6 a=D5) #20(y=64 x=112 c=D6 a=D4) #21(y=64 x=96 c=D6 a=D3) #22(y=64 x=80 c=D6 a=D2) #23(y=137 x=37 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-20,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-20,5) code=00 attr=00 worldx=0000
+fr=1437 [run] scroll=0014 spr: #13(y=128 x=144 c=D6 a=DB) #14(y=128 x=128 c=D6 a=DA) #15(y=128 x=112 c=D6 a=D9) #16(y=128 x=96 c=D6 a=D8) #17(y=64 x=160 c=D6 a=D7) #18(y=64 x=144 c=D6 a=D6) #19(y=64 x=128 c=D6 a=D5) #20(y=64 x=112 c=D6 a=D4) #21(y=64 x=96 c=D6 a=D3) #22(y=64 x=80 c=D6 a=D2) #23(y=137 x=71 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-36,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-36,5) code=00 attr=00 worldx=0000
+fr=1467 [run] scroll=0024 spr: #13(y=128 x=144 c=D6 a=DB) #14(y=128 x=128 c=D6 a=DA) #15(y=128 x=112 c=D6 a=D9) #16(y=128 x=96 c=D6 a=D8) #17(y=64 x=160 c=D6 a=D7) #18(y=64 x=144 c=D6 a=D6) #19(y=64 x=128 c=D6 a=D5) #20(y=64 x=112 c=D6 a=D4) #21(y=64 x=96 c=D6 a=D3) #22(y=64 x=80 c=D6 a=D2) #23(y=137 x=104 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-53,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-53,5) code=00 attr=00 worldx=0000
+fr=1497 [run] scroll=0035 spr: #13(y=128 x=144 c=D6 a=DB) #14(y=128 x=128 c=D6 a=DA) #15(y=128 x=112 c=D6 a=D9) #16(y=128 x=96 c=D6 a=D8) #17(y=64 x=160 c=D6 a=D7) #18(y=64 x=144 c=D6 a=D6) #19(y=64 x=128 c=D6 a=D5) #20(y=64 x=112 c=D6 a=D4) #21(y=64 x=96 c=D6 a=D3) #22(y=64 x=80 c=D6 a=D2) #23(y=137 x=138 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-69,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-69,5) code=00 attr=00 worldx=0000
+fr=1527 [run] scroll=0045 spr: #13(y=128 x=144 c=D6 a=DB) #14(y=128 x=128 c=D6 a=DA) #15(y=128 x=112 c=D6 a=D9) #16(y=128 x=96 c=D6 a=D8) #17(y=64 x=160 c=D6 a=D7) #18(y=64 x=144 c=D6 a=D6) #19(y=64 x=128 c=D6 a=D5) #20(y=64 x=112 c=D6 a=D4) #21(y=64 x=96 c=D6 a=D3) #22(y=64 x=80 c=D6 a=D2) #23(y=137 x=171 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-86,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-86,5) code=00 attr=00 worldx=0000
+fr=1557 [run] scroll=0056 spr: #23(y=137 x=204 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-102,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-102,5) code=00 attr=00 worldx=0000
+fr=1587 [run] scroll=0066 spr: #23(y=137 x=207 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-119,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-119,5) code=00 attr=00 worldx=0000
+fr=1617 [run] scroll=0077 spr: #23(y=137 x=208 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-136,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-136,5) code=00 attr=00 worldx=0000
+fr=1647 [run] scroll=0088 spr: #23(y=137 x=207 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-152,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-152,5) code=00 attr=00 worldx=0000
+fr=1677 [run] scroll=0098 spr: #23(y=137 x=207 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-169,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-169,5) code=00 attr=00 worldx=0000
+fr=1707 [run] scroll=00A9 spr: #23(y=137 x=207 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-185,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-185,5) code=00 attr=00 worldx=0000
+fr=1737 [run] scroll=00B9 spr: #23(y=137 x=207 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-202,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-202,5) code=00 attr=00 worldx=0000
+fr=1767 [run] scroll=00CA spr: #23(y=137 x=208 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-218,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-218,5) code=00 attr=00 worldx=0000
+fr=1797 [run] scroll=00DA spr: #23(y=137 x=207 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-235,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-235,5) code=00 attr=00 worldx=0000
+fr=1827 [run] scroll=00EB spr: #23(y=137 x=208 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-251,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-251,5) code=00 attr=00 worldx=0000
+fr=1857 [run] scroll=00FB spr: #23(y=137 x=207 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-268,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-268,5) code=00 attr=00 worldx=0000
+fr=1887 [run] scroll=010C spr: #23(y=137 x=208 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-284,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-284,5) code=00 attr=00 worldx=0000
+fr=1917 [run] scroll=011C spr: #23(y=137 x=207 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-301,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-301,5) code=00 attr=00 worldx=0000
+fr=1947 [run] scroll=012D spr: #23(y=137 x=208 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-317,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-317,5) code=00 attr=00 worldx=0000
+fr=1977 [run] scroll=013D spr: #23(y=137 x=207 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-334,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-334,5) code=00 attr=00 worldx=0000
+fr=2007 [run] scroll=014E spr: #21(y=72 x=243 c=E2 a=30) #22(y=40 x=243 c=E2 a=30) #23(y=137 x=208 c=C0 a=41)
+  PLAYER[0] act=41 scr=(-350,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-350,5) code=00 attr=00 worldx=0000
+fr=2037 [run] scroll=015E spr: #17(y=200 x=233 c=E2 a=32) #18(y=168 x=233 c=E2 a=32) #19(y=136 x=233 c=E2 a=32) #20(y=104 x=233 c=E2 a=32) #21(y=73 x=196 c=E2 a=32) #22(y=41 x=196 c=E2 a=32) #23(y=137 x=207 c=C0 a=41)
+  PLAYER[0] act=44 scr=(-367,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-367,5) code=00 attr=00 worldx=0000
+fr=2067 [run] scroll=016F spr: #17(y=201 x=187 c=E2 a=30) #18(y=169 x=187 c=E2 a=30) #19(y=137 x=187 c=E2 a=30) #20(y=105 x=187 c=E2 a=30) #21(y=73 x=150 c=E2 a=31) #22(y=41 x=150 c=E2 a=31) #23(y=137 x=208 c=C0 a=44)
+  PLAYER[0] act=42 scr=(-383,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-383,5) code=00 attr=00 worldx=0000
+fr=2097 [run] scroll=017F spr: #17(y=201 x=142 c=E2 a=32) #18(y=169 x=142 c=E2 a=32) #19(y=137 x=142 c=E2 a=32) #20(y=105 x=142 c=E2 a=32) #21(y=73 x=105 c=E2 a=31) #22(y=41 x=105 c=E2 a=31) #23(y=137 x=208 c=C0 a=42)
+  PLAYER[0] act=44 scr=(-400,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-400,5) code=00 attr=00 worldx=0000
+fr=2127 [run] scroll=0190 spr: #17(y=201 x=96 c=E2 a=30) #18(y=169 x=96 c=E2 a=30) #19(y=137 x=96 c=E2 a=30) #20(y=105 x=96 c=E2 a=30) #21(y=73 x=59 c=E2 a=31) #22(y=41 x=60 c=E2 a=31) #23(y=173 x=208 c=C0 a=43)
+  PLAYER[0] act=42 scr=(-416,8) code=00 attr=00 worldx=0000
+  PLAYER[1] act=49 scr=(-416,5) code=00 attr=00 worldx=0000
+fr=2157 [run] scroll=01A0 spr: #17(y=201 x=51 c=E2 a=32) #18(y=169 x=51 c=E2 a=32) #19(y=137 x=51 c=E2 a=32) #20(y=105 x=51 c=E2 a=32) #21(y=73 x=14 c=E2 a=31) #22(y=41 x=14 c=E2 a=31) #23(y=233 x=208 c=C0 a=45)
+  PLAYER[0] act=43 scr=(-258,8) code=00 attr=00 worldx=00AF
+  PLAYER[1] act=49 scr=(-433,5) code=00 attr=00 worldx=0000
+fr=2187 [run] scroll=01B1 spr: #19(y=201 x=5 c=E2 a=30) #20(y=169 x=5 c=E2 a=30) #21(y=137 x=5 c=E2 a=30) #22(y=105 x=5 c=E2 a=30) #23(y=136 x=12 c=C0 a=43)
