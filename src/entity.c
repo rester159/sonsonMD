@@ -310,26 +310,57 @@ static const u8 k_fruit_anim[FRUIT_TYPE_COUNT] =
  *       was on screen AND no walker was in its death-code range ("dyingBanks" empty),
  *       i.e. no walker kill could account for it -- 26+ such events, all +50.
  *
- * NOT cleanly isolable in the reachable stages (kept at the documented tier -- below):
- *   creature_C / creature_G / composite_E / hopper / large / emitter / orb. The autopilot
- *   could not reliably traverse deep enough to corner these archetypes ALONE (walkers are
- *   almost always co-present, and the per-slot pool free lags the award so slot-count
- *   attribution is unreliable). Deeper play does surface additional clean award values
- *   (notably a recurring +600 tied to the bank15 aerial family, and +100/+200 tied to
- *   large/scenery-bank objects), but none could be bound to a SPECIFIC native archetype
- *   with confidence, so those archetypes retain their prior documented tiers.
- * TODO(arcade-exact-per-enemy): measure creature_C/G, composite_E, hopper, large, emitter,
- * orb from a deeper save-state (or an .inp playthrough) that isolates each one. */
+ * REMAINING ARCHETYPES -- MEASURED 2026-06-17 by FORCING single-type spawns in arcade `sonson`
+ * (the never-spawning pools classC/D/E/G never appear in any reachable forward run -- proven by
+ * arch_stage_*.txt, max=0 -- so they were FORCED). The arcade wave system has, per enemy CLASS, a
+ * dedicated wave-control RECORD whose state-1 handler is that class's batch SPAWNER (decoded from
+ * ss.03e: $0648->F2AC=classC, $0658->F39B->F3A1=classD($0AE8), $0668->F479->F47F=classE($0B68),
+ * $0678->classF, $0688->F838->F83E=classH($0CE8), $0698->F6C5->F6CB=classG($0C28)). Writing
+ * record+0=1 (active), record+2=1 (state) makes that class's REAL spawner emit a full, 100%-game-
+ * correct batch (correct sprite/HP/collision/death/score-tier). Isolation harness (tools/mame/
+ * ss_id_measure.lua): zero every OTHER enemy pool each frame so only the forced class can be
+ * killed+score, drive the player to REALLY shoot them (a state-poke "kill" does NOT award -- the
+ * score fires from the live shot-collision, confirmed), and histogram the $006C-6F deltas while
+ * the target pool is the SOLE populated enemy pool. The per-pool deltas came out MUTUALLY
+ * EXCLUSIVE (a strong signal they're real per-archetype awards, not background): classC->+50,
+ * classD->+100, classG->+150(+a +30 secondary), classH->+150. Validation: the SAME harness on the
+ * walker (enemyMain, no force) reproduces +150 and on the flyer (classF) +50 -- matching the
+ * committed values. NB: a periodic +500/+1000 aggregate (progress/aggregate bonus) pollutes deep
+ * windows; measurements taken from the clean early window + sole-pool gate exclude it.
+ *
+ * MEASURED this pass (force method + $006C-6F delta + attribution):
+ *   - CREATURE_C (classC $0A28, creature sprite bank5 codes 16-24) = 50. Forced via record $0648;
+ *       SOLE +50 x13 (count visibly 6->5->4 per +50), mutually exclusive vs every other pool.
+ *   - EMITTER (classD $0AE8, $BF75) = 100. Forced via record $0658; SOLE +100 x6 (dominant,
+ *       classD-exclusive). Smaller sample (classD only 2 live) -> medium confidence.
+ *   - CREATURE_G (classG $0C28, $C744) = 150. Forced via record $0698; SOLE shows +150 (x7-11)
+ *       as the kill award alongside a recurring +30 secondary (unexplained sub-event; classG
+ *       death anim holds the slot so a per-kill count-drop couldn't be pinned). 150 = the shared
+ *       ground-enemy tier (walker/thrower/hopper all 150) -> medium confidence; +30 left unused.
+ *   - HOPPER (classH $0CE8, $D0B5/$D02D) = 150. classH DOES spawn naturally; SOLE +150 x4 with the
+ *       classH count visibly dropping 6->5->4 per +150 (codes 304-315 = the classH actor) -> high
+ *       confidence. (HOPPER was the "leaping" classH leaf; shares the classH/ground-enemy tier.)
+ *
+ * STILL UNMEASURED (could NOT be cleanly forced -- kept at documented tier, SAID SO):
+ *   - COMPOSITE_E (classE $0B68): arming record $0668 did NOT populate classE in reachable stages
+ *       (the F443->F479->F47F path has an extra gate / needs specific level data); 2-slot pool
+ *       never became sole-occupied. Kept at 500.
+ *   - LARGE (obj16x16 $0E48): spawner sub_D54B is called from ONE site ($A619) gated by level
+ *       data, NOT by an armable wave record -> not forceable headlessly. Kept at 800.
+ *   - ORB (objSingle $0E28): spawn $E1C4 has zero static callers (computed dispatch / parent-link)
+ *       -> no armable trigger. Kept at 300.
+ * TODO(arcade-exact): COMPOSITE_E/LARGE/ORB need an .inp playthrough or a context that spawns them
+ * (level-script driven), and the classG +30 secondary wants explaining. */
 #define SCORE_ENEMY         150         /* ground walker: MEASURED arcade award  (disp 150) */
 #define SCORE_FLYER          50         /* flyer (classF/bank9): MEASURED        (disp 50)  */
 #define SCORE_THROWER       150         /* thrower (enemyMain idx4, walker pool): MEASURED 150 */
-#define SCORE_CREATURE_G    300         /* throwing ground creature  -- documented (unmeasured) */
-#define SCORE_CREATURE_C    200         /* creature-family walker    -- documented (unmeasured) */
-#define SCORE_COMPOSITE_E   500         /* tough 2-HP large composite -- documented (unmeasured) */
-#define SCORE_HOPPER        300         /* leaping hopper            -- documented (unmeasured) */
-#define SCORE_LARGE         800         /* tough 3-HP large patroller -- documented (unmeasured) */
-#define SCORE_EMITTER       400         /* projectile emitter        -- documented (unmeasured) */
-#define SCORE_ORB           300         /* hovering orb hazard       -- documented (unmeasured) */
+#define SCORE_CREATURE_G    150         /* classG creature: MEASURED (force rec $0698, +150)  */
+#define SCORE_CREATURE_C     50         /* classC creature: MEASURED (force rec $0648, +50 x13)*/
+#define SCORE_COMPOSITE_E   500         /* classE: UNMEASURED (arm $0668 didn't spawn) -- documented */
+#define SCORE_HOPPER        150         /* classH hopper: MEASURED (SOLE +150, count-drop)     */
+#define SCORE_LARGE         800         /* obj16x16: UNMEASURED (level-gated spawn) -- documented */
+#define SCORE_EMITTER       100         /* classD emitter: MEASURED (force rec $0658, +100 x6) */
+#define SCORE_ORB           300         /* objSingle: UNMEASURED (computed-dispatch spawn) -- documented */
 /* (ET_ITEM/fruit score is per-type, k_fruit_score[]; no flat SCORE_ITEM.)      */
 
 /* ---- DIFFICULTY hook (arcade DSW2 0x60 -> g_config.difficulty 0..3) --------
