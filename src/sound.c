@@ -24,8 +24,10 @@ extern const uint8_t  snd_replay_blob[];
 extern const uint32_t snd_replay_index[64][2];
 
 /* ---- captured AY-3-8910 register state (our own; no 6809 runtime) ----------
- * ay[0] = AY#1 (SFX chip), ay[1] = AY#2 (music chip).  16 regs each. */
-static u8 ay[2][16];
+ * ay[0] = AY#1 (SFX chip), ay[1] = AY#2 (music chip).  16 regs each.
+ * ay[2] = a PRIVATE register file for the layered 1-up jingle (see below): its
+ * own AY state so the jingle never collides with the music or SFX registers. */
+static u8 ay[3][16];
 
 /* ---- replay channels: [chip][slot], slot 0 = music, 1 = sfx --------------- */
 typedef struct {
@@ -35,6 +37,64 @@ typedef struct {
     u8        active;
 } ReplayCh;
 static ReplayCh rp[2][2];
+
+/* ===========================================================================
+ *  LAYERED 1-UP / EXTRA-LIFE JINGLE  (cmd 0x04)  -- the one thing that must play
+ *  *over* the BGM.  The arcade sound-6809 fired the 1-up jingle on a SPARE AY
+ *  channel layered over the running music; the 2-slot-per-chip record-&-replay
+ *  cannot (both the BGM and the recorded 0x04 jingle are 3-voice AY#2/PSG music
+ *  streams that share one register file + the same 3 PSG voices, so arming 0x04
+ *  via the normal index REPLACES the BGM -- why it was gated off in game.c).
+ *
+ *  FAITHFUL FIX: give the jingle its OWN dedicated replay channel + register
+ *  file (ay[2]) rendered to the YM2612's *second* FM bank (channels 3-5), which
+ *  the SFX path (ch0-2) and the PSG BGM never touch.  The jingle is three
+ *  square-wave AY voices -> three YM square voices: same timbre class as every
+ *  other SFX in this engine, and now a TRUE layer over BGM+SFX, exactly the
+ *  arcade's spare-channel behaviour.  No existing slot/index/output is touched,
+ *  so the BGM and the gunshot/pickup SFX are bit-for-bit unaffected.
+ *
+ *  DATA: the SAME verified 0x04 AY#2 register stream that sound_replay_data.c's
+ *  index routes to the music slot, but re-encoded as a ONE-SHOT (the recorded
+ *  jingle self-mutes its mixer at the end; the generator's force-loop -- meant
+ *  for endless BGM -- turned that one-shot into an infinite loop, the other half
+ *  of why 0x04 could not be layered).  Reproduce with rec/cmd_04.txt chip-B
+ *  (bytes 16..31) + encode_replay.py's encode() WITHOUT the is_music force-loop
+ *  (end 0xFE instead of 0xFF).  Plays once (~3.2 s @480Hz) then holds silence. */
+static const u8 snd_1up_oneshot[] = {
+    0x11,0x80,0xB4,0x81,0x00,0x82,0x8F,0x83,0x00,0x84,0x78,0x85,0x00,0x86,0x17,0xFD,
+    0x3F,0x38,0x88,0x0B,0x89,0x0B,0x8A,0x0B,0x8B,0x00,0x8C,0x00,0x8D,0x00,0x8E,0x00,
+    0x8F,0x00,0x07,0x88,0x0A,0x89,0x0A,0x8A,0x0A,0x12,0x88,0x09,0x89,0x09,0x8A,0x09,
+    0x1A,0x88,0x08,0x89,0x08,0x8A,0x08,0x12,0x88,0x07,0x89,0x07,0x8A,0x07,0x19,0x88,
+    0x06,0x89,0x06,0x8A,0x06,0x15,0x88,0x05,0x89,0x05,0x8A,0x05,0x19,0x88,0x04,0x89,
+    0x04,0x8A,0x04,0x12,0x88,0x0B,0x89,0x0B,0x8A,0x0B,0x07,0x88,0x0A,0x89,0x0A,0x8A,
+    0x0A,0x08,0x88,0x09,0x89,0x09,0x8A,0x09,0x08,0x88,0x08,0x89,0x08,0x8A,0x08,0x0A,
+    0x88,0x07,0x89,0x07,0x8A,0x07,0x0F,0x88,0x06,0x89,0x06,0x8A,0x06,0x08,0x88,0x05,
+    0x89,0x05,0x8A,0x05,0x0C,0x88,0x04,0x89,0x04,0x8A,0x04,0x09,0x88,0x0B,0x89,0x0B,
+    0x8A,0x0B,0x07,0x88,0x0A,0x89,0x0A,0x8A,0x0A,0x07,0x88,0x09,0x89,0x09,0x8A,0x09,
+    0x0A,0x88,0x08,0x89,0x08,0x8A,0x08,0x08,0x88,0x07,0x89,0x07,0x8A,0x07,0x0F,0x88,
+    0x06,0x89,0x06,0x8A,0x06,0x09,0x88,0x05,0x89,0x05,0x8A,0x05,0x09,0x88,0x04,0x89,
+    0x04,0x8A,0x04,0x0D,0x88,0x0B,0x89,0x0B,0x8A,0x0B,0x02,0x88,0x0A,0x89,0x0A,0x8A,
+    0x0A,0x07,0x88,0x09,0x89,0x09,0x8A,0x09,0x0A,0x88,0x08,0x89,0x08,0x8A,0x08,0x0B,
+    0x88,0x07,0x89,0x07,0x8A,0x07,0x0D,0x88,0x06,0x89,0x06,0x8A,0x06,0x0C,0x88,0x05,
+    0x89,0x05,0x8A,0x05,0x08,0x88,0x04,0x89,0x04,0x8A,0x04,0x09,0x80,0xA0,0x82,0x87,
+    0x84,0x6B,0x88,0x0B,0x89,0x0B,0x8A,0x0B,0x06,0x88,0x0A,0x89,0x0A,0x8A,0x0A,0x13,
+    0x88,0x09,0x89,0x09,0x8A,0x09,0x18,0x88,0x08,0x89,0x08,0x8A,0x08,0x13,0x88,0x07,
+    0x89,0x07,0x8A,0x07,0x18,0x88,0x06,0x89,0x06,0x8A,0x06,0x16,0x88,0x05,0x89,0x05,
+    0x8A,0x05,0x19,0x88,0x04,0x89,0x04,0x8A,0x04,0x12,0x80,0xB4,0x88,0x0B,0x89,0x0B,
+    0x8A,0x0B,0x06,0x88,0x0A,0x89,0x0A,0x8A,0x0A,0x13,0x88,0x09,0x89,0x09,0x8A,0x09,
+    0x18,0x88,0x08,0x89,0x08,0x8A,0x08,0x16,0x88,0x07,0x89,0x07,0x8A,0x07,0x19,0x88,
+    0x06,0x89,0x06,0x8A,0x06,0x13,0x88,0x05,0x89,0x05,0x8A,0x05,0x19,0x88,0x04,0x89,
+    0x04,0x8A,0x04,0x12,0x84,0x5F,0x88,0x0B,0x89,0x0B,0x8A,0x0B,0x06,0x88,0x0A,0x89,
+    0x0A,0x8A,0x0A,0x13,0x88,0x09,0x89,0x09,0x8A,0x09,0x17,0x88,0x08,0x89,0x08,0x8A,
+    0x08,0x17,0x88,0x07,0x89,0x07,0x8A,0x07,0x19,0x88,0x06,0x89,0x06,0x8A,0x06,0x12,
+    0x88,0x05,0x89,0x05,0x8A,0x05,0x19,0x88,0x04,0x89,0x04,0x8A,0x04,0x16,0x80,0xA0,
+    0x82,0x78,0x84,0x5A,0x88,0x0B,0x89,0x0B,0x8A,0x0B,0x02,0x88,0x0A,0x89,0x0A,0x8A,
+    0x0A,0x5E,0x88,0x09,0x89,0x09,0x8A,0x09,0x5C,0x88,0x08,0x89,0x08,0x8A,0x08,0x5E,
+    0x88,0x07,0x89,0x07,0x8A,0x07,0x5F,0x88,0x06,0x89,0x06,0x8A,0x06,0x5A,0x88,0x05,
+    0x89,0x05,0x8A,0x05,0x5C,0x88,0x04,0x89,0x04,0x8A,0x04,0x5E,0xFD,0x3F,0x3F,0xFE,
+};
+static ReplayCh rp_1up;        /* dedicated 1-up channel -> ay[2] -> YM ch3-5   */
 
 static u8 snd_ready = 0;   /* set by snd_init; gates the V-Blank tick           */
 
@@ -74,9 +134,12 @@ static void replay_start(u8 cmd)
     }
 }
 
-static void replay_tick(u8 chip, u8 slot)
+/* Advance one replay channel `r` by one tick, applying its register writes into
+ * the 16-byte AY register file `regs`.  (Channel + register file are decoupled so
+ * the dedicated 1-up channel can decode the same byte language into its own ay[2]
+ * file -- see snd_1up_oneshot.) */
+static void replay_tick_into(ReplayCh *r, u8 *regs)
 {
-    ReplayCh *r = &rp[chip][slot];
     if (!r->active) return;
     if (r->wait) { r->wait--; return; }
     for (;;)
@@ -98,11 +161,16 @@ static void replay_tick(u8 chip, u8 slot)
         {
             u8 mask = *r->pos++;
             u8 val  = *r->pos++;
-            ay[chip][7] = (u8)((ay[chip][7] & (u8)~mask) | val);
+            regs[7] = (u8)((regs[7] & (u8)~mask) | val);
             continue;
         }
-        ay[chip][op & 0x1F] = *r->pos++;             /* normal register write    */
+        regs[op & 0x1F] = *r->pos++;                 /* normal register write    */
     }
+}
+
+static void replay_tick(u8 chip, u8 slot)
+{
+    replay_tick_into(&rp[chip][slot], ay[chip]);
 }
 
 /* ===========================================================================
@@ -155,12 +223,39 @@ static void ay_chip_to_psg(const u8 *r)
 }
 
 /* ===========================================================================
- *  AY#1 (SFX) -> YM2612 ch0-2, single-operator square-ish voice.
+ *  AY -> YM2612 single-operator square-ish voice.
  *  Setup (once): alg7, OP1-3 muted (TL=127), OP4 the sole carrier with instant
  *  attack / no decay / fast release -- a steady tone gated by key on/off + TL.
  *  Per tick: F-num from the AY period (fnum*2^block ~= 1845281/p); TL from vol.
+ *  TWO FM banks are configured: part 0 (ch0-2) renders AY#1 SFX; part 1 (ch3-5)
+ *  renders the layered 1-up jingle (ay[2]) -- the spare FM voices the SFX never
+ *  use, so the jingle layers over both the SFX and the PSG music.
  * =========================================================================== */
-static u8 ym_keyed[3];
+static u8 ym_keyed[3];      /* part 0 / ch0-2  (SFX)        */
+static u8 ym_keyed2[3];     /* part 1 / ch3-5  (1-up layer) */
+
+/* Configure one FM channel (part p, channel index c 0-2 within the part) as the
+ * single-OP4 square voice, and key it off.  The within-part register offsets are
+ * identical for both parts; key on/off (global reg 0x28) selects the channel by
+ * code (0..2 for part 0, 4..6 for part 1). */
+static void ym_voice_init(u8 p, u8 c)
+{
+    static const u8 op_off[4] = { 0x0, 0x4, 0x8, 0xC };
+    u8 o;
+    for (o = 0; o < 4; o++)
+    {
+        YM2612_writeReg(p, 0x30 + op_off[o] + c, 0x01);   /* DT=0 MUL=1   */
+        YM2612_writeReg(p, 0x40 + op_off[o] + c, 0x7F);   /* TL: muted    */
+        YM2612_writeReg(p, 0x50 + op_off[o] + c, 0x1F);   /* AR=31        */
+        YM2612_writeReg(p, 0x60 + op_off[o] + c, 0x00);   /* D1R=0        */
+        YM2612_writeReg(p, 0x70 + op_off[o] + c, 0x00);   /* D2R=0        */
+        YM2612_writeReg(p, 0x80 + op_off[o] + c, 0x0F);   /* SL=0 RR=15   */
+        YM2612_writeReg(p, 0x90 + op_off[o] + c, 0x00);
+    }
+    YM2612_writeReg(p, 0xB0 + c, 0x07);                   /* alg7 FB0     */
+    YM2612_writeReg(p, 0xB4 + c, 0xC0);                   /* L+R          */
+    YM2612_writeReg(0, 0x28, (u8)((p ? 0x04 : 0x00) | c));/* key off      */
+}
 
 static void snd_ym_init(void)
 {
@@ -174,24 +269,11 @@ static void snd_ym_init(void)
     Z80_requestBus(TRUE);
 
     {
-        static const u8 op_off[4] = { 0x0, 0x4, 0x8, 0xC };
-        u8 c, o;
+        u8 c;
         for (c = 0; c < 3; c++)
         {
-            for (o = 0; o < 4; o++)
-            {
-                YM2612_writeReg(0, 0x30 + op_off[o] + c, 0x01);   /* DT=0 MUL=1   */
-                YM2612_writeReg(0, 0x40 + op_off[o] + c, 0x7F);   /* TL: muted    */
-                YM2612_writeReg(0, 0x50 + op_off[o] + c, 0x1F);   /* AR=31        */
-                YM2612_writeReg(0, 0x60 + op_off[o] + c, 0x00);   /* D1R=0        */
-                YM2612_writeReg(0, 0x70 + op_off[o] + c, 0x00);   /* D2R=0        */
-                YM2612_writeReg(0, 0x80 + op_off[o] + c, 0x0F);   /* SL=0 RR=15   */
-                YM2612_writeReg(0, 0x90 + op_off[o] + c, 0x00);
-            }
-            YM2612_writeReg(0, 0xB0 + c, 0x07);                   /* alg7 FB0     */
-            YM2612_writeReg(0, 0xB4 + c, 0xC0);                   /* L+R          */
-            YM2612_writeReg(0, 0x28, 0x00 | c);                   /* key off      */
-            ym_keyed[c] = 0;
+            ym_voice_init(0, c);  ym_keyed[c]  = 0;       /* SFX bank (ch0-2)    */
+            ym_voice_init(1, c);  ym_keyed2[c] = 0;       /* 1-up bank (ch3-5)   */
         }
     }
 }
@@ -227,6 +309,42 @@ static void ay1_to_ym(void)
     }
 }
 
+#define ONEUP_TL_BIAS 6         /* 1-up jingle sits ABOVE the SFX floor (it is a
+                                 * reward cue meant to be heard over the BGM, like
+                                 * the arcade's spare-channel layer); still a touch
+                                 * under full to blend.  Owner-tunable.            */
+/* ay[2] (the 1-up jingle's private AY file) -> YM2612 part 1, ch3-5.  Identical
+ * mapping to ay1_to_ym but on the second FM bank with its own key state, so the
+ * jingle plays as three square voices LAYERED over the SFX (ch0-2) + PSG music. */
+static void ay_1up_to_ym(void)
+{
+    const u8 *r = ay[2];
+    u8 mixer = r[7];
+    u8 c;
+    for (c = 0; c < 3; c++)
+    {
+        u16 period = (u16)(((r[2 * c + 1] & 0x0F) << 8) | r[2 * c]);
+        u8  vol    = r[8 + c];
+        u8  v      = (vol & 0x10) ? 15 : (vol & 0x0F);
+        bool on = (((mixer >> c) & 1) == 0) && period != 0 && v != 0;
+        if (!on)
+        {
+            if (ym_keyed2[c]) { YM2612_writeReg(0, 0x28, 0x04 | c); ym_keyed2[c] = 0; }
+            continue;
+        }
+        {
+            u32 tot = 1845281UL / period;             /* fnum * 2^block          */
+            u8  block = 0;
+            while (tot >= 2048 && block < 7) { tot >>= 1; block++; }
+            if (tot >= 2048) tot = 2047;
+            YM2612_writeReg(1, 0xA4 + c, (u8)((block << 3) | (tot >> 8)));
+            YM2612_writeReg(1, 0xA0 + c, (u8)tot);
+        }
+        YM2612_writeReg(1, 0x4C + c, (u8)((15 - v) * 2 + ONEUP_TL_BIAS)); /* OP4 TL */
+        if (!ym_keyed2[c]) { YM2612_writeReg(0, 0x28, 0xF0 | 0x04 | c); ym_keyed2[c] = 1; }
+    }
+}
+
 /* ===========================================================================
  *  V-BLANK TICK  (registered via SYS_setVIntCallback in snd_init)
  *  Fires at a constant ~60Hz HW V-Blank -- NEVER dropped under game load.  We
@@ -244,6 +362,7 @@ static void snd_vblank(void)
     {
         replay_tick(0, 0); replay_tick(0, 1);        /* chip A: music first, sfx */
         replay_tick(1, 0); replay_tick(1, 1);        /* chip B                   */
+        replay_tick_into(&rp_1up, ay[2]);            /* layered 1-up jingle      */
     }
 
     ay_chip_to_psg(ay[1]);                           /* AY#2 music -> PSG        */
@@ -255,7 +374,8 @@ static void snd_vblank(void)
      * write window is always clean even across SGDK's per-frame DMA handshake.) */
     {
         u16 bus_taken = Z80_getAndRequestBus(TRUE);
-        ay1_to_ym();                                 /* AY#1 SFX -> YM2612 voice */
+        ay1_to_ym();                                 /* AY#1 SFX -> YM2612 ch0-2 */
+        ay_1up_to_ym();                              /* 1-up jingle -> YM ch3-5  */
         if (!bus_taken) Z80_releaseBus();
     }
 }
@@ -267,14 +387,15 @@ void snd_init(void)
 {
     u8 c, s;
 
-    /* clear captured register state + replay slots */
-    for (c = 0; c < 2; c++)
+    /* clear captured register state + replay slots (incl. the 1-up's ay[2]) */
+    for (c = 0; c < 3; c++)
     {
         u8 i;
         for (i = 0; i < 16; i++) ay[c][i] = 0;
         ay[c][7] = 0xFF;                             /* mixer: everything off    */
-        for (s = 0; s < 2; s++) rp[c][s].active = 0;
+        if (c < 2) for (s = 0; s < 2; s++) rp[c][s].active = 0;
     }
+    rp_1up.active = 0;
 
     snd_ym_init();                                   /* parks Z80 + sets SFX voice */
 
@@ -290,14 +411,30 @@ void snd_shutdown(void)
     snd_ready = 0;
     SYS_setVIntCallback(NULL);                        /* stop advancing            */
     replay_start(SND_CMD_STOP);                       /* halt + silence regs       */
+    rp_1up.active = 0;                                 /* stop the 1-up layer       */
     {
         u8 c;
         for (c = 0; c < 4; c++) PSG_setEnvelope(c, PSG_ENVELOPE_MIN);
-        for (c = 0; c < 3; c++) YM2612_writeReg(0, 0x28, 0x00 | c);   /* key off  */
+        for (c = 0; c < 3; c++) YM2612_writeReg(0, 0x28, 0x00 | c);        /* ch0-2 off */
+        for (c = 0; c < 3; c++) YM2612_writeReg(0, 0x28, 0x04 | c);        /* ch3-5 off */
     }
 }
 
 void snd_command(u8 cmd)
 {
     replay_start(cmd);
+}
+
+/* Play the extra-life / 1-up jingle (arcade cmd 0x04) LAYERED over the running
+ * BGM: arms the dedicated 1-up channel (its own ay[2] file -> YM ch3-5), so the
+ * music + SFX are untouched.  One-shot (~3.2 s) then self-silences; re-arming
+ * (a second extra life) restarts it cleanly.  See the snd_1up_oneshot block. */
+void snd_play_1up(void)
+{
+    u8 i;
+    for (i = 0; i < 16; i++) ay[2][i] = 0;
+    ay[2][7] = 0xFF;                                  /* start muted; stream opens it */
+    rp_1up.base = rp_1up.pos = snd_1up_oneshot;
+    rp_1up.wait = 0;
+    rp_1up.active = 1;
 }

@@ -162,16 +162,13 @@ static void check_extra_life(void)
         if (g_game.lives < LIFE_MAX) g_game.lives++;
         g_game.bonusNextIdx++;
 #if defined(SND_CMD_1UP) && defined(SND_1UP_ENABLE)
-        /* The 1-up cue (cmd 0x04) is now VERIFIED (see sound.h), but its recorded
-         * stream lives in the single MUSIC slot -- arming it REPLACES the running
-         * BGM with the looping jingle (proven on the native: ss_nat_audio pokescore
-         * shows slotB go BGM/round -> 1up0x04 and not return until the next segment
-         * seam re-fires the round music). The arcade layered the jingle over the
-         * music on a spare sound-CPU channel, which the 2-slot record-&-replay can't
-         * reproduce. So the cue is DISABLED by default to honour "don't disturb the
-         * BGM"; enable it (accepting the BGM interruption) by defining SND_1UP_ENABLE,
-         * or play it cleanly once it is RE-RECORDED onto the SFX chip/slot. */
-        snd_command(SND_CMD_1UP);
+        /* Play the VERIFIED 1-up cue (cmd 0x04) LAYERED over the BGM. snd_play_1up()
+         * drives the jingle on a dedicated channel rendered to the YM2612's second FM
+         * bank (ch3-5) -- the spare voices the BGM (PSG) + SFX (YM ch0-2) never use --
+         * so the music keeps playing uninterrupted, mirroring the arcade's spare-
+         * channel layer. (The old snd_command(SND_CMD_1UP) routed it to the single
+         * music slot and REPLACED the BGM; see sound.h.) */
+        snd_play_1up();
 #endif
     }
 }

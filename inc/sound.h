@@ -94,15 +94,19 @@
  * and never appears in any normal-play / attract / death capture. Its handler (sound
  * $EB51) is a guarded fire-and-hold jingle. SND_CMD_1UP is now DEFINED to 0x04.
  *
- * CAVEAT (why it is not auto-played): 0x04's recorded stream is a MUSIC-slot jingle,
- * and the record-&-replay engine has a SINGLE music slot per chip -- arming 0x04
- * REPLACES the running BGM with the looping 1-up jingle (verified on the native:
- * tools/mame/ss_nat_audio.lua pokescore shows slotB go round/BGM -> 1up0x04 and stay
- * there until the next segment seam re-fires the round music). The arcade layered the
- * jingle over the music on a spare sound-CPU channel -- the 2-slot replay can't. So
- * check_extra_life() plays it only under BOTH SND_CMD_1UP && SND_1UP_ENABLE (opt-in,
- * accepting the BGM interruption); the clean fix is a re-record onto the SFX chip. */
-#define SND_CMD_1UP         0x04    /* extra-life / 1-up jingle (VERIFIED; music-slot) */
+ * LAYERED PLAYBACK (the clean fix, 2026-06-17): 0x04's recorded stream is a 3-voice
+ * AY#2/PSG MUSIC jingle, and the index routes it to the single music slot -- arming
+ * it via snd_command() REPLACES the BGM (and the generator's is_music FORCE-LOOP even
+ * made the one-shot jingle loop forever). The arcade instead layered the jingle over
+ * the music on a spare sound-CPU channel. We reproduce THAT: snd_play_1up() drives the
+ * jingle on a DEDICATED replay channel + private AY register file rendered to the
+ * YM2612's second FM bank (channels 3-5) -- the spare FM voices the SFX (ch0-2) and the
+ * PSG BGM never touch. Three AY squares -> three YM squares (same timbre class as every
+ * SFX here), re-encoded as a proper ONE-SHOT (plays once ~3.2 s, self-silences). So the
+ * BGM + SFX are bit-for-bit unaffected and the 1-up truly LAYERS, exactly like the
+ * arcade. check_extra_life() calls snd_play_1up() (gated by SND_1UP_ENABLE, now ON). */
+#define SND_CMD_1UP         0x04    /* extra-life / 1-up jingle (VERIFIED; layered on YM ch3-5) */
+#define SND_1UP_ENABLE      1       /* layered playback is faithful now -> auto-play it  */
 
 /* Verified SonSon sound-command numbers (see header comment + sound.c). */
 #define SND_CMD_STOP        0x00    /* halt + silence (arcade pairs 00+song)     */
@@ -133,6 +137,11 @@ void snd_shutdown(void);
  * SFX never disturbs the running music (separate chips / masked mixer). Cheap:
  * just arms the replay stream pointer(s); the V-Blank tick does the work. */
 void snd_command(u8 cmd);
+
+/* Play the extra-life / 1-up jingle (cmd 0x04) LAYERED over the BGM, on the
+ * YM2612's second FM bank -- the music + SFX are untouched. One-shot (~3.2 s).
+ * Use this (not snd_command(SND_CMD_1UP), which would replace the BGM). */
+void snd_play_1up(void);
 
 /* Convenience wrappers for the wired game events (clearer call sites). */
 static inline void snd_play_bgm(void)  { snd_command(SND_CMD_BGM_GAME); }
