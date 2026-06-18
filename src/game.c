@@ -161,8 +161,17 @@ static void check_extra_life(void)
         /* crossed this threshold: award a life (capped) + advance */
         if (g_game.lives < LIFE_MAX) g_game.lives++;
         g_game.bonusNextIdx++;
-#ifdef SND_CMD_1UP
-        snd_command(SND_CMD_1UP);                  /* 1-up cue (see sound.h note)  */
+#if defined(SND_CMD_1UP) && defined(SND_1UP_ENABLE)
+        /* The 1-up cue (cmd 0x04) is now VERIFIED (see sound.h), but its recorded
+         * stream lives in the single MUSIC slot -- arming it REPLACES the running
+         * BGM with the looping jingle (proven on the native: ss_nat_audio pokescore
+         * shows slotB go BGM/round -> 1up0x04 and not return until the next segment
+         * seam re-fires the round music). The arcade layered the jingle over the
+         * music on a spare sound-CPU channel, which the 2-slot record-&-replay can't
+         * reproduce. So the cue is DISABLED by default to honour "don't disturb the
+         * BGM"; enable it (accepting the BGM interruption) by defining SND_1UP_ENABLE,
+         * or play it cleanly once it is RE-RECORDED onto the SFX chip/slot. */
+        snd_command(SND_CMD_1UP);
 #endif
     }
 }

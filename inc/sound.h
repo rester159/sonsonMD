@@ -53,38 +53,64 @@
  *        live game (walk into enemies, no fire), 0x14 is the command sustained
  *        through every player death and appears ONLY at death -- never in the
  *        combat vocabulary. (ss_pdeath2)
- *  0x02  ITEM/PICKUP SFX  -- BEST CANDIDATE (less rigorously isolated than 0x08/
- *        0x14): 0x02 fires repeatedly between fire shots during the hero's
- *        run-and-collect locomotion, is in the audio-agent candidate set, and is
- *        NOT the death burst. Items don't reliably spawn in the attract demo or a
- *        driven path, so a clean isolation wasn't possible; wired as the pickup
- *        SFX pending a fuller item-spawn capture. (0x06 / 0x0C are the remaining
- *        combat SFX -- impact/bump, not individually nailed.)
+ *  0x02  ITEM/PICKUP SFX (low tier) -- VERIFIED 2026-06-17: correlating the latch
+ *        with the live score ($006C-$006F BCD), 0x02 fires on every small +10
+ *        pickup during the hero's run-and-collect locomotion (the low-value item),
+ *        never on the death burst. The dedicated low-pickup sound. (ss_iso2/ss_iso3)
+ *  0x0C  HIGH-VALUE PICKUP / BONUS SFX -- VERIFIED 2026-06-17: 0x0C fires EXACTLY on
+ *        every +500 score event, in BOTH the attract demo (fr1949 sc->500, fr3027
+ *        sc->1010) AND driven play (fr3435 sc 180->680), with a bonus-number sprite
+ *        (code 50) present -- a distinct, higher-pitched pickup for the big-value
+ *        fruit/bonus, separate from the +10 0x02 item. Clean SFX-slot one-shot
+ *        stream (sound_replay_data.c off 0xA4B). (ss_iso2/ss_iso3/ss_deep)
+ *  0x04  EXTRA-LIFE / 1-UP CUE -- VERIFIED 2026-06-17: parking the score just below a
+ *        DSW2 bonus threshold (ss_extra) and letting play push it across, 0x04 fires
+ *        the frame the score crosses the threshold -- proven at TWO thresholds (20K:
+ *        score 19950->20100; 80K: 79950->80100) -- and is ABSENT from every normal-
+ *        play / attract / death capture. Its handler (sound $EB51) is a guarded
+ *        fire-and-hold jingle voice; recorded as a short music-slot flourish (495B).
+ *        This is the cue check_extra_life() plays at each bonus crossing. (ss_extra)
+ *
+ *  UN-ISOLABLE HEADLESS (real handlers in the sound ROM dispatch $E678, non-empty
+ *  SFX streams, but never triggered by any reachable attract/driven/forced-deep-wave
+ *  path -- need a specific in-game event not reproducible headless; NOT wired, to
+ *  avoid guessing): 0x07 ($E7D2), 0x09 ($E804), 0x0A ($E82A), 0x0E ($E880),
+ *  0x0F ($E894). And 0x06/0x05 (shared handler $E7C2, a recurring combat/ambient
+ *  SFX) are recorded into the MUSIC slot, so arming them would disturb the BGM --
+ *  left out pending a clean SFX-slot re-record. EMPTY streams (cannot play at all):
+ *  0x03, 0x0D, 0x12, 0x15.
  */
 #ifndef SONSON_NATIVE_SOUND_H
 #define SONSON_NATIVE_SOUND_H
 
 #include <genesis.h>
 
-/* EXTRA-LIFE (1-up) CUE -- NOT ISOLATED (2026-06-17). The arcade awards bonus lives
- * at the DSW2 0x18 thresholds (20K/30K/.. -- see game.h), but a DEDICATED 1-up jingle
- * could not be pinned: driving a real scoring game in MAME (coin+start via the proven
- * ss_sndtap harness, md@$0002==0x02 in-game) and watching the sound latch + the live
- * score ($006C-$006F BCD, displayed = stored x10), the only "jingle-ish" command that
- * fired during scoring (0x06) recurred at non-threshold scores (9.8K/15.9K/21.4K) and
- * far too often to be the extend cue -- it is a recurring combat/ambient SFX, not 1-up.
- * No distinct command fired exactly at the 20K bonus crossing. So the extra-life is
- * wired WITHOUT a cue by default. To enable one once isolated (e.g. via a save-state
- * placed just below a threshold, or an .inp recording), define SND_CMD_1UP to the
- * confirmed command -- game.c's check_extra_life() plays it under #ifdef SND_CMD_1UP.
- *   // #define SND_CMD_1UP   0x??     (uncomment + set when the 1-up cmd is verified) */
+/* EXTRA-LIFE (1-up) CUE -- ISOLATED + VERIFIED 2026-06-17 as command 0x04. Earlier
+ * attempts mis-flagged 0x06 (a recurring combat SFX that recurs at non-threshold
+ * scores). The clean isolation: park the score just below a DSW2 0x18 bonus threshold
+ * and let play push it across (tools/mame/ss_extra.lua, reading the :soundlatch
+ * save-item + the live BCD score $006C-$006F). 0x04 fires the frame the score crosses
+ * the threshold, reproduced at the 20K (19950->20100) AND 80K (79950->80100) crossings,
+ * and never appears in any normal-play / attract / death capture. Its handler (sound
+ * $EB51) is a guarded fire-and-hold jingle. SND_CMD_1UP is now DEFINED to 0x04.
+ *
+ * CAVEAT (why it is not auto-played): 0x04's recorded stream is a MUSIC-slot jingle,
+ * and the record-&-replay engine has a SINGLE music slot per chip -- arming 0x04
+ * REPLACES the running BGM with the looping 1-up jingle (verified on the native:
+ * tools/mame/ss_nat_audio.lua pokescore shows slotB go round/BGM -> 1up0x04 and stay
+ * there until the next segment seam re-fires the round music). The arcade layered the
+ * jingle over the music on a spare sound-CPU channel -- the 2-slot replay can't. So
+ * check_extra_life() plays it only under BOTH SND_CMD_1UP && SND_1UP_ENABLE (opt-in,
+ * accepting the BGM interruption); the clean fix is a re-record onto the SFX chip. */
+#define SND_CMD_1UP         0x04    /* extra-life / 1-up jingle (VERIFIED; music-slot) */
 
 /* Verified SonSon sound-command numbers (see header comment + sound.c). */
 #define SND_CMD_STOP        0x00    /* halt + silence (arcade pairs 00+song)     */
 #define SND_CMD_COIN        0x01    /* coin insert jingle                        */
 #define SND_CMD_FIRE        0x0B    /* player shot SFX  (CONFIRMED)              */
 #define SND_CMD_ENEMY       0x08    /* enemy-defeat SFX (VERIFIED 2026-06-17)    */
-#define SND_CMD_ITEM        0x02    /* item/pickup SFX  (best candidate)         */
+#define SND_CMD_ITEM        0x02    /* low-value item/pickup SFX (VERIFIED +10)  */
+#define SND_CMD_BONUS       0x0C    /* high-value pickup/bonus SFX (VERIFIED +500)*/
 #define SND_CMD_DEATH       0x14    /* player-death SFX (VERIFIED 2026-06-17)    */
 #define SND_CMD_BGM_GAME    0x18    /* main in-game level BGM (CONFIRMED)       */
 #define SND_CMD_ROUND_A     0x16    /* round-intro music part A                  */
@@ -111,9 +137,10 @@ void snd_command(u8 cmd);
 /* Convenience wrappers for the wired game events (clearer call sites). */
 static inline void snd_play_bgm(void)  { snd_command(SND_CMD_BGM_GAME); }
 static inline void snd_sfx_fire(void)  { snd_command(SND_CMD_FIRE); }
-static inline void snd_sfx_enemy(void) { snd_command(SND_CMD_ENEMY); }  /* enemy defeat */
-static inline void snd_sfx_item(void)  { snd_command(SND_CMD_ITEM); }   /* item collect */
-static inline void snd_sfx_death(void) { snd_command(SND_CMD_DEATH); }  /* player death */
+static inline void snd_sfx_enemy(void) { snd_command(SND_CMD_ENEMY); }  /* enemy defeat   */
+static inline void snd_sfx_item(void)  { snd_command(SND_CMD_ITEM); }   /* low-value pickup  */
+static inline void snd_sfx_bonus(void) { snd_command(SND_CMD_BONUS); }  /* high-value pickup */
+static inline void snd_sfx_death(void) { snd_command(SND_CMD_DEATH); }  /* player death   */
 static inline void snd_stop(void)      { snd_command(SND_CMD_STOP); }
 
 /* Round-intro music (arcade plays 0x16 then 0x10 at a round/level start). */

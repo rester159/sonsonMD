@@ -1886,7 +1886,13 @@ static void collision_pass(const Player *p)
                                             ? en->fruit : 0];
                     g_game.score += val;
                     spawn_popup((s16)(en->x), (s16)(en->y), val);
-                    snd_sfx_item();                  /* item-collect SFX (verified) */
+                    /* Two arcade pickup tiers (latch-verified): 0x02 fires on the
+                     * small +10 pickup, 0x0C on the high +500 pickup (a distinct,
+                     * higher cue). Map the native fruit economy onto them by value:
+                     * the high-value fruit (ORANGE 500 / APPLE 1000 / GOLD 2000)
+                     * gets the bonus SFX, the low CHERRY (300) the plain item SFX. */
+                    if (val >= 500) snd_sfx_bonus();  /* high-value pickup (cmd 0x0C) */
+                    else            snd_sfx_item();    /* low-value pickup  (cmd 0x02) */
                     en->active = 0;                  /* fruit eaten                */
                 }
                 break;
