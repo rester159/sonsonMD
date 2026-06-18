@@ -285,34 +285,51 @@ static const u8 k_fruit_anim[FRUIT_TYPE_COUNT] =
 #define POPUP_LIFE          34          /* ~0.57s on screen (short -> few co-resident)*/
 #define POPUP_RISE_VY       (s16)(-0x0100) /* ~1.0 px/frame upward drift             */
 
-/* ---- ENEMY point values -- snapped to the arcade's verified award TIERS ----
- * RE SOURCE: the score-addend table at ROM $4D84 (see k_fruit_score[] above) gives
- * the COMPLETE set of awardable amounts -- displayed 100/200/300/400/500/600/700/
- * 800 (stored BCD 10..80, x10) and 10000+ (stored 1000+). Every value below is one
- * of those exact tiers, so no award the game can't produce is used.
+/* ---- ENEMY point values -- MEASURED from the live arcade (displayed points) -----
+ * The score-add core (bcd_score_add @ $4A96) is Capcom's SWI-obfuscated routine with
+ * zero static callers, so per-archetype values could not be pinned statically. They
+ * were instead MEASURED empirically: drive the MAME `sonson` driver into a credited
+ * game (DSW1 Coinage=0x0F, wait md@$0002==1, pulse :SYSTEM Coin1 then 1-Player-Start,
+ * md->0x02), SAVE a mid-game state, then read the per-kill BCD score DELTA at maincpu
+ * $006C-$006F. NB: the score memory holds the DISPLAYED value 1:1 -- proven by dumping
+ * the HUD digit tilemap (videoram) right after a natural award: stored 0x00000150 ->
+ * on-screen "150", 0x00000490 -> "490". (The "x10" relationship is only in the $4D84
+ * ADDEND table -- an addend byte 0x10 adds 100 to the displayed score; it is NOT a
+ * factor on the $006C-6F score itself.) So a $006C-6F delta == displayed points awarded.
  *
- * The per-archetype TIER ASSIGNMENT could NOT be pinned to each enemy from the RE:
- * the score-add entry (bcd_score_add @ $4A96) is Capcom's SWI-obfuscated/relocated
- * routine -- it has ZERO static callers (reached via the SWI vector), the obfuscated
- * body decodes the tier dynamically, and the live arcade could not be driven into a
- * scoring game headlessly (the MAME sonson driver registers a coin -- $0031:0->1 --
- * but will not consume it on Start under lua input injection, so per-kill deltas
- * weren't capturable). So these are SonSon's documented enemy tiers, each a real
- * $4D84 tier, scaled by relative toughness (the engine's HP/role). They sit in the
- * 100-800 band the table reserves for enemies (vs the fruit/jackpot 1000+ tiers).
- * TODO(arcade-exact-per-enemy): pin each archetype's exact tier from a scoring
- * playthrough (needs a working coin+start path -- a MAME save-state mid-game, or an
- * .inp recording -- then read the $4D84-driven award per kill). */
-#define SCORE_ENEMY         100         /* ground walker: base tier ($4D84 disp 100) */
-#define SCORE_FLYER         300         /* flyer (tougher, dives)         (disp 300)  */
-#define SCORE_THROWER       300         /* thrower (stands + lobs)        (disp 300)  */
-#define SCORE_CREATURE_G    300         /* throwing ground creature       (disp 300)  */
-#define SCORE_CREATURE_C    200         /* creature-family walker         (disp 200)  */
-#define SCORE_COMPOSITE_E   500         /* tough 2-HP large composite     (disp 500)  */
-#define SCORE_HOPPER        300         /* leaping hopper                 (disp 300)  */
-#define SCORE_LARGE         800         /* tough 3-HP large patroller     (disp 800)  */
-#define SCORE_EMITTER       400         /* projectile emitter             (disp 400)  */
-#define SCORE_ORB           300         /* hovering orb hazard            (disp 300)  */
+ * MEASURED (high confidence):
+ *   - GROUND WALKER (enemyMain $0828, sprite bank2, death codes 304-315) = 150.
+ *       Isolated cleanly: in the early walker-only segment (classF/G/H pools empty) every
+ *       score delta with only bank2 on screen was +150 (8 isolated kills); across deep
+ *       play every +150 award coincided with a bank2 sprite entering its death-code range.
+ *   - THROWER (enemyMain $0828 idx4 $BAB3 -- SAME pool & sprite bank as the walker) = 150.
+ *       Every bank2 death awarded exactly 150 (no bank2 kill ever deviated), and the
+ *       thrower lives in the walker's pool, so it shares the 150 award.
+ *   - FLYER (classF $0BA8, sprite bank9) = 50.
+ *       Isolated by the death signal: every +50 award occurred while a flyer (bank9/15)
+ *       was on screen AND no walker was in its death-code range ("dyingBanks" empty),
+ *       i.e. no walker kill could account for it -- 26+ such events, all +50.
+ *
+ * NOT cleanly isolable in the reachable stages (kept at the documented tier -- below):
+ *   creature_C / creature_G / composite_E / hopper / large / emitter / orb. The autopilot
+ *   could not reliably traverse deep enough to corner these archetypes ALONE (walkers are
+ *   almost always co-present, and the per-slot pool free lags the award so slot-count
+ *   attribution is unreliable). Deeper play does surface additional clean award values
+ *   (notably a recurring +600 tied to the bank15 aerial family, and +100/+200 tied to
+ *   large/scenery-bank objects), but none could be bound to a SPECIFIC native archetype
+ *   with confidence, so those archetypes retain their prior documented tiers.
+ * TODO(arcade-exact-per-enemy): measure creature_C/G, composite_E, hopper, large, emitter,
+ * orb from a deeper save-state (or an .inp playthrough) that isolates each one. */
+#define SCORE_ENEMY         150         /* ground walker: MEASURED arcade award  (disp 150) */
+#define SCORE_FLYER          50         /* flyer (classF/bank9): MEASURED        (disp 50)  */
+#define SCORE_THROWER       150         /* thrower (enemyMain idx4, walker pool): MEASURED 150 */
+#define SCORE_CREATURE_G    300         /* throwing ground creature  -- documented (unmeasured) */
+#define SCORE_CREATURE_C    200         /* creature-family walker    -- documented (unmeasured) */
+#define SCORE_COMPOSITE_E   500         /* tough 2-HP large composite -- documented (unmeasured) */
+#define SCORE_HOPPER        300         /* leaping hopper            -- documented (unmeasured) */
+#define SCORE_LARGE         800         /* tough 3-HP large patroller -- documented (unmeasured) */
+#define SCORE_EMITTER       400         /* projectile emitter        -- documented (unmeasured) */
+#define SCORE_ORB           300         /* hovering orb hazard       -- documented (unmeasured) */
 /* (ET_ITEM/fruit score is per-type, k_fruit_score[]; no flat SCORE_ITEM.)      */
 
 /* ---- DIFFICULTY hook (arcade DSW2 0x60 -> g_config.difficulty 0..3) --------
