@@ -5,6 +5,7 @@
 #include "ss_anim.h"     /* baked player/enemy animation frames + table */
 #include "ss_collision.h"/* SS_TIER_Y[6] -- the 6 terrain tiers (native sub_A847) */
 #include "sound.h"       /* snd_sfx_enemy / snd_sfx_item (verified $3010 cmds) */
+#include "ss_wave_sched.h"/* arcade $FCD9 87-wave spawn schedule (RE'd: $EF89/$EFBB) */
 
 /* ===========================================================================
  *  SON SON  --  NATIVE entity system (Phase 4)
@@ -773,114 +774,19 @@ static u8 sched_group_for_round(void)
 }
 
 /* ===========================================================================
- *  PER-LEVEL WAVE PROGRAM -- the ordered enemy mix each level runs.
+ *  WAVE SCHEDULE -- driven by the arcade $FCD9 table (see ss_wave_sched.h).
  * ===========================================================================
- *  Each level (round) runs a SEQUENCE of wave SEGMENTS. A segment names an
- *  archetype, how many to emit, and the scroll SPACING between emissions. The
- *  cursor walks the program as the camera advances; when it runs off the end it
- *  LOOPS back to a per-level loop point (so a long level keeps the mix coming,
- *  bounded by the on-screen cap). This reproduces the arcade's per-level shape
- *  (capture arch_census.txt): a GROUND-WALKER opener, then dominant classH
- *  creature waves (HOPPER + walk/throw CREATURE_G lobbing ENEMY_SHOTs), with
- *  FLYER waves layered in from level 2+ and the odd ORB / tough archetype.
- *
- *  WS_GROUND is special: it pulls its archetype + row from the faithful $F0C9
- *  ground-wave tables above (sched_type_to_et / k_wave_row), so the opener's
- *  walker variant + placement order stays byte-faithful to the arcade list. All
- *  other segments pick a row by a small rotating index (rows = the 6 arcade Y
- *  bands, k_spawn_row_y), so the new enemies enter on the same lanes the arcade
- *  uses. */
-typedef enum
-{
-    WS_GROUND = 0,  /* $0828 ground-walker wave (faithful $F0C9 variant + rows)   */
-    WS_HOPPER,      /* classH idx5 leaping hopper                                 */
-    WS_CREATURE,    /* classH idx4 tracking walker -> ET_CREATURE_G (walk + throw)*/
-    WS_FLYER,       /* classF flyer (level >= 2; denser deeper)                   */
-    WS_THROWER,     /* $0828 idx4 stand-and-fire thrower variant                  */
-    WS_ORB,         /* objSingle unique drift-in hazard (rare)                    */
-    WS_TOUGH        /* classE/D large/emitter (rare, deep levels -- special-ctx)  */
-} WaveSeg;
-
-typedef struct
-{
-    u8 seg;     /* WaveSeg                                                        */
-    u8 count;   /* how many to emit in this segment                               */
-    u8 space;   /* scroll px between emissions (>>2 internally for resolution)    */
-} WaveStep;
-
-/* The wave programs. Index by a per-level program id (lvl_program_id). Each ends
- * with a {0,0,0} terminator; the looping is governed by a separate loop-start
- * index so the tail (the steady creature/flyer mix) repeats while the opener does
- * not. Spacing is in 1/4-scroll-px units (so 18 = 72px, the captured ~1-per-80px
- * cadence) -- a brisk run keeps ~2-4 on screen and the cap is the real limiter. */
-#define WP_TERM   {0,0,0}
-/* program 0 -- LEVEL 1 (gfx 00): ground opener -> HOPPER+CREATURE_G creature wave
- * (they lob ENEMY_SHOTs) -> the odd ORB. (capture stage 00/04/05: enemyMain then
- * classH+classI, plus a lone objSingle.) */
-static const WaveStep k_wp_l1[] = {
-    {WS_GROUND,   6, 16},   /* opening ground wave (walker variants)             */
-    {WS_HOPPER,   3, 22},   /* leaping hoppers close in                          */
-    {WS_CREATURE, 3, 20},   /* walk+throw creatures (lob projectiles)            */
-    {WS_GROUND,   3, 18},   /* a few more walkers                                */
-    {WS_ORB,      1, 40},   /* a lone drifting hazard                            */
-    {WS_HOPPER,   2, 24},   /* (loop tail) steady hopper/creature mix            */
-    {WS_CREATURE, 2, 22},
-    WP_TERM
-};
-#define WP_L1_LOOP  5       /* loop back to the steady hopper/creature tail      */
-
-/* program 1 -- LEVEL 2+ (gfx 01): adds FLYER waves on top of the creature mix
- * (capture stage 06/07: classF appears). */
-static const WaveStep k_wp_l2[] = {
-    {WS_GROUND,   5, 16},   /* opener                                            */
-    {WS_HOPPER,   3, 22},
-    {WS_FLYER,    3, 20},   /* flyers glide in + dive                            */
-    {WS_CREATURE, 2, 20},
-    {WS_THROWER,  2, 24},   /* a stand-and-fire thrower pair                     */
-    {WS_FLYER,    2, 22},   /* (loop tail) steady flyer + creature mix           */
-    {WS_CREATURE, 2, 22},
-    {WS_HOPPER,   2, 24},
-    WP_TERM
-};
-#define WP_L2_LOOP  5
-
-/* program 2 -- DEEP levels (round >= 4): flyer-dominant + the tough archetype,
- * matching forced-stage 0x20/0x30 (classF=4 dominates). Still capped on-screen. */
-static const WaveStep k_wp_deep[] = {
-    {WS_GROUND,   4, 18},   /* opener (tougher walker variant via the stage group)*/
-    {WS_FLYER,    4, 22},   /* flyer-dominant (spaced so successive flyers don't  *
-                             * all share a scanline -> inside the VDP per-scanline*
-                             * sprite budget; with the cap of 10 this holds 60)   */
-    {WS_HOPPER,   2, 24},
-    {WS_THROWER,  2, 24},
-    {WS_TOUGH,    1, 44},   /* a rare tough emplacement/large                    */
-    {WS_FLYER,    3, 22},   /* (loop tail) flyer-heavy                           */
-    {WS_CREATURE, 2, 24},
-    WP_TERM
-};
-#define WP_DEEP_LOOP  5
-
-/* Choose the program + loop point for the current round. Round 1 = L1; rounds 2-3
- * = L2 (flyers introduced, like the arcade gfx-01 levels); round >= 4 = deep
- * (flyer-dominant), matching the arcade's escalation as $0096 climbs past 0x10. */
-static const WaveStep *lvl_program(u8 *loopStart)
-{
-    u8 r = g_game.round;
-    if (r <= 1)      { *loopStart = WP_L1_LOOP;   return k_wp_l1; }
-    else if (r <= 3) { *loopStart = WP_L2_LOOP;   return k_wp_l2; }
-    else             { *loopStart = WP_DEEP_LOOP; return k_wp_deep; }
-}
+ *  The hand-authored per-level wave PROGRAM (k_wp_l1/l2/deep + WaveStep) is gone;
+ *  enemy presence now comes straight from the arcade's RE'd 87-wave schedule. The
+ *  helpers kept ABOVE (k_spawn_row_y, k_wave_row, k_wave_mix, sched_type_to_et,
+ *  sched_group_for_round) still supply the byte-faithful $F0C9 ground placement
+ *  for the enemyMain class; everything else is decoded from the wave mask +
+ *  placement bytes by the driver BELOW (wave_id_for_camera / wave_spawn_bit /
+ *  entity_schedule_tick). ======================================================= */
 
 /* ---- Scheduler state (file-static; reset by entity_schedule_init) ---------- */
-static const WaveStep *s_sched_prog;    /* active per-level wave program          */
-static u8  s_sched_loop;        /* program index to loop back to at the terminator*/
-static u8  s_sched_step;        /* current WaveStep index                         */
-static u8  s_sched_emit;        /* emissions left in the current step             */
-static u8  s_sched_group;       /* ground-wave stage-group for this round         */
-static u8  s_sched_gcursor;     /* index into the 12-entry ground list (wraps)    */
-static u8  s_sched_row;         /* rotating row index for non-ground segments     */
-static s16 s_sched_next_x;      /* emit the next entry once cameraX >= this        */
-static u8  s_sched_space;       /* scroll px to the next emission (current step)   */
+static u8  s_wave_id;           /* last loaded arcade wave-id (0xFF = none yet)    */
+static u8  s_sched_gcursor;     /* enemyMain $F0C9 ground-list cursor (wraps)      */
 
 /* Count the live SCHEDULED wave enemies (the arcade $00A6 live-count gate). Body
  * enemies + the orb count; the projectiles they lob are NOT scheduled (they're
@@ -893,122 +799,130 @@ static u16 sched_live_count(void)
     return n;
 }
 
-/* Advance to the next program step (load its emission count + spacing). At the
- * terminator, loop back to s_sched_loop so the steady mix keeps coming. */
-static void sched_load_step(void)
-{
-    const WaveStep *w = &s_sched_prog[s_sched_step];
-    if (w->count == 0)                  /* terminator -> loop to the steady tail  */
-    {
-        s_sched_step = s_sched_loop;
-        w = &s_sched_prog[s_sched_step];
-    }
-    s_sched_emit  = w->count;
-    s_sched_space = w->space;
-}
-
-/* (Re)arm the scheduler for the current round: pick the per-level program + the
- * ground-wave stage-group, reset the cursors, and set the first emit threshold a
- * touch ahead of the level start so the opening wave walks in as play begins. */
+/* (Re)arm the wave scheduler. The arcade reloads a wave only when the scroll
+ * counter $90 ticks ($EF98: CMPB ,X / BEQ $EFBA); we mirror that by caching the
+ * last loaded wave-id and invalidating it here so the next tick loads a wave, and
+ * reset the enemyMain $F0C9 ground cursor. */
 void entity_schedule_init(void)
 {
-    s_sched_prog    = lvl_program(&s_sched_loop);
-    s_sched_step    = 0;
-    s_sched_group   = sched_group_for_round();
+    s_wave_id       = 0xFF;     /* != any real wave-id -> first tick loads a wave */
     s_sched_gcursor = 0;
-    s_sched_row     = 0;
-    sched_load_step();
-    /* first spawn once the camera has eased forward a touch from the start */
-    s_sched_next_x  = (s16)(g_game.cameraX + (s16)(s_sched_space << 2) / 2);
 }
 
-/* Emit ONE entity for the given segment at the right screen edge. Returns the
- * spawned entity (tagged fromSched) or 0 if the pool was full / the segment is a
- * no-op for this level (e.g. a flyer segment on level 1 -- guarded by the program,
- * but double-checked here). */
-static Entity *sched_emit_one(u8 seg)
+/* Map the (wrapped) camera position to an arcade wave-id. The arcade wave-id IS
+ * the scroll position: $EF98 does `LDB <$90; ANDB #$7F`, and $90 is the high byte
+ * of the 16-bit world-scroll ($90:$91; spawn worldX = $90:$91 + $F8) -- i.e. a new
+ * wave every 256px of arcade scroll, indexing the 87-entry table $FCD9. The native
+ * ribbon LOOPS at g_ribbonW px (a shorter pixel run than the arcade's for the same
+ * scenery), so we re-express that cadence by mapping the ribbon's full length onto
+ * all 87 waves: one ribbon loop = one full pass of the arcade wave sequence. Using
+ * the WRAPPED cameraX, the wave-id wraps 86->0 exactly as cameraX wraps the ribbon
+ * width ->0 (game.c) -- no seam, no separate accumulator to shift on the loop.
+ * (g_levelW is the ribbon pixel width = the internal g_ribbonW; game.h.) */
+static u8 wave_id_for_camera(void)
 {
-    s16 sx = (s16)(g_game.cameraX + SCREEN_W + 8);   /* right edge (~scroll+$F8)  */
+    s16 cx = g_game.cameraX;
+    u32 w;
+    if (g_levelW == 0) return 0;
+    if (cx < 0) cx = 0;
+    w = ((u32)(u16)cx * SS_WAVE_COUNT) / (u32)g_levelW;
+    if (w >= SS_WAVE_COUNT) w = SS_WAVE_COUNT - 1;
+    return (u8)w;
+}
+
+/* Spawn one entity for a set mask-bit at the right screen edge (arcade worldX =
+ * scroll+$F8 ~= cameraX+SCREEN_W). `place` is the arcade placement byte (consumer
+ * $EFBB writes it to the class record's param $E); its low bits pick the spawn tier
+ * row (k_spawn_row_y = the 6 arcade Y bands) and, for enemyMain, its high bit picks
+ * the thrower variant. bit->class per the RE'd table (header SS_WAVE_BIT_*). Tagged
+ * fromSched so the cap/recycle logic treats it as a wave body. */
+static void wave_spawn_bit(u8 bit, u8 place)
+{
+    s16 sx = (s16)(g_game.cameraX + SCREEN_W + 8);
     s16 sy;
     u8  type;
     Entity *e;
 
-    if (seg == WS_GROUND)
+    if (bit == SS_WAVE_BIT_ENEMYMAIN)
     {
-        /* faithful $F0C9 ground wave: row + variant from the captured list/group */
-        u8 row = k_wave_row[s_sched_group][s_sched_gcursor];
-        u8 tb  = (s_sched_group == 2) ? k_wave_mix[s_sched_gcursor]
-                                      : (s_sched_group == 3 ? 2
-                                      : (s_sched_group == 1 ? 1 : 0));
+        /* enemyMain: keep the byte-faithful $F0C9 ground placement (row + walker
+         * variant from the stage group), as the arcade enemyMain spawner does
+         * ($EFED -> $F01F: stage&0x30 -> $F0C9 list). High placement bit -> the
+         * stand-and-fire thrower variant. */
+        u8 grp = sched_group_for_round();
+        u8 row = k_wave_row[grp][s_sched_gcursor];
+        u8 tb  = (grp == 2) ? k_wave_mix[s_sched_gcursor]
+                            : (grp == 3 ? 2 : (grp == 1 ? 1 : 0));
         s_sched_gcursor = (u8)((s_sched_gcursor + 1) % WAVE_LEN);
         sy   = k_spawn_row_y[row];
-        type = sched_type_to_et(tb);
+        type = (place & 0x80) ? ET_THROWER : sched_type_to_et(tb);
     }
     else
     {
-        /* non-ground segments enter on the rotating arcade Y bands */
-        sy = k_spawn_row_y[s_sched_row];
-        s_sched_row = (u8)((s_sched_row + 1) % 6);
-        switch (seg)
+        u8 row = (u8)((place & 0x7F) % 6);      /* placement byte -> arcade Y band */
+        sy = k_spawn_row_y[row];
+        switch (bit)
         {
-            case WS_HOPPER:   type = ET_HOPPER;     break;
-            case WS_CREATURE: type = ET_CREATURE_G; break;  /* walk + throw       */
-            case WS_FLYER:    type = ET_FLYER;      sy = k_spawn_row_y[0]; break; /* high lane */
-            case WS_THROWER:  type = ET_THROWER;    break;
-            case WS_ORB:      type = ET_ORB;        break;
-            case WS_TOUGH:    /* alternate the two rare tough archetypes */
-                              type = (s_sched_row & 1) ? ET_EMITTER : ET_LARGE; break;
-            default:          type = ET_ENEMY_A;    break;
+            case SS_WAVE_BIT_CLASSC: type = ET_CREATURE_C;  break; /* classC walker  */
+            case SS_WAVE_BIT_CLASSD: type = ET_EMITTER;     break; /* classD emitter */
+            case SS_WAVE_BIT_CLASSE: type = ET_COMPOSITE_E; break; /* classE tough   */
+            case SS_WAVE_BIT_CLASSF: type = ET_FLYER;
+                                     sy = k_spawn_row_y[0];  break; /* classF: high lane */
+            case SS_WAVE_BIT_CLASSH: type = ET_HOPPER;      break; /* classH hopper  */
+            case SS_WAVE_BIT_CLASSG: type = ET_CREATURE_G;  break; /* classG creature*/
+            case SS_WAVE_BIT_CLASSI: type = ET_THROWER;     break; /* classI lobbed-shot wave -> native lobs via a thrower (a bare projectile has no parent arc) */
+            case SS_WAVE_BIT_OBJ16:  type = ET_LARGE;       break; /* obj16x16        */
+            default: return;   /* bits 8/10 (rec06B8 gated $9D / rec06D8): special-context, not armed */
         }
     }
 
     e = entity_spawn(type, sx, sy);
     if (e) e->fromSched = 1;
-    return e;
 }
 
-/* Per-frame: walk the per-level wave program as the camera advances, emitting the
- * next enemy at the right edge each `space` px of scroll -- but never exceeding
- * the on-screen cap (the arcade $00A6==$10 gate). Called from entity_update_all.
- * Spawns at the right screen edge (arcade worldX = scroll+$F8 ~= cameraX+SCREEN_W)
- * so the mix walks/glides in from the right, exactly like the arcade waves. */
+/* Per-frame: derive the wave-id from the camera; when it ADVANCES, load that wave
+ * from the arcade $FCD9 schedule and spawn its classes. Faithful to the arcade
+ * producer/consumer ($EF89/$EFBB): read ss_wave_mask[wid], walk the bits LSB-first
+ * (the arcade LSR/ROR order), consuming exactly one placement byte per SET bit.
+ * Honours the on-screen cap ($00A6==$10): a capped bit still consumes its placement
+ * byte (keeping the stream aligned) but skips the spawn -- the arcade likewise
+ * advances the wave phase rather than stalling. Lobbed child projectiles are not
+ * fromSched, so they don't gate the wave. Called from entity_update_all. */
 void entity_schedule_tick(void)
 {
-    /* emit as many as the scroll has earned, bounded per frame so a big camera
-     * jump (round restart) can't spew a screenful at once. */
-    u8 budget = 3;
-    while (g_game.cameraX >= s_sched_next_x && budget--)
-    {
-        u8 seg = s_sched_prog[s_sched_step].count ? s_sched_prog[s_sched_step].seg
-                                                  : WS_GROUND;
-        /* only emit if under the on-screen cap; otherwise just advance the program
-         * (the arcade wave-phase keeps advancing; a capped frame skips a placement
-         * rather than stalling the whole wave). Projectile-lobbing creatures don't
-         * inflate the count -- their lobs are children, not scheduled bodies. */
-        if (sched_live_count() < SPAWN_ONSCREEN_CAP)
-            sched_emit_one(seg);
+    u8  wid = wave_id_for_camera();
+    u16 mask;
+    const u8 *place;
+    u8 pidx, bit;
 
-        /* advance within the step; when the step's emissions are spent, move on */
-        s_sched_next_x = (s16)(s_sched_next_x + (s16)(s_sched_space << 2));
-        if (s_sched_emit == 0 || --s_sched_emit == 0)
+    if (wid == s_wave_id) return;       /* same wave: nothing new (arcade BEQ $EFBA) */
+    s_wave_id = wid;
+
+    mask  = ss_wave_mask[wid];
+    place = &ss_wave_place[ss_wave_place_off[wid]];
+    pidx  = 0;
+    for (bit = 0; bit < 12; bit++)      /* arcade scans 12 control records ($8=$0C) */
+    {
+        if (mask & (u16)(1u << bit))
         {
-            s_sched_step++;
-            sched_load_step();
+            u8 pb = place[pidx++];      /* one placement byte per set bit (LSB-first) */
+            if (sched_live_count() < SPAWN_ONSCREEN_CAP)
+                wave_spawn_bit(bit, pb);
         }
     }
 }
 
 /* SEAMLESS-RIBBON coordinate wrap (see entity.h). Shift every live entity's world
- * X and the scheduler's spawn cursor by dx. Called from game.c the frame it wraps
- * cameraX by the ribbon width; because cameraX gets the same dx, screen positions
- * (x - cameraX) are unchanged -> the wrap is invisible. */
+ * X by dx. Called from game.c the frame it wraps cameraX by the ribbon width;
+ * because cameraX gets the same dx, screen positions (x - cameraX) are unchanged
+ * -> the wrap is invisible. (The wave scheduler needs no shift: it derives its
+ * wave-id from the wrapped cameraX, which wraps in lockstep -- see wave_id_for_camera.) */
 void entity_shift_worldx(s16 dx)
 {
     u16 i;
     for (i = 0; i < ENTITY_MAX; i++)
         if (g_entities[i].active)
             g_entities[i].x = (s16)(g_entities[i].x + dx);
-    s_sched_next_x = (s16)(s_sched_next_x + dx);
 }
 
 /* ------------------------------------------------------------------------- */
