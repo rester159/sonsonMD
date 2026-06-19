@@ -830,36 +830,47 @@ static u8 wave_id_for_camera(void)
     return (u8)w;
 }
 
-/* Spawn one entity for a set mask-bit at the right screen edge (arcade worldX =
- * scroll+$F8 ~= cameraX+SCREEN_W). `place` is the arcade placement byte (consumer
- * $EFBB writes it to the class record's param $E); its low bits pick the spawn tier
- * row (k_spawn_row_y = the 6 arcade Y bands) and, for enemyMain, its high bit picks
- * the thrower variant. bit->class per the RE'd table (header SS_WAVE_BIT_*). Tagged
- * fromSched so the cap/recycle logic treats it as a wave body. */
+/* Spawn one entity for a set mask-bit. `place` is the arcade placement byte (the
+ * consumer $EFBB writes it to the class record's param $E). What param $E MEANS is
+ * per-class (decoded from the spawners in ss.03e):
+ *   - classG ($F682) and classH ($F7F3) read ONLY its HIGH BIT: clear -> enter at
+ *     the RIGHT edge (worldX = $90+$F8); set -> enter at the LEFT edge (worldX =
+ *     $90-$08, $F6F5 / $F87E) -- i.e. from BEHIND. Our native classG/classH are
+ *     player-X trackers (entity.c CREATURE_G $1368 / HOPPER $1497 home on the
+ *     player), so a left-edge spawn just walks back in toward the player; no extra
+ *     direction/despawn handling is needed.
+ *   - enemyMain ($EFED), classC/D/E/F/I do NOT read param $E at all -- their spawn
+ *     Y comes from per-class formation tables (e.g. classG's $F72B), not the
+ *     placement byte. The native single-archetype model doesn't reproduce those
+ *     6-wide formations 1:1, so for those classes we just spread entries across the
+ *     6 tier bands (k_spawn_row_y) deterministically by the placement low bits --
+ *     varied lanes, not byte-exact arcade Y. enemyMain keeps its byte-faithful
+ *     $F0C9 ground placement + walker variant ($F01F: stage&0x30 -> $F0C9 list).
+ * bit->class per the RE'd table (header SS_WAVE_BIT_*). Tagged fromSched so the
+ * cap/recycle logic treats it as a wave body. */
 static void wave_spawn_bit(u8 bit, u8 place)
 {
-    s16 sx = (s16)(g_game.cameraX + SCREEN_W + 8);
     s16 sy;
     u8  type;
+    u8  fromLeft = 0;       /* arcade param-$E high bit: enter from behind (classG/H) */
     Entity *e;
 
     if (bit == SS_WAVE_BIT_ENEMYMAIN)
     {
-        /* enemyMain: keep the byte-faithful $F0C9 ground placement (row + walker
-         * variant from the stage group), as the arcade enemyMain spawner does
-         * ($EFED -> $F01F: stage&0x30 -> $F0C9 list). High placement bit -> the
-         * stand-and-fire thrower variant. */
+        /* enemyMain: byte-faithful $F0C9 ground placement (row + walker variant from
+         * the stage group), as the arcade enemyMain spawner does ($EFED -> $F01F:
+         * stage&0x30 -> $F0C9 list). It does not consume param $E. */
         u8 grp = sched_group_for_round();
         u8 row = k_wave_row[grp][s_sched_gcursor];
         u8 tb  = (grp == 2) ? k_wave_mix[s_sched_gcursor]
                             : (grp == 3 ? 2 : (grp == 1 ? 1 : 0));
         s_sched_gcursor = (u8)((s_sched_gcursor + 1) % WAVE_LEN);
         sy   = k_spawn_row_y[row];
-        type = (place & 0x80) ? ET_THROWER : sched_type_to_et(tb);
+        type = sched_type_to_et(tb);
     }
     else
     {
-        u8 row = (u8)((place & 0x7F) % 6);      /* placement byte -> arcade Y band */
+        u8 row = (u8)((place & 0x7F) % 6);      /* deterministic tier-band spread     */
         sy = k_spawn_row_y[row];
         switch (bit)
         {
@@ -868,15 +879,21 @@ static void wave_spawn_bit(u8 bit, u8 place)
             case SS_WAVE_BIT_CLASSE: type = ET_COMPOSITE_E; break; /* classE tough   */
             case SS_WAVE_BIT_CLASSF: type = ET_FLYER;
                                      sy = k_spawn_row_y[0];  break; /* classF: high lane */
-            case SS_WAVE_BIT_CLASSH: type = ET_HOPPER;      break; /* classH hopper  */
-            case SS_WAVE_BIT_CLASSG: type = ET_CREATURE_G;  break; /* classG creature*/
+            /* classG/classH honor param $E's high bit: enter from the left (behind) */
+            case SS_WAVE_BIT_CLASSH: type = ET_HOPPER;     fromLeft = (place & 0x80); break;
+            case SS_WAVE_BIT_CLASSG: type = ET_CREATURE_G; fromLeft = (place & 0x80); break;
             case SS_WAVE_BIT_CLASSI: type = ET_THROWER;     break; /* classI lobbed-shot wave -> native lobs via a thrower (a bare projectile has no parent arc) */
             case SS_WAVE_BIT_OBJ16:  type = ET_LARGE;       break; /* obj16x16        */
             default: return;   /* bits 8/10 (rec06B8 gated $9D / rec06D8): special-context, not armed */
         }
     }
 
-    e = entity_spawn(type, sx, sy);
+    /* arcade right-edge worldX = $90+$F8 (~cameraX+SCREEN_W); left-edge = $90-$08 */
+    {
+        s16 sx = fromLeft ? (s16)(g_game.cameraX - 24)
+                          : (s16)(g_game.cameraX + SCREEN_W + 8);
+        e = entity_spawn(type, sx, sy);
+    }
     if (e) e->fromSched = 1;
 }
 

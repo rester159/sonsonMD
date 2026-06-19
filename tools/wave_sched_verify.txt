@@ -1,238 +1,238 @@
 fr=720 cam=0 wid=0 round=1 sched=2 total=7
-fr=840 cam=54 wid=0 round=1 sched=2 total=9
-fr=960 cam=360 wid=2 round=1 sched=5 total=9
-fr=1080 cam=666 wid=5 round=1 sched=5 total=9
-fr=1200 cam=856 wid=6 round=1 sched=4 total=8
-fr=1320 cam=1158 wid=8 round=1 sched=4 total=7
-fr=1440 cam=1451 wid=11 round=2 sched=6 total=10
-fr=1560 cam=1650 wid=12 round=2 sched=5 total=10
-fr=1680 cam=1956 wid=15 round=2 sched=4 total=8
-fr=1800 cam=2263 wid=17 round=2 sched=1 total=6
-fr=1920 cam=2448 wid=18 round=2 sched=2 total=6
-fr=2040 cam=2754 wid=21 round=2 sched=6 total=10
-fr=2160 cam=2940 wid=22 round=3 sched=8 total=15
-fr=2280 cam=3246 wid=24 round=3 sched=6 total=10
-fr=2400 cam=3552 wid=27 round=3 sched=5 total=9
+fr=840 cam=54 wid=0 round=1 sched=2 total=7
+fr=960 cam=360 wid=2 round=1 sched=4 total=8
+fr=1080 cam=667 wid=5 round=1 sched=5 total=9
+fr=1200 cam=973 wid=7 round=1 sched=3 total=8
+fr=1320 cam=1229 wid=9 round=1 sched=5 total=9
+fr=1440 cam=1464 wid=11 round=2 sched=9 total=13
+fr=1560 cam=1770 wid=13 round=2 sched=5 total=11
+fr=1680 cam=2077 wid=15 round=2 sched=2 total=8
+fr=1800 cam=2383 wid=18 round=2 sched=2 total=7
+fr=1920 cam=2568 wid=19 round=2 sched=4 total=9
+fr=2040 cam=2875 wid=22 round=3 sched=10 total=17
+fr=2160 cam=3063 wid=23 round=3 sched=6 total=11
+fr=2280 cam=3366 wid=25 round=3 sched=8 total=14
+fr=2400 cam=3551 wid=27 round=3 sched=5 total=10
 SNAP busy F2500
-fr=2520 cam=3858 wid=29 round=3 sched=5 total=9
-fr=2640 cam=4044 wid=31 round=3 sched=7 total=13
-fr=2760 cam=4350 wid=33 round=4 sched=7 total=12
-fr=2880 cam=4656 wid=35 round=4 sched=4 total=9
-fr=3000 cam=4962 wid=38 round=4 sched=5 total=8
-fr=3120 cam=5148 wid=39 round=4 sched=4 total=9
-fr=3240 cam=5454 wid=41 round=4 sched=1 total=5
-fr=3360 cam=5746 wid=44 round=5 sched=7 total=12
-fr=3480 cam=5945 wid=45 round=5 sched=9 total=13
-fr=3600 cam=6251 wid=47 round=5 sched=6 total=11
-fr=3720 cam=6558 wid=50 round=5 sched=4 total=9
-fr=3840 cam=6850 wid=52 round=5 sched=3 total=7
-fr=3960 cam=7049 wid=54 round=5 sched=7 total=11
-fr=4080 cam=7341 wid=56 round=6 sched=7 total=13
-fr=4200 cam=7541 wid=57 round=6 sched=9 total=13
-fr=4320 cam=7779 wid=59 round=6 sched=7 total=11
-fr=4440 cam=8033 wid=61 round=6 sched=8 total=13
-fr=4560 cam=8339 wid=63 round=6 sched=7 total=10
-fr=4680 cam=8525 wid=65 round=6 sched=10 total=13
-fr=4800 cam=8803 wid=67 round=7 sched=8 total=11
-fr=4920 cam=9017 wid=69 round=7 sched=7 total=11
-fr=5040 cam=9323 wid=71 round=7 sched=7 total=14
-fr=5160 cam=9509 wid=72 round=7 sched=5 total=11
-fr=5280 cam=9815 wid=75 round=7 sched=4 total=8
-fr=5400 cam=10027 wid=76 round=8 sched=7 total=13
-fr=5520 cam=10306 wid=79 round=8 sched=9 total=15
-fr=5640 cam=10613 wid=81 round=8 sched=3 total=8
-fr=5760 cam=10919 wid=83 round=8 sched=2 total=6
-fr=5880 cam=11225 wid=86 round=8 sched=0 total=4
-fr=6000 cam=184 wid=1 round=1 sched=4 total=9
-fr=6120 cam=490 wid=3 round=1 sched=4 total=8
-fr=6240 cam=676 wid=5 round=1 sched=5 total=9
-fr=6360 cam=982 wid=7 round=1 sched=3 total=7
-fr=6480 cam=1289 wid=9 round=1 sched=3 total=7
-fr=6600 cam=1595 wid=12 round=2 sched=5 total=10
-fr=6720 cam=1901 wid=14 round=2 sched=1 total=5
-fr=6840 cam=2137 wid=16 round=2 sched=2 total=6
-fr=6960 cam=2393 wid=18 round=2 sched=3 total=7
-fr=7080 cam=2699 wid=20 round=2 sched=5 total=9
-fr=7200 cam=2884 wid=22 round=3 sched=10 total=15
-fr=7320 cam=3190 wid=24 round=3 sched=7 total=14
-fr=7440 cam=3376 wid=25 round=3 sched=7 total=12
-fr=7560 cam=3682 wid=28 round=3 sched=8 total=12
-fr=7680 cam=3868 wid=29 round=3 sched=7 total=11
-fr=7800 cam=4174 wid=32 round=3 sched=5 total=10
-fr=7920 cam=4360 wid=33 round=4 sched=9 total=14
+fr=2520 cam=3857 wid=29 round=3 sched=5 total=10
+fr=2640 cam=4043 wid=31 round=3 sched=7 total=14
+fr=2760 cam=4349 wid=33 round=4 sched=7 total=13
+fr=2880 cam=4655 wid=35 round=4 sched=3 total=9
+fr=3000 cam=4961 wid=38 round=4 sched=4 total=9
+fr=3120 cam=5147 wid=39 round=4 sched=4 total=10
+fr=3240 cam=5453 wid=41 round=4 sched=1 total=6
+fr=3360 cam=5746 wid=44 round=5 sched=5 total=10
+fr=3480 cam=5945 wid=45 round=5 sched=7 total=12
+fr=3600 cam=6251 wid=47 round=5 sched=7 total=14
+fr=3720 cam=6558 wid=50 round=5 sched=4 total=10
+fr=3840 cam=6850 wid=52 round=5 sched=3 total=8
+fr=3960 cam=7049 wid=54 round=5 sched=6 total=11
+fr=4080 cam=7341 wid=56 round=6 sched=7 total=14
+fr=4200 cam=7541 wid=57 round=6 sched=8 total=13
+fr=4320 cam=7779 wid=59 round=6 sched=6 total=11
+fr=4440 cam=8033 wid=61 round=6 sched=7 total=13
+fr=4560 cam=8339 wid=63 round=6 sched=6 total=10
+fr=4680 cam=8525 wid=65 round=6 sched=10 total=14
+fr=4800 cam=8803 wid=67 round=7 sched=8 total=12
+fr=4920 cam=9017 wid=69 round=7 sched=6 total=11
+fr=5040 cam=9323 wid=71 round=7 sched=7 total=15
+fr=5160 cam=9509 wid=72 round=7 sched=4 total=10
+fr=5280 cam=9815 wid=75 round=7 sched=3 total=8
+fr=5400 cam=10027 wid=76 round=8 sched=5 total=12
+fr=5520 cam=10306 wid=79 round=8 sched=7 total=14
+fr=5640 cam=10613 wid=81 round=8 sched=2 total=8
+fr=5760 cam=10919 wid=83 round=8 sched=2 total=7
+fr=5880 cam=11225 wid=86 round=8 sched=0 total=5
+fr=6000 cam=184 wid=1 round=1 sched=3 total=9
+fr=6120 cam=490 wid=3 round=1 sched=4 total=9
+fr=6240 cam=676 wid=5 round=1 sched=5 total=10
+fr=6360 cam=982 wid=7 round=1 sched=3 total=8
+fr=6480 cam=1289 wid=9 round=1 sched=3 total=8
+fr=6600 cam=1595 wid=12 round=2 sched=5 total=11
+fr=6720 cam=1901 wid=14 round=2 sched=1 total=6
+fr=6840 cam=2137 wid=16 round=2 sched=2 total=7
+fr=6960 cam=2393 wid=18 round=2 sched=3 total=8
+fr=7080 cam=2699 wid=20 round=2 sched=5 total=10
+fr=7200 cam=2884 wid=22 round=3 sched=10 total=16
+fr=7320 cam=3190 wid=24 round=3 sched=7 total=15
+fr=7440 cam=3376 wid=25 round=3 sched=7 total=13
+fr=7560 cam=3682 wid=28 round=3 sched=8 total=13
+fr=7680 cam=3868 wid=29 round=3 sched=7 total=12
+fr=7800 cam=4174 wid=32 round=3 sched=5 total=11
+fr=7920 cam=4360 wid=33 round=4 sched=9 total=15
 SNAP busy F8000
-fr=8040 cam=4666 wid=35 round=4 sched=4 total=8
-fr=8160 cam=4972 wid=38 round=4 sched=5 total=9
-fr=8280 cam=5157 wid=39 round=4 sched=4 total=9
-fr=8400 cam=5464 wid=41 round=4 sched=1 total=5
-fr=8520 cam=5649 wid=43 round=4 sched=6 total=10
-fr=8640 cam=5955 wid=45 round=5 sched=7 total=13
-fr=8760 cam=6261 wid=48 round=5 sched=9 total=13
-fr=8880 cam=6447 wid=49 round=5 sched=5 total=9
-fr=9000 cam=6753 wid=51 round=5 sched=2 total=5
-fr=9120 cam=6939 wid=53 round=5 sched=5 total=10
-fr=9240 cam=7245 wid=55 round=6 sched=9 total=15
-fr=9360 cam=7502 wid=57 round=6 sched=9 total=12
-fr=9480 cam=7737 wid=59 round=6 sched=9 total=12
-fr=9600 cam=8043 wid=61 round=6 sched=7 total=11
-fr=9720 cam=8270 wid=63 round=6 sched=7 total=10
-fr=9840 cam=8536 wid=65 round=6 sched=10 total=14
-fr=9960 cam=8792 wid=67 round=7 sched=7 total=10
-fr=10080 cam=9027 wid=69 round=7 sched=8 total=11
-fr=10200 cam=9225 wid=70 round=7 sched=4 total=10
-fr=10320 cam=9519 wid=73 round=7 sched=6 total=12
-fr=10440 cam=9825 wid=75 round=7 sched=3 total=7
-fr=10560 cam=10131 wid=77 round=8 sched=8 total=15
-fr=10680 cam=10438 wid=80 round=8 sched=7 total=12
-fr=10800 cam=10623 wid=81 round=8 sched=4 total=9
-fr=10920 cam=10929 wid=83 round=8 sched=1 total=5
-fr=11040 cam=11235 wid=86 round=8 sched=0 total=4
-fr=11160 cam=195 wid=1 round=1 sched=4 total=9
-fr=11280 cam=380 wid=2 round=1 sched=6 total=11
-fr=11400 cam=687 wid=5 round=1 sched=5 total=9
-fr=11520 cam=993 wid=7 round=1 sched=1 total=5
-fr=11640 cam=1227 wid=9 round=1 sched=3 total=6
-fr=11760 cam=1484 wid=11 round=2 sched=7 total=11
-fr=11880 cam=1790 wid=13 round=2 sched=5 total=10
-fr=12000 cam=1976 wid=15 round=2 sched=4 total=9
-fr=12120 cam=2282 wid=17 round=2 sched=2 total=6
-fr=12240 cam=2553 wid=19 round=2 sched=3 total=6
-fr=12360 cam=2774 wid=21 round=2 sched=8 total=12
-fr=12480 cam=3067 wid=23 round=3 sched=6 total=12
-fr=12600 cam=3266 wid=25 round=3 sched=10 total=14
-fr=12720 cam=3572 wid=27 round=3 sched=5 total=9
-fr=12840 cam=3879 wid=29 round=3 sched=6 total=10
-fr=12960 cam=4185 wid=32 round=3 sched=6 total=11
-fr=13080 cam=4370 wid=33 round=4 sched=7 total=12
-fr=13200 cam=4676 wid=35 round=4 sched=3 total=7
-fr=13320 cam=4982 wid=38 round=4 sched=4 total=8
-fr=13440 cam=5288 wid=40 round=4 sched=2 total=6
-fr=13560 cam=5595 wid=42 round=4 sched=3 total=7
-fr=13680 cam=5901 wid=45 round=5 sched=8 total=12
-fr=13800 cam=6207 wid=47 round=5 sched=6 total=11
-fr=13920 cam=6392 wid=49 round=5 sched=7 total=12
-fr=14040 cam=6698 wid=51 round=5 sched=2 total=6
-fr=14160 cam=7004 wid=53 round=5 sched=4 total=8
-fr=14280 cam=7190 wid=55 round=6 sched=9 total=15
-fr=14400 cam=7496 wid=57 round=6 sched=9 total=15
-fr=14520 cam=7802 wid=59 round=6 sched=8 total=14
-fr=14640 cam=7988 wid=61 round=6 sched=10 total=15
-fr=14760 cam=8294 wid=63 round=6 sched=6 total=10
-fr=14880 cam=8479 wid=65 round=6 sched=9 total=14
-fr=15000 cam=8785 wid=67 round=7 sched=8 total=13
-fr=15120 cam=8971 wid=68 round=7 sched=6 total=9
-fr=15240 cam=9277 wid=71 round=7 sched=9 total=15
-fr=15360 cam=9463 wid=72 round=7 sched=6 total=12
-fr=15480 cam=9769 wid=74 round=7 sched=2 total=6
-fr=15600 cam=10075 wid=77 round=8 sched=8 total=13
-fr=15720 cam=10381 wid=79 round=8 sched=4 total=9
-fr=15840 cam=10566 wid=81 round=8 sched=4 total=10
-fr=15960 cam=10872 wid=83 round=8 sched=2 total=6
+fr=8040 cam=4666 wid=35 round=4 sched=3 total=8
+fr=8160 cam=4972 wid=38 round=4 sched=4 total=9
+fr=8280 cam=5157 wid=39 round=4 sched=3 total=9
+fr=8400 cam=5464 wid=41 round=4 sched=1 total=6
+fr=8520 cam=5649 wid=43 round=4 sched=5 total=10
+fr=8640 cam=5955 wid=45 round=5 sched=6 total=11
+fr=8760 cam=6141 wid=47 round=5 sched=10 total=16
+fr=8880 cam=6447 wid=49 round=5 sched=4 total=10
+fr=9000 cam=6632 wid=50 round=5 sched=4 total=8
+fr=9120 cam=6938 wid=53 round=5 sched=5 total=9
+fr=9240 cam=7124 wid=54 round=5 sched=5 total=11
+fr=9360 cam=7430 wid=56 round=6 sched=8 total=14
+fr=9480 cam=7737 wid=59 round=6 sched=7 total=13
+fr=9600 cam=8043 wid=61 round=6 sched=7 total=15
+fr=9720 cam=8273 wid=63 round=6 sched=6 total=10
+fr=9840 cam=8534 wid=65 round=6 sched=9 total=14
+fr=9960 cam=8795 wid=67 round=7 sched=8 total=12
+fr=10080 cam=9026 wid=69 round=7 sched=7 total=11
+fr=10200 cam=9332 wid=71 round=7 sched=6 total=13
+fr=10320 cam=9638 wid=73 round=7 sched=3 total=8
+fr=10440 cam=9944 wid=76 round=7 sched=2 total=7
+fr=10560 cam=10130 wid=77 round=8 sched=4 total=12
+fr=10680 cam=10436 wid=80 round=8 sched=6 total=11
+fr=10800 cam=10742 wid=82 round=8 sched=1 total=7
+fr=10920 cam=11048 wid=84 round=8 sched=1 total=6
+fr=11040 cam=8 wid=0 round=1 sched=2 total=7
+fr=11160 cam=314 wid=2 round=1 sched=4 total=10
+fr=11280 cam=500 wid=3 round=1 sched=5 total=11
+fr=11400 cam=806 wid=6 round=1 sched=4 total=8
+fr=11520 cam=1112 wid=8 round=1 sched=3 total=8
+fr=11640 cam=1297 wid=9 round=1 sched=5 total=10
+fr=11760 cam=1603 wid=12 round=2 sched=6 total=14
+fr=11880 cam=1788 wid=13 round=2 sched=7 total=13
+fr=12000 cam=2041 wid=15 round=2 sched=4 total=9
+fr=12120 cam=2280 wid=17 round=2 sched=2 total=6
+fr=12240 cam=2551 wid=19 round=2 sched=3 total=7
+fr=12360 cam=2772 wid=21 round=2 sched=8 total=13
+fr=12480 cam=3065 wid=23 round=3 sched=6 total=13
+fr=12600 cam=3264 wid=25 round=3 sched=10 total=15
+fr=12720 cam=3570 wid=27 round=3 sched=5 total=10
+fr=12840 cam=3877 wid=29 round=3 sched=6 total=11
+fr=12960 cam=4183 wid=32 round=3 sched=6 total=12
+fr=13080 cam=4368 wid=33 round=4 sched=7 total=13
+fr=13200 cam=4674 wid=35 round=4 sched=2 total=7
+fr=13320 cam=4980 wid=38 round=4 sched=3 total=7
+fr=13440 cam=5286 wid=40 round=4 sched=2 total=7
+fr=13560 cam=5593 wid=42 round=4 sched=3 total=8
+fr=13680 cam=5899 wid=45 round=5 sched=7 total=12
+fr=13800 cam=6093 wid=46 round=5 sched=7 total=13
+fr=13920 cam=6390 wid=49 round=5 sched=7 total=14
+fr=14040 cam=6584 wid=50 round=5 sched=3 total=7
+fr=14160 cam=6882 wid=52 round=5 sched=3 total=8
+fr=14280 cam=7110 wid=54 round=5 sched=4 total=10
+fr=14400 cam=7374 wid=56 round=6 sched=9 total=16
+fr=14520 cam=7680 wid=58 round=6 sched=7 total=12
+fr=14640 cam=7986 wid=61 round=6 sched=8 total=13
+fr=14760 cam=8172 wid=62 round=6 sched=6 total=11
+fr=14880 cam=8478 wid=65 round=6 sched=10 total=14
+fr=15000 cam=8672 wid=66 round=7 sched=8 total=12
+fr=15120 cam=8969 wid=68 round=7 sched=5 total=11
+fr=15240 cam=9193 wid=70 round=7 sched=7 total=14
+fr=15360 cam=9461 wid=72 round=7 sched=7 total=14
+fr=15480 cam=9767 wid=74 round=7 sched=1 total=6
+fr=15600 cam=10073 wid=77 round=8 sched=6 total=12
+fr=15720 cam=10258 wid=78 round=8 sched=3 total=10
+fr=15840 cam=10565 wid=81 round=8 sched=4 total=11
+fr=15960 cam=10871 wid=83 round=8 sched=2 total=7
 
 === WAVE-ID -> SCHEDULED TYPES SEEN (frames-live per type) ===
-wave  0 : CREATURE_G:276  THROWER:274
-wave  1 : CREATURE_G:153  HOPPER:153  THROWER:303
-wave  2 : CREATURE_G:200  HOPPER:358  THROWER:565
-wave  3 : CREATURE_G:39  HOPPER:408  THROWER:435
-wave  4 : FLYER:200  HOPPER:530  THROWER:253
-wave  5 : FLYER:233  HOPPER:408  THROWER:44
-wave  6 : FLYER:328  HOPPER:500
-wave  7 : FLYER:97  HOPPER:356
-wave  8 : FLYER:204  HOPPER:333
-wave  9 : FLYER:384  HOPPER:300
-wave 10 : CREATURE_G:193  FLYER:182  HOPPER:54  THROWER:188
-wave 11 : CREATURE_G:552  FLYER:56  THROWER:461
-wave 12 : CREATURE_C:51  CREATURE_G:359  ENEMY_A:102  FLYER:5  THROWER:330
-wave 13 : CREATURE_C:17  CREATURE_G:287  ENEMY_A:60  FLYER:153  THROWER:317
-wave 14 : CREATURE_G:32  EMITTER:200  ENEMY_A:51  FLYER:139  THROWER:171
-wave 15 : EMITTER:308  ENEMY_A:31  FLYER:52  THROWER:90
-wave 16 : EMITTER:252  FLYER:191  THROWER:6
-wave 17 : EMITTER:45  FLYER:92  LARGE:154
-wave 18 : FLYER:240  LARGE:200
-wave 19 : COMPOSITE_E:199  CREATURE_G:197  FLYER:290  LARGE:50
-wave 20 : COMPOSITE_E:153  CREATURE_C:153  CREATURE_G:267  EMITTER:150  FLYER:143
-wave 21 : COMPOSITE_E:200  CREATURE_C:382  CREATURE_G:359  EMITTER:322  FLYER:56
-wave 22 : COMPOSITE_E:53  CREATURE_C:698  CREATURE_G:364  EMITTER:513  FLYER:5
-wave 23 : CREATURE_C:817  CREATURE_G:254  EMITTER:501
-wave 24 : CREATURE_C:714  CREATURE_G:183  EMITTER:212  HOPPER:50
-wave 25 : COMPOSITE_E:198  CREATURE_C:912  CREATURE_G:208  EMITTER:87  HOPPER:51
-wave 26 : COMPOSITE_E:303  CREATURE_C:551  CREATURE_G:235  EMITTER:16  HOPPER:51
-wave 27 : COMPOSITE_E:306  CREATURE_C:360  CREATURE_G:170  HOPPER:11
-wave 28 : COMPOSITE_E:217  CREATURE_C:333  CREATURE_G:166  FLYER:197  HOPPER:165  THROWER:198
-wave 29 : COMPOSITE_E:28  CREATURE_C:269  CREATURE_G:190  EMITTER:150  FLYER:91  HOPPER:213  THROWER:121
-wave 30 : CREATURE_C:72  CREATURE_G:331  EMITTER:202  ENEMY_SHOT:1  FLYER:252  HOPPER:195  THROWER:276
-wave 31 : CREATURE_C:51  CREATURE_G:262  EMITTER:43  FLYER:281  HOPPER:63  THROWER:303
-wave 32 : CREATURE_C:24  CREATURE_G:283  FLYER:189  HOPPER:277  THROWER:610
-wave 33 : CREATURE_G:223  EMITTER:200  FLYER:56  HOPPER:546  THROWER:457
-wave 34 : CREATURE_G:72  EMITTER:270  FLYER:6  HOPPER:516  THROWER:143
-wave 35 : EMITTER:150  HOPPER:364  LARGE:156  THROWER:18
-wave 36 : EMITTER:28  HOPPER:174  LARGE:152
-wave 37 : HOPPER:187  LARGE:59  THROWER:150
-wave 38 : EMITTER:248  FLYER:185  HOPPER:409  THROWER:206
-wave 39 : EMITTER:153  FLYER:51  HOPPER:255  THROWER:102
-wave 40 : EMITTER:44  FLYER:51  HOPPER:165  LARGE:154  THROWER:15
-wave 41 : FLYER:5  HOPPER:47  LARGE:153
-wave 42 : CREATURE_C:199  CREATURE_G:197  FLYER:196  LARGE:73
-wave 43 : CREATURE_C:273  CREATURE_G:351  FLYER:272
-wave 44 : CREATURE_C:470  CREATURE_G:597  ENEMY_A:149  FLYER:217
-wave 45 : CREATURE_C:341  CREATURE_G:412  EMITTER:153  ENEMY_A:102  FLYER:57  HOPPER:150
-wave 46 : CREATURE_C:281  CREATURE_G:303  EMITTER:307  ENEMY_A:102  HOPPER:305
-wave 47 : CREATURE_C:74  CREATURE_G:215  EMITTER:320  ENEMY_A:102  HOPPER:374
-wave 48 : COMPOSITE_E:249  CREATURE_G:549  EMITTER:279  ENEMY_A:138  HOPPER:461
-wave 49 : COMPOSITE_E:153  CREATURE_G:287  EMITTER:43  ENEMY_A:51  HOPPER:199
-wave 50 : COMPOSITE_E:153  CREATURE_C:51  CREATURE_G:216  ENEMY_A:153  HOPPER:81
-wave 51 : COMPOSITE_E:30  CREATURE_C:52  CREATURE_G:45  ENEMY_A:153  HOPPER:11
-wave 52 : CREATURE_C:51  EMITTER:247  ENEMY_A:206  HOPPER:244
-wave 53 : CREATURE_C:24  EMITTER:308  ENEMY_A:103  HOPPER:305
-wave 54 : CREATURE_G:230  EMITTER:244  ENEMY_A:102  HOPPER:400  THROWER:224
-wave 55 : CREATURE_G:456  EMITTER:44  ENEMY_A:101  HOPPER:259  THROWER:405
-wave 56 : CREATURE_G:758  ENEMY_A:57  FLYER:180  HOPPER:221  THROWER:347
-wave 57 : COMPOSITE_E:197  CREATURE_G:704  EMITTER:200  ENEMY_A:98  FLYER:51  HOPPER:346  THROWER:214
-wave 58 : COMPOSITE_E:203  CREATURE_G:371  EMITTER:268  ENEMY_A:51  FLYER:51  HOPPER:305  THROWER:14
-wave 59 : COMPOSITE_E:448  CREATURE_G:224  EMITTER:429  ENEMY_A:51  FLYER:4  HOPPER:446
-wave 60 : COMPOSITE_E:545  CREATURE_G:155  EMITTER:452  ENEMY_A:11  HOPPER:335
-wave 61 : COMPOSITE_E:336  CREATURE_G:32  EMITTER:354  FLYER:145  HOPPER:344
-wave 62 : COMPOSITE_E:354  CREATURE_C:152  EMITTER:197  FLYER:79  HOPPER:251
-wave 63 : COMPOSITE_E:416  CREATURE_C:366  CREATURE_G:198  EMITTER:47  HOPPER:370
-wave 64 : COMPOSITE_E:738  CREATURE_C:517  CREATURE_G:394  HOPPER:287
-wave 65 : COMPOSITE_E:503  CREATURE_C:528  CREATURE_G:305  HOPPER:152
-wave 66 : COMPOSITE_E:367  CREATURE_C:508  CREATURE_G:234  HOPPER:90
-wave 67 : COMPOSITE_E:321  CREATURE_C:1086  CREATURE_G:284  EMITTER:291  HOPPER:304
-wave 68 : COMPOSITE_E:102  CREATURE_C:485  CREATURE_G:84  EMITTER:153  HOPPER:153
-wave 69 : COMPOSITE_E:3  CREATURE_C:283  CREATURE_G:205  EMITTER:201  HOPPER:119  THROWER:153
-wave 70 : CREATURE_C:189  CREATURE_G:300  EMITTER:307  HOPPER:72  THROWER:397
-wave 71 : CREATURE_C:20  CREATURE_G:347  EMITTER:428  THROWER:583
-wave 72 : CREATURE_G:291  EMITTER:445  THROWER:401
-wave 73 : CREATURE_C:51  CREATURE_G:204  EMITTER:199  ENEMY_A:102  THROWER:143
-wave 74 : CREATURE_C:52  CREATURE_G:163  EMITTER:45  ENEMY_A:104  THROWER:8
-wave 75 : CREATURE_C:51  CREATURE_G:191  EMITTER:152  ENEMY_A:101
-wave 76 : CREATURE_C:24  CREATURE_G:554  EMITTER:559  ENEMY_A:150
-wave 77 : CREATURE_G:612  EMITTER:351  ENEMY_A:102  THROWER:150
-wave 78 : CREATURE_G:623  EMITTER:131  ENEMY_A:102  THROWER:258
-wave 79 : CREATURE_G:501  EMITTER:154  ENEMY_A:60  THROWER:231
-wave 80 : CREATURE_G:560  EMITTER:494  ENEMY_A:50  THROWER:235
-wave 81 : CREATURE_G:299  EMITTER:199  ENEMY_A:10  THROWER:16
-wave 82 : CREATURE_G:190  EMITTER:43  LARGE:153
-wave 83 : CREATURE_G:39  LARGE:272
-wave 84 : LARGE:140
+wave  0 : CREATURE_G:188  THROWER:275
+wave  1 : CREATURE_G:20  HOPPER:153  THROWER:303
+wave  2 : HOPPER:222  THROWER:408
+wave  3 : HOPPER:451  THROWER:569
+wave  4 : FLYER:200  HOPPER:531  THROWER:269
+wave  5 : FLYER:233  HOPPER:431  THROWER:51
+wave  6 : FLYER:284  HOPPER:381
+wave  7 : FLYER:126  HOPPER:353
+wave  8 : FLYER:199  HOPPER:431
+wave  9 : FLYER:389  HOPPER:560
+wave 10 : CREATURE_G:193  FLYER:235  HOPPER:304  THROWER:187
+wave 11 : CREATURE_G:411  FLYER:63  HOPPER:136  THROWER:414
+wave 12 : CREATURE_C:99  CREATURE_G:503  ENEMY_A:102  FLYER:5  HOPPER:12  THROWER:476
+wave 13 : CREATURE_C:51  CREATURE_G:287  ENEMY_A:23  FLYER:151  THROWER:376
+wave 14 : CREATURE_C:51  CREATURE_G:64  EMITTER:153  FLYER:41  THROWER:102
+wave 15 : CREATURE_C:98  EMITTER:399  THROWER:98
+wave 16 : CREATURE_C:22  EMITTER:253  FLYER:198  THROWER:8
+wave 17 : EMITTER:46  FLYER:132  LARGE:156
+wave 18 : FLYER:193  LARGE:124
+wave 19 : COMPOSITE_E:245  CREATURE_G:244  FLYER:384  LARGE:52
+wave 20 : COMPOSITE_E:153  CREATURE_C:153  CREATURE_G:303  EMITTER:150  FLYER:153
+wave 21 : COMPOSITE_E:200  CREATURE_C:353  CREATURE_G:449  EMITTER:322  FLYER:107
+wave 22 : COMPOSITE_E:61  CREATURE_C:363  CREATURE_G:285  EMITTER:386  FLYER:11
+wave 23 : CREATURE_C:755  CREATURE_G:355  EMITTER:602
+wave 24 : CREATURE_C:606  CREATURE_G:184  EMITTER:291  HOPPER:100
+wave 25 : COMPOSITE_E:197  CREATURE_C:903  CREATURE_G:249  EMITTER:153  HOPPER:78
+wave 26 : COMPOSITE_E:397  CREATURE_C:769  CREATURE_G:152  EMITTER:32  HOPPER:51
+wave 27 : COMPOSITE_E:306  CREATURE_C:404  CREATURE_G:102  HOPPER:13
+wave 28 : COMPOSITE_E:241  CREATURE_C:343  CREATURE_G:115  FLYER:193  HOPPER:166  THROWER:199
+wave 29 : COMPOSITE_E:49  CREATURE_C:253  CREATURE_G:182  EMITTER:150  FLYER:90  HOPPER:208  THROWER:120
+wave 30 : CREATURE_C:73  CREATURE_G:328  EMITTER:201  FLYER:251  HOPPER:194  THROWER:275
+wave 31 : CREATURE_C:51  CREATURE_G:262  EMITTER:44  FLYER:281  HOPPER:63  THROWER:303
+wave 32 : CREATURE_C:23  CREATURE_G:287  ENEMY_SHOT:1  FLYER:189  HOPPER:285  THROWER:620
+wave 33 : CREATURE_G:222  EMITTER:198  FLYER:58  HOPPER:539  THROWER:449
+wave 34 : CREATURE_G:71  EMITTER:270  FLYER:6  HOPPER:377  THROWER:143
+wave 35 : EMITTER:147  HOPPER:206  LARGE:154  THROWER:18
+wave 36 : EMITTER:30  HOPPER:22  LARGE:153
+wave 37 : HOPPER:12  LARGE:59  THROWER:150
+wave 38 : EMITTER:248  FLYER:184  HOPPER:245  THROWER:205
+wave 39 : EMITTER:153  FLYER:51  HOPPER:153  THROWER:102
+wave 40 : EMITTER:44  FLYER:52  HOPPER:118  LARGE:155  THROWER:15
+wave 41 : FLYER:4  HOPPER:45  LARGE:153
+wave 42 : CREATURE_C:200  CREATURE_G:197  FLYER:196  LARGE:71
+wave 43 : CREATURE_C:306  CREATURE_G:141  FLYER:270
+wave 44 : CREATURE_C:572  CREATURE_G:102  ENEMY_A:149  FLYER:218
+wave 45 : CREATURE_C:392  CREATURE_G:174  EMITTER:153  ENEMY_A:102  FLYER:57  HOPPER:150
+wave 46 : CREATURE_C:431  CREATURE_G:420  EMITTER:468  ENEMY_A:150  HOPPER:495
+wave 47 : CREATURE_C:166  CREATURE_G:341  EMITTER:298  ENEMY_A:102  HOPPER:406
+wave 48 : COMPOSITE_E:154  CREATURE_C:6  CREATURE_G:306  EMITTER:183  ENEMY_A:92  HOPPER:454
+wave 49 : COMPOSITE_E:153  CREATURE_G:143  EMITTER:44  ENEMY_A:51  HOPPER:301
+wave 50 : COMPOSITE_E:247  CREATURE_C:98  CREATURE_G:58  ENEMY_A:247  HOPPER:271
+wave 51 : COMPOSITE_E:51  CREATURE_C:52  CREATURE_G:6  ENEMY_A:155  HOPPER:82
+wave 52 : CREATURE_C:51  EMITTER:200  ENEMY_A:200  HOPPER:197
+wave 53 : CREATURE_C:35  EMITTER:306  ENEMY_A:153  HOPPER:162
+wave 54 : CREATURE_G:276  EMITTER:300  ENEMY_A:160  HOPPER:247  THROWER:271
+wave 55 : CREATURE_G:459  EMITTER:45  ENEMY_A:102  HOPPER:109  THROWER:408
+wave 56 : CREATURE_G:801  ENEMY_A:56  FLYER:190  HOPPER:159  THROWER:357
+wave 57 : COMPOSITE_E:150  CREATURE_G:573  EMITTER:152  ENEMY_A:51  FLYER:92  HOPPER:66  THROWER:145
+wave 58 : COMPOSITE_E:307  CREATURE_G:377  EMITTER:310  ENEMY_A:35  FLYER:51  HOPPER:58  THROWER:6
+wave 59 : COMPOSITE_E:597  CREATURE_G:281  EMITTER:442  FLYER:4  HOPPER:24
+wave 60 : COMPOSITE_E:487  CREATURE_G:286  EMITTER:348  HOPPER:11
+wave 61 : COMPOSITE_E:337  CREATURE_G:166  EMITTER:354  FLYER:144  HOPPER:151
+wave 62 : COMPOSITE_E:428  CREATURE_C:199  CREATURE_G:156  EMITTER:256  FLYER:42  HOPPER:200
+wave 63 : COMPOSITE_E:431  CREATURE_C:402  CREATURE_G:58  EMITTER:45  HOPPER:399
+wave 64 : COMPOSITE_E:594  CREATURE_C:597  CREATURE_G:18  HOPPER:390
+wave 65 : COMPOSITE_E:541  CREATURE_C:664  HOPPER:270
+wave 66 : COMPOSITE_E:498  CREATURE_C:905  HOPPER:229
+wave 67 : COMPOSITE_E:384  CREATURE_C:1052  EMITTER:212  HOPPER:340
+wave 68 : COMPOSITE_E:126  CREATURE_C:543  EMITTER:102  HOPPER:139
+wave 69 : COMPOSITE_E:1  CREATURE_C:317  CREATURE_G:151  EMITTER:185  HOPPER:68  THROWER:151
+wave 70 : CREATURE_C:183  CREATURE_G:363  EMITTER:321  HOPPER:35  THROWER:399
+wave 71 : CREATURE_C:6  CREATURE_G:336  EMITTER:285  THROWER:432
+wave 72 : CREATURE_G:211  EMITTER:428  THROWER:380
+wave 73 : CREATURE_C:51  CREATURE_G:123  EMITTER:198  ENEMY_A:102  THROWER:135
+wave 74 : CREATURE_C:51  CREATURE_G:14  EMITTER:46  ENEMY_A:60  THROWER:8
+wave 75 : CREATURE_C:51  CREATURE_G:150  EMITTER:153  ENEMY_A:51
+wave 76 : CREATURE_C:25  CREATURE_G:190  EMITTER:559  ENEMY_A:98
+wave 77 : CREATURE_G:301  EMITTER:444  ENEMY_A:51  THROWER:197
+wave 78 : CREATURE_G:356  EMITTER:182  ENEMY_A:51  THROWER:397
+wave 79 : CREATURE_G:368  EMITTER:155  ENEMY_A:52  THROWER:283
+wave 80 : CREATURE_G:294  EMITTER:304  ENEMY_A:50  ENEMY_SHOT:1  THROWER:121
+wave 81 : CREATURE_G:179  EMITTER:199  ENEMY_A:10
+wave 82 : CREATURE_G:18  EMITTER:44  LARGE:153
+wave 83 : LARGE:306
+wave 84 : LARGE:158
 wave 85 : LARGE:40
 wave 86 : 
 
 waves visited: 87 / 87
 
 === GLOBAL SCHEDULED-TYPE HISTOGRAM (frames-live) ===
-  ENEMY_A      = 2755
-  FLYER        = 5666
-  THROWER      = 9815
-  ENEMY_SHOT   = 1
-  CREATURE_G   = 18535
-  CREATURE_C   = 11532
-  COMPOSITE_E  = 6775
-  HOPPER       = 13723
-  LARGE        = 1756
-  EMITTER      = 12138
+  ENEMY_A      = 2455
+  FLYER        = 5727
+  THROWER      = 9825
+  ENEMY_SHOT   = 2
+  CREATURE_G   = 13849
+  CREATURE_C   = 12725
+  COMPOSITE_E  = 7335
+  HOPPER       = 12253
+  LARGE        = 1734
+  EMITTER      = 11993
 
 cam range: 0 .. 11345  (ribbonW=11344)
 maxSchedOnScreen=10 (cap=10)   maxTotalEntities=18
 FPS ratio (busy 600-frame window) = 1.0000
-SCORE final=14300
+SCORE final=11150
