@@ -425,11 +425,9 @@ static u8 thrower_fire_period(void)
  * animation set (ss_anim.c -- ENEMY_WALK / ENEMY_DEATH), driven by the Anim
  * cursor e->av. ENEMY_TILE is just the cold-start frame (walk frame 0).
  *
- * SHOT + ITEM keep a single borrowed scene tile (no anim baked for them yet --
- * see TODO). ss_scene_sprites[22].tile = a small bank-1 sprite (shot/item),
- * ss_scene_sprites[17].tile a bank-2 actor (item). */
+ * The player SHOT now animates off the baked ESHOT graphic (the arcade player
+ * bullet = sprite codes 70/71 bank 2, RE-confirmed -- see ET_SHOT spawn). */
 #define ENEMY_TILE          (ss_anims[SS_ANIM_ENEMY_WALK].frames[0].tile)
-#define SHOT_TILE           (ss_scene_sprites[22].tile)
 /* New archetypes animate off baked anim sets (cold-start = frame 0). */
 #define FLYER_TILE          (ss_anims[SS_ANIM_FLYER_FLY].frames[0].tile)
 #define THROWER_TILE        (ss_anims[SS_ANIM_THROWER_IDLE].frames[0].tile)
@@ -493,7 +491,15 @@ Entity *entity_spawn(u8 type, s16 x, s16 y)
 
             case ET_SHOT:
                 e->hp   = 0;
-                e->tile = SHOT_TILE;
+                /* PLAYER BULLET sprite. RE'd from the arcade hardware spriteram
+                 * (tools/arc_bullet.lua, mame sonson): firing emits the small
+                 * projectile at sprite codes 70/71 bank 2 -- the SAME graphic as the
+                 * enemy lobbed shot (SS_ANIM_ESHOT_FLY). The old code left e->av at
+                 * the entity_spawn default (SS_ANIM_ENEMY_WALK) and only set a static
+                 * SHOT_TILE, so anim_step() below animated the bullet as the ENEMY
+                 * WALK character -- the "shooting a character as a bullet" bug. */
+                anim_restart(&e->av, SS_ANIM_ESHOT_FLY);
+                e->tile = ESHOT_TILE;
                 /* vx/facing set by entity_player_fire (direction = player facing) */
                 break;
 
