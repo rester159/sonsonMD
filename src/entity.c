@@ -886,7 +886,12 @@ static void wave_spawn_bit(u8 bit, u8 place)
             case SS_WAVE_BIT_CLASSF: type = ET_FLYER;
                                      sy = k_spawn_row_y[0];  break; /* classF: high lane */
             /* classG/classH honor param $E's high bit: enter from the left (behind) */
-            case SS_WAVE_BIT_CLASSH: type = ET_HOPPER;     fromLeft = (place & 0x80); break;
+            /* classH is fundamentally a TRACKING WALKER (its arcade states $CF4E
+             * "main run" + $D02D "tracking walker" dominate; the leaping $D0A2 is
+             * secondary), and it renders the walker sprite 304-306 ($D1BD). So it
+             * spawns ET_ENEMY_A (tracking walker, same 304-306 walk anim) -- NOT the
+             * native's always-leaping HOPPER, which over-emphasized the rare hop. */
+            case SS_WAVE_BIT_CLASSH: type = ET_ENEMY_A;    fromLeft = (place & 0x80); break;
             case SS_WAVE_BIT_CLASSG: type = ET_CREATURE_G; fromLeft = (place & 0x80); break;
             case SS_WAVE_BIT_CLASSI: type = ET_THROWER;     break; /* classI lobbed-shot wave -> native lobs via a thrower (a bare projectile has no parent arc) */
             case SS_WAVE_BIT_OBJ16:  type = ET_LARGE;       break; /* obj16x16        */
