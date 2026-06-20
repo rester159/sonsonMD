@@ -143,6 +143,21 @@ ANIMS = [
     # window (DEATH_FRAMES) so it reads as the authentic vanish+death-pose beat.
     ("PLAYER_DEATH", False, [(83, PLAYER_BANK, 64)]),
 
+    # ---- PLAYER 2 (TonTon) -- the SECOND co-op hero. SonSon is 2-player SIMULTANEOUS
+    #   co-op (tools/TWO_PLAYER_SPEC.md); P2 is a DISTINCT actor: its own sprite tiles
+    #   AND its own color bank (1), per the arcade player anim-descriptor tables
+    #   ($AFD0 for P2 vs $AFAC for P1, decoded from ss.02e). The bank-1 codes are the
+    #   "same hero shapes in the alt palette" already noted above ({72,73,81} run;
+    #   {74..77} climb; 84 action) -- ROM-confirmed run cycle 72,73,81,73 at $AFD0.
+    #   Bank 1's colors map through the shared sprite LUT into the SAME PAL1 (the
+    #   bank-1 fruit already uses it), so no extra palette line is needed -- the
+    #   baked tiles carry TonTon's alt colors. Mirrors P1's RUN/CLIMB/FIRE/DEATH
+    #   structure + cadence; game.c selects this set for players[1] (p->which==1). ----
+    ("PLAYER2_RUN",   True,  [(72, 1, 5), (73, 1, 5), (81, 1, 5), (73, 1, 5)]),
+    ("PLAYER2_CLIMB", True,  [(74, 1, 4), (75, 1, 4), (76, 1, 4), (77, 1, 4)]),
+    ("PLAYER2_FIRE",  False, [(84, 1, 6), (73, 1, 4)]),
+    ("PLAYER2_DEATH", False, [(84, 1, 64)]),
+
     ("ENEMY_WALK",   True,  [(304, ENEMY_BANK, 5), (305, ENEMY_BANK, 5),
                              (306, ENEMY_BANK, 7), (305, ENEMY_BANK, 5)]),
     # DEATH: FAITHFUL (re-extracted from 32 real shot-kills -- see header +

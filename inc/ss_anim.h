@@ -15,11 +15,11 @@
 #include <genesis.h>
 
 /* VRAM tile index the engine must load ss_anim_tiles[] at. */
-#define SS_ANIM_TILE_BASE   346
+#define SS_ANIM_TILE_BASE   290
 
 /* Total baked 8x8 tiles (deduped 16x16 frames * 4). */
-#define SS_ANIM_TILE_COUNT  228
-#define SS_ANIM_FRAME_COUNT 57   /* distinct 16x16 frames (deduped) */
+#define SS_ANIM_TILE_COUNT  260
+#define SS_ANIM_FRAME_COUNT 65   /* distinct 16x16 frames (deduped) */
 
 /* Baked 4bpp Genesis tiles: SS_ANIM_TILE_COUNT tiles, 8 u32 each
  * (one 8px row/long, hi nibble = leftmost px); sprite frames in
@@ -45,36 +45,40 @@ typedef enum {
     SS_ANIM_PLAYER_CLIMB = 1,
     SS_ANIM_PLAYER_FIRE = 2,
     SS_ANIM_PLAYER_DEATH = 3,
-    SS_ANIM_ENEMY_WALK = 4,
-    SS_ANIM_ENEMY_DEATH = 5,
-    SS_ANIM_FLYER_FLY = 6,
-    SS_ANIM_FLYER_DEATH = 7,
-    SS_ANIM_THROWER_IDLE = 8,
-    SS_ANIM_THROWER_THROW = 9,
-    SS_ANIM_THROWER_DEATH = 10,
-    SS_ANIM_ESHOT_FLY = 11,
-    SS_ANIM_ELOB = 12,
-    SS_ANIM_CREG_WALK = 13,
-    SS_ANIM_CREG_THROW = 14,
-    SS_ANIM_CREG_DEATH = 15,
-    SS_ANIM_CREC_WALK = 16,
-    SS_ANIM_CREC_DEATH = 17,
-    SS_ANIM_CMPE_WALK = 18,
-    SS_ANIM_CMPE_DEATH = 19,
-    SS_ANIM_HOP_HOP = 20,
-    SS_ANIM_HOP_DEATH = 21,
-    SS_ANIM_FRUIT_CHERRY = 22,
-    SS_ANIM_FRUIT_ORANGE = 23,
-    SS_ANIM_FRUIT_APPLE = 24,
-    SS_ANIM_FRUIT_GOLD = 25,
-    SS_ANIM_LARGE_WALK = 26,
-    SS_ANIM_LARGE_DEATH = 27,
-    SS_ANIM_EMIT_IDLE = 28,
-    SS_ANIM_EMIT_FIRE = 29,
-    SS_ANIM_EMIT_DEATH = 30,
-    SS_ANIM_ORB_FLOAT = 31,
-    SS_ANIM_ORB_DEATH = 32,
-    SS_ANIM_COUNT = 33
+    SS_ANIM_PLAYER2_RUN = 4,
+    SS_ANIM_PLAYER2_CLIMB = 5,
+    SS_ANIM_PLAYER2_FIRE = 6,
+    SS_ANIM_PLAYER2_DEATH = 7,
+    SS_ANIM_ENEMY_WALK = 8,
+    SS_ANIM_ENEMY_DEATH = 9,
+    SS_ANIM_FLYER_FLY = 10,
+    SS_ANIM_FLYER_DEATH = 11,
+    SS_ANIM_THROWER_IDLE = 12,
+    SS_ANIM_THROWER_THROW = 13,
+    SS_ANIM_THROWER_DEATH = 14,
+    SS_ANIM_ESHOT_FLY = 15,
+    SS_ANIM_ELOB = 16,
+    SS_ANIM_CREG_WALK = 17,
+    SS_ANIM_CREG_THROW = 18,
+    SS_ANIM_CREG_DEATH = 19,
+    SS_ANIM_CREC_WALK = 20,
+    SS_ANIM_CREC_DEATH = 21,
+    SS_ANIM_CMPE_WALK = 22,
+    SS_ANIM_CMPE_DEATH = 23,
+    SS_ANIM_HOP_HOP = 24,
+    SS_ANIM_HOP_DEATH = 25,
+    SS_ANIM_FRUIT_CHERRY = 26,
+    SS_ANIM_FRUIT_ORANGE = 27,
+    SS_ANIM_FRUIT_APPLE = 28,
+    SS_ANIM_FRUIT_GOLD = 29,
+    SS_ANIM_LARGE_WALK = 30,
+    SS_ANIM_LARGE_DEATH = 31,
+    SS_ANIM_EMIT_IDLE = 32,
+    SS_ANIM_EMIT_FIRE = 33,
+    SS_ANIM_EMIT_DEATH = 34,
+    SS_ANIM_ORB_FLOAT = 35,
+    SS_ANIM_ORB_DEATH = 36,
+    SS_ANIM_COUNT = 37
 } SSAnimId;
 
 extern const SSAnim ss_anims[SS_ANIM_COUNT];

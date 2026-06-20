@@ -57,6 +57,21 @@ static u8      g_levelIdx = 0;
 /* ATTRACT demo state (see game.h). */
 volatile u8    g_attract = 0;
 volatile u8    g_attract_started = 0;
+
+/* Player count for the next game (1 or 2), set by the front-end. SonSon is
+ * simultaneous co-op (tools/TWO_PLAYER_SPEC.md); game_init copies this into
+ * g_game.numPlayers. Defaults to 1 so a skipped front-end still boots a 1P game. */
+volatile u8    g_numPlayers = 1;
+
+/* WORLD SCROLL (arcade global auto-scroll, sub_A697 $A697): the camera advances by
+ * a CONSTANT forward creep every frame, INDEPENDENT of the players -- $0091 (frac)
+ * += $008D; on carry $0090 (int) += 1. Players are each clamped to the visible
+ * screen band [8..208] (sub_AB52), roaming freely between the edges. This replaces
+ * the old "camera follows the one band-pinned player" model and is what makes
+ * simultaneous co-op work (and is more arcade-faithful for 1P too). The creep rate
+ * equals the player's idle forward drift (RUN_DRIFT_SUBPX) so an idle player holds
+ * a constant screen X (rides the scroll), exactly as before. */
+static u16     g_scrollSub = 0;       /* scroll sub-pixel accumulator ($0091)       */
 #define ATTRACT_MAX_FRAMES  2400      /* ~40s demo cap (else ends on demo game-over) */
 
 /* RIBBON GEOMETRY (px). Computed once in game_init from ss_ribbon_col0[]. The
@@ -102,6 +117,11 @@ static inline u16 ribbon_wrap_col(s16 c)
  * a lower rate (the loop runs less often than the 60Hz V-blank). Harmless in
  * the shipped game (a single counter). */
 volatile u32 g_frameCounter = 0;
+
+/* Co-op GAME OVER beat: frames left in the final all-players-out overlay before
+ * game_update returns to the front-end. 0 = not started. Set when every active
+ * player has reached FLOW_GAME_OVER (in 1P that is just P1). */
+static u16 g_gameOverBeat = 0;
 
 /* Autopilot pad for the attract demo: walk forward (RIGHT), fire on a cadence,
  * and weave tiers (Up/Down) so the demo navigates like the arcade's. Driven by
@@ -163,22 +183,22 @@ static const u32 k_bonus_thresholds[4][BONUS_LIST_MAX] =
  * LIFE_MAX), advances the index, updates the HUD (lives is re-read each render),
  * and -- if SND_CMD_1UP is defined -- plays a 1-up cue. Called once per frame from
  * game_update while the score can change. Cheap: a couple of u32 compares. */
-static void check_extra_life(void)
+static void check_extra_life(Player *p)
 {
     u8 bl = g_config.bonusLife;
     const u32 *list;
     if (bl > 3) bl = 3;
     list = k_bonus_thresholds[bl];
 
-    while (g_game.bonusNextIdx < BONUS_LIST_MAX)
+    while (p->bonusNextIdx < BONUS_LIST_MAX)
     {
-        u32 thr = list[g_game.bonusNextIdx];
+        u32 thr = list[p->bonusNextIdx];
         if (thr == 0) break;                       /* list terminator (idx2/idx3)  */
-        if (g_game.score < thr) break;             /* not reached the next one yet */
+        if (p->score < thr) break;                 /* not reached the next one yet */
 
         /* crossed this threshold: award a life (capped) + advance */
-        if (g_game.lives < LIFE_MAX) g_game.lives++;
-        g_game.bonusNextIdx++;
+        if (p->lives < LIFE_MAX) p->lives++;
+        p->bonusNextIdx++;
 #if defined(SND_CMD_1UP) && defined(SND_1UP_ENABLE)
         /* Play the VERIFIED 1-up cue (cmd 0x04) LAYERED over the BGM. snd_play_1up()
          * drives the jingle on a dedicated channel rendered to the YM2612's second FM
@@ -294,7 +314,7 @@ static void level_restart(bool keepPose)
     g_game.loadedMaxCol = PLANE_COLS - 1;
 
     {
-        Player *p = &g_game.player;
+        Player *p = &g_game.players[0];
         /* The hero is always band-pinned, so re-pin his world X to the band's left
          * edge as the scroll resets to the new level's start (cameraX = 0 below). */
         p->x    = BAND_LEFT;
@@ -313,6 +333,7 @@ static void level_restart(bool keepPose)
             p->vy        = 0;
             p->climbing  = 0;
             p->facing    = FACING_RIGHT;
+            p->which     = 0;                           /* P1 = SonSon (bank 0)    */
             p->anim      = 0;
             p->animTimer = PLAYER_ANIM_PERIOD;
             p->firePrev  = 0;
@@ -331,6 +352,33 @@ static void level_restart(bool keepPose)
             p->y      = SS_TIER_Y[p->tier];
             p->ySub   = 0; p->vy = 0;
         }
+    }
+
+    /* P2 (TonTon) cold-start, co-op only: spawn alongside P1 on the start tier,
+     * offset right so they don't stack (the overlap resolve keeps them apart once
+     * moving). PLACEHOLDER visual -- reuses P1's baked tiles for now; Phase 2b bakes
+     * TonTon's own tiles ($AFD0 set, color bank 1). Only on a fresh game (keepPose
+     * FALSE = the sole caller); the scroll/camera reset below applies to both. */
+    if (g_game.numPlayers > 1)
+    {
+        Player *q = &g_game.players[1];
+        q->x        = (s16)(BAND_LEFT + 24);
+        q->xSub     = 0;
+        q->vx       = 0;
+        q->tier     = PLAYER_START_TIER;
+        q->vstate   = PV_RUN;
+        q->y        = SS_TIER_Y[PLAYER_START_TIER];
+        q->ySub     = 0;
+        q->vy       = 0;
+        q->climbing = 0;
+        q->facing   = FACING_RIGHT;
+        q->which    = 1;                                /* P2 = TonTon (bank 1)    */
+        q->anim     = 0;
+        q->animTimer= PLAYER_ANIM_PERIOD;
+        q->firePrev = 0;
+        q->fireAnim = 0;
+        anim_restart(&q->av, SS_ANIM_PLAYER2_RUN);
+        q->tile     = ss_anims[SS_ANIM_PLAYER2_RUN].frames[0].tile;
     }
 
     g_game.cameraX  = 0;
@@ -354,6 +402,25 @@ static void ribbon_refill(void)
         stream_column(col, DMA);                        /* immediate: this frame   */
     g_game.loadedMinCol = firstCol;
     g_game.loadedMaxCol = (s16)(firstCol + PLANE_COLS - 1);
+}
+
+/* ---------------------------------------------------------------------------
+ *  world_scroll_tick -- advance the GLOBAL auto-scroll one frame (arcade sub_A697).
+ *
+ *  The arcade scroll is a CONSTANT forward creep, independent of the players:
+ *  $0091 (frac) += $008D each frame; on carry $0090 (int) += 1 (sub_A697 $A697).
+ *  We accumulate RUN_DRIFT_SUBPX (= $008D) in g_scrollSub and carry whole pixels
+ *  into cameraX. Called once per frame from game_update (BEFORE the per-player band
+ *  clamp). The ribbon wrap + segment tracking in game_update consume cameraX as
+ *  before. The creep equals the player's idle drift, so an idle player holds a
+ *  constant screen X. The left clamp only matters on the first frames (creep is
+ *  positive, so cameraX only grows thereafter). ------------------------------- */
+static void world_scroll_tick(void)
+{
+    u32 acc = (u32)g_scrollSub + (u32)RUN_DRIFT_SUBPX;
+    g_game.cameraX = (s16)(g_game.cameraX + (s16)(acc >> 8));
+    g_scrollSub    = (u16)(acc & 0xFF);
+    if (g_game.cameraX < 0) g_game.cameraX = 0;       /* ribbon-start left clamp */
 }
 
 /* ---------------------------------------------------------------------------
@@ -427,21 +494,37 @@ void game_init(void)
     g_game.round = 1;
     g_game.stage = 0;                 /* difficulty counter ($005A) starts at 0     */
 
+    /* Player count for this game (1 or 2), from the front-end. Clamp to 1..MAX_PLAYERS.
+     * SonSon is simultaneous co-op; numPlayers>1 enables P2 (TonTon). The attract
+     * demo is always single-player (the arcade attract plays SonSon solo). */
+    g_game.numPlayers = (u8)((g_numPlayers >= 2 && !g_attract) ? 2 : 1);
+    g_scrollSub = 0;                  /* reset the global auto-scroll accumulator    */
+
     /* Build the ribbon window + place the player at the start (level_restart cold-
      * fills Plane A from the first 64 ribbon columns, resets the stream range +
      * camera, and spawns the hero low-left). FALSE = full cold-start pose. */
     level_restart(FALSE);
 
-    g_game.score   = 0;
-
-    /* Life economy: the DIP/options LIVES setting now takes effect. g_config.lives
-     * is the arcade DSW2 0x03 field decoded by sync_from_dsw() (3 / 4 / 5 / 7);
-     * the front-end wrote it before game_init. We treat it as the STARTING life
-     * count (lives in hand, the current one included). Start ALIVE, no flow. */
-    g_game.lives     = g_config.lives;
-    g_game.bonusNextIdx = 0;          /* no bonus thresholds reached yet            */
-    g_game.flow      = FLOW_ALIVE;
-    g_game.flowTimer = 0;
+    /* PER-PLAYER game state (co-op): each hero starts with its own score=0, the
+     * configured lives (arcade DSW2 0x03 decoded by sync_from_dsw -> 3/4/5/7, the
+     * STARTING count incl. the current life), no bonus thresholds reached, ALIVE
+     * and clear of any death/hurt state. level_restart set up the run-state above. */
+    {
+        u8 i;
+        for (i = 0; i < MAX_PLAYERS; i++)
+        {
+            Player *pp = &g_game.players[i];
+            pp->score        = 0;
+            pp->lives        = g_config.lives;
+            pp->bonusNextIdx = 0;
+            pp->flow         = FLOW_ALIVE;
+            pp->flowTimer    = 0;
+            pp->deadReq      = 0;
+            pp->invuln       = 0;
+            pp->hurt         = 0;
+        }
+    }
+    g_gameOverBeat = 0;               /* final all-out overlay countdown (game_update)*/
 
     /* Spawn the Phase-4 entity wave (ground enemies + a couple of fruit). */
     entity_init();
@@ -471,9 +554,8 @@ void game_init(void)
  *  re-placement" -- the camera is wherever the death left it), reset his motion,
  *  and hand control back. The i-frame window is owned by the flow (RESPAWNING).
  * ------------------------------------------------------------------------- */
-static void player_respawn(void)
+static void player_respawn(Player *p)
 {
-    Player *p = &g_game.player;
     p->tier      = PLAYER_START_TIER;               /* back on the middle tier   */
     p->vstate    = PV_RUN;
     p->y         = SS_TIER_Y[PLAYER_START_TIER];    /* seated on the tier        */
@@ -493,7 +575,8 @@ static void player_respawn(void)
     p->animTimer = PLAYER_ANIM_PERIOD;
     p->firePrev  = 0;
     p->fireAnim  = 0;
-    anim_restart(&p->av, SS_ANIM_PLAYER_RUN);       /* respawn in the run cycle */
+    anim_restart(&p->av, p->which ? SS_ANIM_PLAYER2_RUN
+                                  : SS_ANIM_PLAYER_RUN);   /* respawn in run cycle */
 }
 
 /* ---------------------------------------------------------------------------
@@ -581,10 +664,8 @@ static u8 tier_solid_at_hero(const Player *p, u8 tier)
  *  (the A847 push-out); a column gap drops him to the tier below (FALL); UP/DOWN
  *  move him a tier when one exists in that direction at his column. p->tier is the
  *  tier he is on (RUN/FALL target) or heading to (CLIMB). ------------------------ */
-static void player_vertical(u16 pad)
+static void player_vertical(Player *p, u16 pad)
 {
-    Player *p = &g_game.player;
-
     switch ((PlayerVState)p->vstate)
     {
         case PV_RUN:
@@ -725,10 +806,8 @@ static void player_vertical(u16 pad)
  *  where the death handler removes him from the input-driven active state. The
  *  scrolling level + entities keep running underneath regardless.
  * ------------------------------------------------------------------------- */
-static void player_control(u16 pad)
+static void player_control(Player *p, u16 pad)
 {
-    Player *p = &g_game.player;
-
     /* ----- HORIZONTAL: run = commanded velocity + the constant forward drift.
      * Arcade ($A9C5/$A9A7): worldX-fraction gets += $008D every frame (perpetual
      * forward creep) plus the input-gated velocity word; the integer worldX is
@@ -771,35 +850,19 @@ static void player_control(u16 pad)
      * between tiers, and falls through a column GAP onto the tier below -- driven
      * by the per-column collision (ss_collision[]) instead of a free lane index.
      * player_vertical() owns the state machine + Y; see it below. ----- */
-    player_vertical(pad);
+    player_vertical(p, pad);
 
-    /* ----- CAMERA + horizontal screen-band clamp (arcade sub_AB52).
-     * The hero is pinned to the band [BAND_LEFT..BAND_RIGHT] in SCREEN space;
-     * the world scrolls to keep him there. We move the camera so screenX stays
-     * inside the band, clamp ONLY the LEFT edge (the ribbon start), and re-pin the
-     * player's *world* X to the band there.
-     *
-     * SEAMLESS LOOPING RIBBON -- no right wall, no reset: the camera follows the hero
-     * (carried by the perpetual creep) endlessly to the right. There is no level-end
-     * stop -- the scenery just flows from one segment into the next. game_update
-     * WRAPS cameraX (and the player + entities) by the ribbon width once it passes
-     * the end, so the world loops back to the first segment with no visible jump
-     * (the wrap subtracts a whole ribbon, and column % SS_RIBBON_COLS is identical).
-     * The left clamp at 0 only matters on the very first frames before the creep has
-     * moved; after the first wrap cameraX never returns below 0. ----- */
+    /* ----- horizontal screen-band clamp (arcade sub_AB52, $AB52).
+     * The camera AUTO-SCROLLS globally at the constant forward creep (world_scroll_tick,
+     * called once per frame in game_update -- the arcade's player-independent $008D
+     * scroll, sub_A697); it does NOT follow any one player. Each player just keeps his
+     * screenX inside the band [BAND_LEFT..BAND_RIGHT]=[8..208]: he roams freely between
+     * the edges (run L/R moves him across the screen) and is CARRIED by the scroll at an
+     * edge. An idle player drifts forward by RUN_DRIFT_SUBPX -- exactly the camera creep
+     * -- so he holds a constant screenX (rides the scroll), as before. This per-player
+     * clamp (no camera move) is what lets BOTH co-op players share one screen. ----- */
     {
-        s16 screenX;
-
-        /* scroll the camera to keep the player inside the band */
-        screenX = (s16)(p->x - g_game.cameraX);
-        if (screenX < BAND_LEFT)        g_game.cameraX = (s16)(p->x - BAND_LEFT);
-        else if (screenX > BAND_RIGHT)  g_game.cameraX = (s16)(p->x - BAND_RIGHT);
-
-        if (g_game.cameraX < 0) g_game.cameraX = 0;   /* clamp ONLY the left edge   */
-
-        /* re-pin the player's world X to the band so he never escapes the visible
-         * window at the ribbon START (cameraX==0); the right edge never walls. */
-        screenX = (s16)(p->x - g_game.cameraX);
+        s16 screenX = (s16)(p->x - g_game.cameraX);
         if (screenX < BAND_LEFT)
         {
             p->x = (s16)(g_game.cameraX + BAND_LEFT);
@@ -846,13 +909,18 @@ static void player_control(u16 pad)
              * entity_player_fire returns FALSE if a shot is still live -- a press
              * while one is in flight does nothing: no shot, no SFX, no recoil
              * (faithful, and it kills the old fire-spam slowdown). */
-            if (entity_player_fire((s16)(p->x + 4), (s16)(p->y + 4), p->facing))
+            if (entity_player_fire(p->which, (s16)(p->x + 4), (s16)(p->y + 4),
+                                   p->facing))
             {
                 /* arcade player-shot SFX (verified cmd 0x0B), YM2612 SFX voice. */
                 snd_sfx_fire();
-                /* show the fire/recoil pose for the anim's full length */
-                p->fireAnim = (u8)(ss_anims[SS_ANIM_PLAYER_FIRE].frames[0].dur +
-                                   ss_anims[SS_ANIM_PLAYER_FIRE].frames[1].dur);
+                /* show the fire/recoil pose for the anim's full length (per-player
+                 * anim set: TonTon uses SS_ANIM_PLAYER2_FIRE). */
+                {
+                    u8 af = p->which ? SS_ANIM_PLAYER2_FIRE : SS_ANIM_PLAYER_FIRE;
+                    p->fireAnim = (u8)(ss_anims[af].frames[0].dur +
+                                       ss_anims[af].frames[1].dur);
+                }
             }
         }
         p->firePrev = fire;
@@ -872,26 +940,60 @@ static void player_control(u16 pad)
  *  `dying` is TRUE only on the FLOW_DYING beat (passed from game_update after the
  *  flow logic), so the death tumble plays while the hero is disabled + blinking.
  * ------------------------------------------------------------------------- */
-static void player_animate(u8 dying)
+static void player_animate(Player *p, u8 dying)
 {
-    Player *p = &g_game.player;
+    /* Pick the per-player anim set: P1 (SonSon) uses SS_ANIM_PLAYER_*; P2 (TonTon)
+     * uses SS_ANIM_PLAYER2_* (its own baked bank-1 tiles). The four states line up
+     * 1:1 in both sets (RUN/CLIMB/FIRE/DEATH), so we select the set by p->which. */
+    u8 a_run   = p->which ? SS_ANIM_PLAYER2_RUN   : SS_ANIM_PLAYER_RUN;
+    u8 a_climb = p->which ? SS_ANIM_PLAYER2_CLIMB : SS_ANIM_PLAYER_CLIMB;
+    u8 a_fire  = p->which ? SS_ANIM_PLAYER2_FIRE  : SS_ANIM_PLAYER_FIRE;
+    u8 a_death = p->which ? SS_ANIM_PLAYER2_DEATH : SS_ANIM_PLAYER_DEATH;
     u8 id;
 
     if (p->fireAnim) p->fireAnim--;
 
-    if (dying)                 id = SS_ANIM_PLAYER_DEATH;
-    else if (p->fireAnim)      id = SS_ANIM_PLAYER_FIRE;
-    else if (p->climbing)      id = SS_ANIM_PLAYER_CLIMB;
-    else                       id = SS_ANIM_PLAYER_RUN;
+    if (dying)                 id = a_death;
+    else if (p->fireAnim)      id = a_fire;
+    else if (p->climbing)      id = a_climb;
+    else                       id = a_run;
 
     /* anim_set restarts only on a CHANGE of id; FIRE/DEATH are one-shots we want
      * to (re)start cleanly when newly entered. */
-    if (id == SS_ANIM_PLAYER_DEATH && p->av.id != SS_ANIM_PLAYER_DEATH)
+    if (id == a_death && p->av.id != a_death)
         anim_restart(&p->av, id);
     else
         anim_set(&p->av, id);
 
     p->tile = anim_tick(&p->av);
+}
+
+/* ---------------------------------------------------------------------------
+ *  players_separate -- co-op overlap resolve (arcade sub_A98A $A945).
+ *
+ *  If the two players are within the overlap box -- ~16px vertical (the arcade's
+ *  +8 then <0x10 test on the Y byte) AND ~24px horizontal (+0xC then <0x18 on the
+ *  X word) -- push them apart horizontally by (0xC - |dx|)/2 each, so they settle
+ *  ~12px apart. The RIGHT player (larger x) is pushed right, the LEFT player left,
+ *  exactly like the arcade exg-on-bmi. Keeps the two heroes from stacking into one
+ *  blob while both share the screen. ------------------------------------------ */
+static void players_separate(void)
+{
+    Player *p1 = &g_game.players[0];
+    Player *p2 = &g_game.players[1];
+    s16 dy = (s16)(p1->y - p2->y);
+    s16 dx, adx, half;
+    Player *hi, *lo;
+
+    if (dy < -8 || dy > 7)  return;             /* vertical gap too big (±8 -> 16px) */
+    dx = (s16)(p1->x - p2->x);
+    if (dx < -12 || dx > 11) return;            /* horizontal gap too big (±12->24px)*/
+
+    if (dx < 0) { adx = (s16)(-dx); hi = p2; lo = p1; }  /* p1 left -> p2 is right   */
+    else        { adx = dx;         hi = p1; lo = p2; }
+    half = (s16)((12 - adx) >> 1);
+    hi->x = (s16)(hi->x + half); hi->xSub = 0;  /* push the right player right       */
+    lo->x = (s16)(lo->x - half); lo->xSub = 0;  /* push the left player left         */
 }
 
 /* ---------------------------------------------------------------------------
@@ -927,25 +1029,43 @@ bool game_update(void)
 {
     g_frameCounter++;          /* headless FPS probe tick (see g_frameCounter) */
 
-    /* Publish invulnerability to the entity collision pass: the player can't be
-     * hit while dying, in his respawn i-frames, or during the game-over beat. (The
-     * seamless ribbon has no round-clear interlude -- play never pauses.) */
-    g_player_invuln = (u8)(g_game.flow == FLOW_DYING ||
-                           g_game.flow == FLOW_RESPAWNING ||
-                           g_game.flow == FLOW_GAME_OVER);
+    /* GLOBAL auto-scroll: advance the camera by the constant forward creep BEFORE the
+     * players move/clamp, so each player's band clamp this frame sees the new camera.
+     * This is the arcade's player-independent scroll (sub_A697); the camera no longer
+     * follows any one player (that is what lets co-op players share the screen). */
+    world_scroll_tick();
 
-    /* Player control: live only while ALIVE or RESPAWNING (he moves during the
-     * i-frames). DYING / GAME_OVER coast on a zero pad (no input). */
-    if (g_game.flow == FLOW_ALIVE || g_game.flow == FLOW_RESPAWNING)
-        player_control(g_attract ? attract_pad() : JOY_readJoypad(JOY_1));
-    else
-        player_control(0);
-
-    /* Advance the player's faithful animation (run / climb / fire / death). The
-     * death tumble plays while the flow is DYING (the hero is disabled + blinks);
-     * every other phase animates off his live motion/fire state. This is a table
-     * lookup + a counter -- no per-pixel work, so the frame budget is untouched. */
-    player_animate((u8)(g_game.flow == FLOW_DYING));
+    /* Player control + anim, for EACH active player (co-op: P1=JOY_1, P2=JOY_2).
+     * Live only while ALIVE or RESPAWNING (players move during the i-frames);
+     * DYING / GAME_OVER coast on a zero pad. The attract demo drives P1 only
+     * (game_init forces 1P in attract). NOTE: for now both players share the
+     * single game flow + P1-driven death; per-player life/flow lands in Phase 3. */
+    {
+        u8 i;
+        for (i = 0; i < g_game.numPlayers; i++)
+        {
+            Player *pp = &g_game.players[i];
+            u16 pad = 0;
+            /* per-player invuln published to the collision pass: no hit while this
+             * hero is dying, in respawn i-frames, or out (game over). */
+            pp->invuln = (u8)(pp->flow == FLOW_DYING ||
+                              pp->flow == FLOW_RESPAWNING ||
+                              pp->flow == FLOW_GAME_OVER);
+            /* controllable only while ALIVE or RESPAWNING; DYING/out coast on 0. */
+            if (pp->flow == FLOW_ALIVE || pp->flow == FLOW_RESPAWNING)
+                pad = g_attract ? (i == 0 ? attract_pad() : 0)
+                                : JOY_readJoypad(i == 0 ? JOY_1 : JOY_2);
+            player_control(pp, pad);
+            player_animate(pp, (u8)(pp->flow == FLOW_DYING));
+        }
+        /* 2-player overlap resolve (arcade sub_A98A $A945): if the two players are
+         * within ~12px H and ~16px V, push them apart horizontally. (Skip when
+         * either is out -- an out player isn't on the field.) */
+        if (g_game.numPlayers > 1 &&
+            g_game.players[0].flow != FLOW_GAME_OVER &&
+            g_game.players[1].flow != FLOW_GAME_OVER)
+            players_separate();
+    }
 
     /* Entities always run (scene stays alive through every flow phase). */
     entity_update_all();
@@ -970,8 +1090,10 @@ bool game_update(void)
     if (g_ribbonW > 0 && g_game.cameraX >= g_ribbonW)
     {
         s16 dx = (s16)(-g_ribbonW);
+        u8  i;
         g_game.cameraX     = (s16)(g_game.cameraX + dx);
-        g_game.player.x    = (s16)(g_game.player.x + dx);
+        for (i = 0; i < g_game.numPlayers; i++)
+            g_game.players[i].x = (s16)(g_game.players[i].x + dx);
         entity_shift_worldx(dx);                 /* shift all entities + spawn cursor */
         ribbon_refill();                         /* rebuild the 64-col window, no tear */
     }
@@ -988,77 +1110,71 @@ bool game_update(void)
             segment_advance(g_levelIdx);
     }
 
-    /* --- flow state machine --- */
-    switch (g_game.flow)
+    /* --- PER-PLAYER flow state machine (co-op: each hero has its own life cycle).
+     * A lethal contact (pp->deadReq, raised by the collision pass only when that
+     * player is not invulnerable) costs THAT player one life: ALIVE -> DYING (life
+     * remains) or -> GAME_OVER (out). An out player stays out (no sprite, no
+     * control) while the other keeps playing. The GAME ends only when ALL active
+     * players are out (the all-out beat below). lives is "in hand incl. current". */
     {
-        case FLOW_ALIVE:
-            /* A fresh lethal contact this frame? Consume it: lose a life. The
-             * request is only ever raised when not invulnerable (entity.c), so
-             * one touch == one life. lives is "lives in hand including current":
-             * losing the LAST one (lives reaches 0) is GAME OVER. */
-            if (g_player_dead_request)
+        u8 i;
+        u8 allOut = TRUE;
+        for (i = 0; i < g_game.numPlayers; i++)
+        {
+            Player *pp = &g_game.players[i];
+            switch (pp->flow)
             {
-                g_player_dead_request = 0;
-                if (g_game.lives > 0) g_game.lives--;
+                case FLOW_ALIVE:
+                    if (pp->deadReq)
+                    {
+                        if (pp->lives > 0) pp->lives--;
+                        snd_sfx_death();           /* arcade death SFX (cmd 0x14) */
+                        if (pp->lives == 0)
+                            pp->flow = FLOW_GAME_OVER;     /* this hero is out     */
+                        else
+                        {
+                            pp->flow      = FLOW_DYING;
+                            pp->flowTimer = DEATH_FRAMES;
+                        }
+                    }
+                    break;
 
-                /* play the arcade player-death SFX (verified cmd 0x14) on the
-                 * lethal contact -- fires once as the hero enters the death beat,
-                 * whether this is a respawn-death or the final (game-over) life. */
-                snd_sfx_death();
+                case FLOW_DYING:
+                    if (--pp->flowTimer == 0)
+                    {
+                        player_respawn(pp);        /* arcade B1C2 re-place        */
+                        pp->flow      = FLOW_RESPAWNING;
+                        pp->flowTimer = RESPAWN_IFRAMES;
+                    }
+                    break;
 
-                if (g_game.lives == 0)
-                {
-                    g_game.flow      = FLOW_GAME_OVER;
-                    g_game.flowTimer = GAMEOVER_FRAMES;
-                }
-                else
-                {
-                    g_game.flow      = FLOW_DYING;
-                    g_game.flowTimer = DEATH_FRAMES;
-                }
-                break;
+                case FLOW_RESPAWNING:
+                    if (--pp->flowTimer == 0)
+                        pp->flow = FLOW_ALIVE;     /* i-frames over, back to play */
+                    break;
+
+                case FLOW_GAME_OVER:
+                default:
+                    break;                          /* out: stays out             */
             }
-            /* SEAMLESS RIBBON: there is NO level-end / round-clear here. The scroll
-             * runs forever and the scenery flows from one segment into the next; the
-             * per-segment difficulty/HUD/music bookkeeping happens above (segment
-             * tracking) the moment a seam scrolls in -- play never pauses. */
-            break;
 
-        case FLOW_DYING:
-            if (--g_game.flowTimer == 0)
-            {
-                player_respawn();                 /* arcade B1C2 re-place        */
-                g_game.flow      = FLOW_RESPAWNING;
-                g_game.flowTimer = RESPAWN_IFRAMES;
-            }
-            break;
+            /* drop any stray request (overlap that began as the flow changed). */
+            pp->deadReq = 0;
 
-        case FLOW_RESPAWNING:
-            if (--g_game.flowTimer == 0)
-                g_game.flow = FLOW_ALIVE;         /* i-frames over, back to play */
-            break;
+            /* EXTRA LIFE (arcade DSW2 0x18) for THIS player's own score. */
+            check_extra_life(pp);
 
-        case FLOW_GAME_OVER:
-            if (--g_game.flowTimer == 0)
-                return TRUE;                      /* leave the loop -> front-end */
-            break;
+            if (pp->flow != FLOW_GAME_OVER) allOut = FALSE;
+        }
 
-        default:
-            break;
+        /* GAME OVER when every active player is out: run the final overlay beat,
+         * then return to the front-end. (In 1P this is just P1's game-over.) */
+        if (allOut)
+        {
+            if (g_gameOverBeat == 0) g_gameOverBeat = GAMEOVER_FRAMES;
+            if (--g_gameOverBeat == 0) return TRUE;
+        }
     }
-
-    /* Stray request raised while not ALIVE (e.g. an overlap that began the same
-     * frame the flow changed): drop it -- the invuln gate already covers the
-     * common case, this is belt-and-braces so it can't leak into the next life. */
-    g_player_dead_request = 0;
-
-    /* EXTRA LIFE (arcade DSW2 0x18): award bonus lives for any threshold the score
-     * has crossed. The threshold list is selected by g_config.bonusLife (decoded
-     * from DSW2 0x18 by sync_from_dsw; dipswitch.c labels 20K/80K/100K etc.); see
-     * k_bonus_thresholds[] + the RE notes in game.h. This is what makes the
-     * Bonus-Life DIP actually grant lives (previously a no-op TODO). Cheap; checked
-     * every frame (score only grows during ALIVE play, so this is safe anywhere). */
-    check_extra_life();
     /*
      * SEAMLESS LOOPING RIBBON: the 8 baked sceneries are concatenated into ONE
      * endless looping ribbon (SS_RIBBON_COLS), all tilesets co-resident, streamed
@@ -1137,59 +1253,66 @@ void game_render(void)
      * glyph sprites. Sized for the player plus ENTITY_SAT_MAX entity bodies plus
      * ENTITY_POPUP_GLYPH_MAX popup glyphs; well under the 80-sprite hardware
      * ceiling. */
-    static u16 sat[(1 + ENTITY_SAT_MAX + ENTITY_POPUP_GLYPH_MAX) * 4];
-    const Player *p = &g_game.player;
+    static u16 sat[(MAX_PLAYERS + ENTITY_SAT_MAX + ENTITY_POPUP_GLYPH_MAX) * 4];
+    u8  np = g_game.numPlayers;
     u16 nEnt;
     u16 totalSprites;
-
-    /* The player is drawn in SCREEN space: world position minus the camera.
-     * (The BG scrolls via VDP_setHorizontalScroll below; sprites are not
-     * auto-scrolled by the VDP, so we offset them by the camera here.) */
-    s16 px = (s16)(p->x - g_game.cameraX);
-    s16 py = p->y;
+    u8  k;
 
     /* Stream any newly-revealed level columns into the plane window FIRST, so
      * the queued column DMAs flush in the same V-blank as the scroll update. */
     bg_stream();
 
-    /* --- entity pool first: append visible entities at slots 1.. and get the
-     * count back so we can chain the player's link to them (or terminate). --- */
-    nEnt = entity_render_all(sat, 1);
+    /* --- entity pool first: append visible entities at slots np.. (after the
+     * player slots) and get the count back so we can chain the players to them. --- */
+    nEnt = entity_render_all(sat, np);
 
-    /* --- player sprite at slot 0 ---
-     * Blink the player while he is in a transient life-cycle phase:
-     *   - the brief on-contact hurt-flash (g_player_hurt), and
+    /* --- player sprites at slots 0..np-1 (P1=SonSon, P2=TonTon) ---
+     * Each player is drawn in SCREEN space (world position minus the camera; the
+     * VDP doesn't auto-scroll sprites). Blink during a transient life-cycle phase:
+     *   - the brief on-contact hurt-flash (g_player_hurt, P1 for now), and
      *   - the death beat + respawn i-frame window (flow DYING / RESPAWNING),
-     * by skipping the sprite on alternate frames. We blink off the player's own
-     * flowTimer during DYING/RESPAWNING (so the whole death->respawn grace reads
-     * as one continuous blink) and off g_player_hurt during the contact flash.
-     * When blinked-off we still emit a (link-only) entry parked off-screen so the
-     * sprite chain to the entities stays intact. */
+     * by parking the sprite off-screen on alternate frames (link kept so the chain
+     * to the entities stays intact). The chain runs P1 -> P2 -> first entity.
+     * NOTE: P2 currently borrows P1's tiles + PAL1 (placeholder); Phase 2b gives
+     * TonTon its own baked tiles + color bank. */
+    for (k = 0; k < np; k++)
     {
-        u8 blink = 0;
-        if (g_game.flow == FLOW_DYING || g_game.flow == FLOW_RESPAWNING)
-            blink = (u8)((g_game.flowTimer & BLINK_MASK) != 0);
-        else if (g_player_hurt)
-            blink = (u8)((g_player_hurt & BLINK_MASK) != 0);
+        const Player *pp = &g_game.players[k];
+        s16 px = (s16)(pp->x - g_game.cameraX);
+        s16 py = pp->y;
+        u16 nextLink;
+        u8  blink = 0;
+
+        /* per-player blink/hide: an OUT (game-over) hero is gone entirely; a DYING/
+         * RESPAWNING hero blinks on its own flowTimer; a freshly-hit hero flashes on
+         * its own hurt window. (co-op: each player's beat is independent.) */
+        if (pp->flow == FLOW_GAME_OVER)
+            blink = 1;                                  /* out -> sprite removed   */
+        else if (pp->flow == FLOW_DYING || pp->flow == FLOW_RESPAWNING)
+            blink = (u8)((pp->flowTimer & BLINK_MASK) != 0);
+        else if (pp->hurt)
+            blink = (u8)((pp->hurt & BLINK_MASK) != 0);
 
         if (blink)
         {
-            sat[0] = (u16)((0x80 + 240) & 0x3FF);    /* parked off-screen (blink) */
-            sat[3] = (u16)0x80;
+            sat[k * 4 + 0] = (u16)((0x80 + 240) & 0x3FF);   /* parked off-screen */
+            sat[k * 4 + 3] = (u16)0x80;
         }
         else
         {
-            sat[0] = (u16)((0x80 + py) & 0x3FF);
-            sat[3] = (u16)((0x80 + px) & 0x1FF);
+            sat[k * 4 + 0] = (u16)((0x80 + py) & 0x3FF);
+            sat[k * 4 + 3] = (u16)((0x80 + px) & 0x1FF);
         }
-    }
-    /* link the player to the first entity sprite (slot 1) if any were emitted,
-     * else terminate the chain at the player. */
-    sat[1] = (u16)((SPRITE_SIZE(2, 2) << 8) | (nEnt ? 1 : 0));
-    sat[2] = (u16)TILE_ATTR_FULL(PAL1, 0, 0, p->facing, p->tile);
 
-    /* One DMA of the whole SAT (player + entities) to the hardware sprite list. */
-    totalSprites = (u16)(1 + nEnt);
+        /* link to the next player, or (for the last) to the first entity if any. */
+        nextLink = (u16)((k + 1 < np) ? (k + 1) : (nEnt ? np : 0));
+        sat[k * 4 + 1] = (u16)((SPRITE_SIZE(2, 2) << 8) | nextLink);
+        sat[k * 4 + 2] = (u16)TILE_ATTR_FULL(PAL1, 0, 0, pp->facing, pp->tile);
+    }
+
+    /* One DMA of the whole SAT (players + entities) to the hardware sprite list. */
+    totalSprites = (u16)(np + nEnt);
     DMA_queueDma(DMA_VRAM, sat, VDP_getSpriteListAddress(),
                  (u16)(totalSprites * 4), 2);
 
@@ -1199,50 +1322,65 @@ void game_render(void)
      * resident columns under the visible window for any cameraX. */
     VDP_setHorizontalScroll(BG_A, (s16)(-g_game.cameraX));
 
-    /* --- HUD readout (top row, Plane B) ---
-     * One compact row across the H32 (32-col) display, pinned on the unscrolled
-     * Plane B with the PAL3 font palette; it shows through the blanked HUD band
-     * (level rows 0-4 are transparent on Plane A). Fields, left to right, fit in
-     * 32 columns:  RND nn (0..5) | FPS nn (7..12) | SC nnnnn (14..21) | Lxn (23..25).
-     * SYS_getFPS() returns serviced frames/sec; ~60 = full speed. Labels are
-     * shortened from the older layout to make room for the ROUND field without
-     * overrunning the right edge. */
+    /* --- CO-OP HUD readout (Plane B, the transparent top band; H32 = 32 cols) ---
+     * Faithful to the arcade's two-player score header (RE'd from the machine's
+     * own display test: "SONSON ... HIGH ... TONTON"): P1's score under SONSON on
+     * the left, the high score under HIGH in the middle, P2's (TonTon's) score on
+     * the right -- each player keeps its OWN score (the whole point of the co-op
+     * split). TONTON's column shows only in a 2-player game. Row 2 carries the
+     * native dev RND/FPS readout + each player's remaining lives.
+     *   Row 0:  SONSON(0..5)        HIGH(13..16)      TONTON(26..31)
+     *   Row 1:  <p1 6dig>(0..5)     <high 6dig>(12..17)  <p2 6dig>(26..31)
+     *   Row 2:  RND nn | FPS nn | 1x n  [ 2x n ]
+     * (Level Plane A rows 0-4 are transparent, so this band shows over the art.) */
     {
         char buf[12];
         u32 fps = SYS_getFPS();
+        u32 hi  = g_game.players[0].score;
+        if (g_game.numPlayers > 1 && g_game.players[1].score > hi)
+            hi = g_game.players[1].score;
+        if (hi < 10000) hi = 10000;        /* arcade default HIGH = 10000        */
 
-        /* ROUND number (HUD headline, left). 2-digit field so a two-digit round
-         * never leaves a stale digit; round is 1-based and bumped per clear. */
-        intToStr((s32)g_game.round, buf, 2);
-        VDP_drawText("RND", 0, 1);
-        VDP_drawText(buf, 4, 1);           /* cols 4..5                         */
+        /* P1 (SONSON), left */
+        VDP_drawText("SONSON", 0, 0);
+        intToStr((s32)g_game.players[0].score, buf, 6);
+        VDP_drawText(buf, 0, 1);
 
-        if (fps > 99) fps = 99;            /* keep it a tidy 2-digit field     */
-        intToStr((s32)fps, buf, 2);
-        VDP_drawText("FPS", 7, 1);
-        VDP_drawText(buf, 11, 1);          /* cols 11..12                       */
+        /* HIGH, center */
+        VDP_drawText("HIGH", 13, 0);
+        intToStr((s32)hi, buf, 6);
+        VDP_drawText(buf, 12, 1);
 
-        /* Score readout. Incremented by entity defeats / item pickups in
-         * entity_update_all. */
-        intToStr((s32)g_game.score, buf, 5);
-        VDP_drawText("SC", 14, 1);
-        VDP_drawText(buf, 17, 1);          /* 5 digits: cols 17..21             */
-
-        /* --- LIVES readout (HUD, right) ---
-         * Compact "Lx N" field (L = the hero/lives, "xN" = lives remaining),
-         * chosen to fit the 32-col display alongside ROUND + FPS + SCORE without
-         * overrunning the right edge. We redraw it every frame and pad the count
-         * to a fixed width so a shrinking value never leaves a stale digit.
-         * (lives is the count IN HAND incl. the current one, so it reads N while
-         * N-1 are in reserve -- matches the arcade marker count incl. the hero.) */
+        /* P2 (TONTON), right -- only in a 2-player game */
+        if (g_game.numPlayers > 1)
         {
-            char lv[4];
-            lv[0] = 'x';
-            lv[1] = (char)('0' + (g_game.lives <= 9 ? g_game.lives : 9));
-            lv[2] = ' ';                   /* clear any prior 2nd digit/artifact */
-            lv[3] = 0;
-            VDP_drawText("L", 23, 1);      /* col 23                            */
-            VDP_drawText(lv, 24, 1);       /* "xN" at cols 24..25               */
+            VDP_drawText("TONTON", 26, 0);
+            intToStr((s32)g_game.players[1].score, buf, 6);
+            VDP_drawText(buf, 26, 1);
+        }
+
+        /* Row 2: dev ROUND + FPS, then per-player lives ("1x n" / "2x n"). */
+        intToStr((s32)g_game.round, buf, 2);
+        VDP_drawText("RND", 0, 2);
+        VDP_drawText(buf, 4, 2);
+        if (fps > 99) fps = 99;
+        intToStr((s32)fps, buf, 2);
+        VDP_drawText("FPS", 7, 2);
+        VDP_drawText(buf, 11, 2);
+        {
+            char lv[5];
+            lv[0] = '1'; lv[1] = 'x';
+            lv[2] = (char)('0' + (g_game.players[0].lives <= 9
+                                  ? g_game.players[0].lives : 9));
+            lv[3] = ' '; lv[4] = 0;
+            VDP_drawText(lv, 15, 2);
+            if (g_game.numPlayers > 1)
+            {
+                lv[0] = '2';
+                lv[2] = (char)('0' + (g_game.players[1].lives <= 9
+                                      ? g_game.players[1].lives : 9));
+                VDP_drawText(lv, 21, 2);
+            }
         }
     }
 
@@ -1256,7 +1394,7 @@ void game_render(void)
      * to clear it afterwards: a game-over returns to the selector (main.c), and
      * a fresh session's game_init re-inits Plane B (VDP_clearTextArea) -- so the
      * overlay can never linger into the next life or the next session. */
-    if (g_game.flow == FLOW_GAME_OVER)
+    if (g_gameOverBeat)
         VDP_drawText("GAME OVER", 11, 13);   /* H32: (32-9)/2 ~= 11 -> centered  */
 
     /* (No area-transition banner: the seamless ribbon never pauses -- the scenery
@@ -1293,9 +1431,10 @@ void game_run(void)
         game_render();
         SYS_doVBlankProcess();
         if (done) break;           /* GAME OVER finished -> back to the selector */
-        if (g_attract)             /* attract demo: abort on START, else time-cap */
+        if (g_attract)             /* attract demo: abort on any button, else time-cap */
         {
-            if (JOY_readJoypad(JOY_1) & BUTTON_START) { g_attract_started = 1; break; }
+            if (JOY_readJoypad(JOY_1) & (BUTTON_START | BUTTON_A | BUTTON_B | BUTTON_C))
+                { g_attract_started = 1; break; }
             if (++demoT >= ATTRACT_MAX_FRAMES) break;
         }
     }

@@ -110,6 +110,7 @@ typedef struct
     u8  fireTimer;  /* THROWER: frames left in the current throw-lunge pose   */
     s16 launchY;    /* ENEMY_SHOT: world-Y it was lobbed from (arc land test) */
     u8  fruit;      /* ET_ITEM: FruitType                                    */
+    u8  owner;      /* ET_SHOT: which player fired it (0=P1, 1=P2) -> scores  */
     u8  popupLen;   /* ET_POPUP: glyph count in popupStr                     */
     u8  fromSched;  /* 1 = spawned by the faithful per-level wave scheduler  *
                      * (so it counts against the on-screen cap + despawns,   *
@@ -202,33 +203,14 @@ u16  entity_render_all(u16 *sat, u16 firstSlot);
  * Debouncing (fire-once-per-press) is handled in game.c at the input edge. The
  * arcade allows only ONE player shot at a time ($0E28 single slot): returns TRUE
  * iff a shot was actually fired (FALSE while a prior shot is still live). */
-bool entity_player_fire(s16 px, s16 py, u8 facing);
+bool entity_player_fire(u8 owner, s16 px, s16 py, u8 facing);
 
-/* Player hit/flash state, raised by player<->enemy contact (arcade DCAC poke).
- * game.c reads g_player_hurt to flash the sprite during the hurt window. It
- * decays on its own timer inside entity_update_all. (The hurt-flash is the
- * brief on-contact blink; the LIFE-LOSS / death state is owned by game.c and
- * driven off g_player_dead_request below.) */
-extern u8 g_player_hurt;     /* >0 => player is in the hurt-flash window      */
-
-/* ---- Game-flow bridge between the entity collision pass and game.c --------
- * The collision pass (entity.c) detects PLAYER<->ENEMY contact but does NOT own
- * the life economy -- that is game.c's job (lives / death anim / respawn /
- * game-over). The bridge is two one-byte globals:
- *
- *   g_player_invuln  -- WRITTEN by game.c, READ by the collision pass. Nonzero
- *       while the player is in a death/respawn i-frame window; collision then
- *       ignores enemy contact entirely (no hurt, no death request). Re-expresses
- *       the arcade respawn-grace timer (sub_B1C2 parks +$D = #$20 on (re)spawn).
- *
- *   g_player_dead_request -- WRITTEN (set to 1) by the collision pass on a fresh
- *       lethal contact, READ + CLEARED by game.c, which then runs the death ->
- *       respawn / game-over flow. A request is only raised when NOT invulnerable
- *       and not already pending, so one contact == one life lost.
- *
- * This keeps the entity pool free of game-state knowledge (clean separation)
- * while letting a single enemy touch cost exactly one life, faithfully. */
-extern u8 g_player_invuln;        /* set by game.c: 1 => contact is ignored    */
-extern u8 g_player_dead_request;  /* set by entity.c on lethal contact         */
+/* ---- Player hit / life-loss bridge (now PER-PLAYER, in Player; co-op) ------
+ * The collision pass (entity.c) reads each active player's `invuln` (set by
+ * game.c during that player's death/respawn i-frames) and, on a fresh lethal
+ * contact, sets that player's `deadReq` (read + cleared by game.c, which runs
+ * the per-player death->respawn/game-over flow) and `hurt` (the on-contact blink
+ * window, decayed in entity_update_all). One touch == one life, per player. See
+ * Player in game.h and collision_pass / lethal_contact in entity.c. */
 
 #endif /* ENTITY_H */

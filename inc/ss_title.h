@@ -6,9 +6,12 @@
 #include "ss_gfx.h" /* SSSprite + ss_pal_char/sprite */
 
 #define SS_TITLE_TILE_BASE   0
-#define SS_TITLE_TILE_COUNT  175
+#define SS_TITLE_TILE_COUNT  235
 #define SS_TITLE_CHAR_TILE_COUNT 137
-#define SS_TITLE_GLYPH_BASE  149   /* abs VRAM tile of 'A' (arcade font, bank4) */
+/* glyph blocks: tile for arcade char code c = SS_TITLE_GLYPH_{W,R} + c
+ * (digits 0-9, space 16, A-Z 17-42). W = white (bank3), R = red (bank4). */
+#define SS_TITLE_GLYPH_W  149
+#define SS_TITLE_GLYPH_R  192
 #define SS_TITLE_SPRITE_COUNT 24
 
 extern const u32 ss_title_tiles[SS_TITLE_TILE_COUNT*8];

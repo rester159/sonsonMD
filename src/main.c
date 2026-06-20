@@ -81,7 +81,9 @@ int main(bool hardReset)
          * (game.h), and tear back to a blank screen before the game video mode.
          * The engine reads g_config (lives/difficulty/...) in game_init. */
         if (g_mode == MODE_ARCADE) dip_screen_run();   /* arcade DIP / service */
-        else                       options_run();      /* home console options */
+        /* HOME: no up-front config screen -- the home title MENU (1 PLAYER /
+         * 2 PLAYERS / OPTIONS, in title_attract_run below) provides OPTIONS
+         * itself, following the deprecated port's console front-end (home.c). */
 
         /* ---- GAME VIDEO MODE (after the front-end) ----
          * SonSon is 256x224 (H32). Plane A = 64x32: the wide level scrolls

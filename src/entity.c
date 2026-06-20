@@ -113,11 +113,10 @@
  * =========================================================================== */
 
 Entity g_entities[ENTITY_MAX];
-u8 g_player_hurt = 0;
 
-/* Game-flow bridge (see entity.h): game.c owns the life economy. */
-u8 g_player_invuln       = 0;   /* set by game.c during death/respawn i-frames */
-u8 g_player_dead_request = 0;   /* set here on a lethal contact, cleared by game.c */
+/* Player hit/life-loss state is now PER-PLAYER (Player.hurt / .invuln / .deadReq
+ * in game.h) so each co-op hero has an independent hurt-flash + death request.
+ * game.c owns the life economy; collision_pass sets each hit player's deadReq. */
 
 /* ---- Tunables (re-expressed from the arcade RE, in native units) ----------
  * The arcade enemyA marches by adding a small per-frame delta to its 24-bit X;
@@ -968,9 +967,7 @@ void entity_init(void)
 {
     u16 i;
     for (i = 0; i < ENTITY_MAX; i++) g_entities[i].active = 0;
-    g_player_hurt         = 0;
-    g_player_invuln       = 0;
-    g_player_dead_request = 0;
+    /* per-player hurt/invuln/deadReq are reset by game_init (in Player). */
     spawn_ambient();            /* stationary fruit collectibles                */
     entity_schedule_init();     /* arm the faithful per-level wave scheduler     */
 }
@@ -983,15 +980,20 @@ void entity_init(void)
  * a player shot is still live. Faithful AND it removes the fire-spam entity pile-up
  * (many coexisting shots was the ~30fps cliff). game.c handles the press-edge
  * debounce; this returns TRUE iff a shot was actually fired. */
-bool entity_player_fire(s16 px, s16 py, u8 facing)
+bool entity_player_fire(u8 owner, s16 px, s16 py, u8 facing)
 {
     u8 i;
-    for (i = 0; i < ENTITY_MAX; i++)               /* arcade single-slot gate ($0E28) */
-        if (g_entities[i].active && g_entities[i].type == ET_SHOT)
+    /* PER-PLAYER single-slot gate: the arcade gives each player its OWN shot pool
+     * (P1 $04E0, P2 $0520), so each may have one shot live independently. Refuse
+     * only while THIS owner's shot is still in flight. */
+    for (i = 0; i < ENTITY_MAX; i++)
+        if (g_entities[i].active && g_entities[i].type == ET_SHOT &&
+            g_entities[i].owner == owner)
             return FALSE;
     {
         Entity *s = entity_spawn(ET_SHOT, px, py);
         if (!s) return FALSE;
+        s->owner  = owner;                         /* credit this player on a kill */
         s->facing = facing;
         s->vx     = facing ? (s16)(-SHOT_SPEED) : (s16)SHOT_SPEED;
         s->vy     = 0;
@@ -1731,9 +1733,9 @@ static void entity_update_one(Entity *e, const Player *p)
  * `en` must use the 16x16 BODY box; the caller does the projectile's tighter AABB
  * itself and calls this only on a confirmed overlap (we re-test the body box for
  * the full-size enemies). */
-static u8 lethal_contact(const Player *p, const Entity *en)
+static u8 lethal_contact(Player *p, const Entity *en)
 {
-    if (g_player_invuln || g_player_dead_request) return 0;
+    if (p->invuln || p->deadReq) return 0;      /* per-player i-frames / pending */
 
     /* For full-size enemies, re-test the body AABB here; the projectile path
      * already overlap-tested with its own box and passes an overlapping en. */
@@ -1741,17 +1743,18 @@ static u8 lethal_contact(const Player *p, const Entity *en)
         !aabb(p->x, p->y, PLAYER_W, PLAYER_H, en->x, en->y, BODY_W, BODY_H))
         return 0;
 
-    g_player_dead_request = 1;                  /* game.c owns the consequence */
-    if (g_player_hurt == 0) g_player_hurt = HURT_FRAMES;
+    p->deadReq = 1;                             /* game.c owns the consequence */
+    if (p->hurt == 0) p->hurt = HURT_FRAMES;
     return 1;
 }
 
 /* Collision pass: SHOT<->ENEMY (defeat + score) and PLAYER<->ENEMY/ITEM. Runs
  * after motion so positions are current this frame. O(N*M) over a 24-slot pool
  * = trivial on the 68000. */
-static void collision_pass(const Player *p)
+static void collision_pass(void)
 {
     u16 i, j;
+    u8  pk;
 
     /* SHOT vs ENEMY: a hit defeats the enemy and consumes the shot, awarding
      * score (arcade: a shot poking an enemy triggers its death sequence
@@ -1800,7 +1803,8 @@ static void collision_pass(const Player *p)
                     en->state = deathState;        /* enter death sequence      */
                     en->timer = ENEMY_DEATH_FRAMES;
                     en->vx    = 0;
-                    g_game.score += award;
+                    /* credit the player whose shot scored the kill (co-op). */
+                    g_game.players[s->owner & 1].score += award;
                     /* NOTE: the arcade shows a score child on enemy kills too
                      * (classK $0ED8), but we DON'T pop a "+N" per kill here -- in a
                      * busy fire-fight that would spawn many concurrent popup-glyph
@@ -1816,9 +1820,16 @@ static void collision_pass(const Player *p)
     }
 
     /* PLAYER vs ENEMY/PROJECTILE (contact-hurt, arcade DCAC) + PLAYER vs ITEM
-     * (collect). Every hostile body -- the ground walker, the flyer, the thrower,
-     * AND the thrower's lobbed projectile -- costs a life on overlap. The lethal
-     * request is gated to one life per touch (see lethal_contact). */
+     * (collect), for EACH active co-op player. Every hostile body -- walker, flyer,
+     * thrower, AND the lobbed projectile -- costs that player a life on overlap; the
+     * lethal request is gated per-player to one life per touch (lethal_contact).
+     * A player who is OUT (flow GAME_OVER) is skipped entirely. Fruit is credited
+     * to whichever player collects it. */
+    for (pk = 0; pk < g_game.numPlayers; pk++)
+    {
+        Player *p = &g_game.players[pk];
+        if (p->flow == FLOW_GAME_OVER) continue;   /* out player: no contact/collect */
+
     for (j = 0; j < ENTITY_MAX; j++)
     {
         Entity *en = &g_entities[j];
@@ -1864,7 +1875,7 @@ static void collision_pass(const Player *p)
                 {
                     u16 val = k_fruit_score[en->fruit < FRUIT_TYPE_COUNT
                                             ? en->fruit : 0];
-                    g_game.score += val;
+                    p->score += val;                 /* credit the collector (co-op) */
                     spawn_popup((s16)(en->x), (s16)(en->y), val);
                     /* Two arcade pickup tiers (latch-verified): 0x02 fires on the
                      * small +10 pickup, 0x0C on the high +500 pickup (a distinct,
@@ -1881,27 +1892,38 @@ static void collision_pass(const Player *p)
                 break;
         }
     }
+    }   /* end per-player loop */
 }
 
 /* ------------------------------------------------------------------------- */
 void entity_update_all(void)
 {
-    const Player *p = &g_game.player;
     u16 i;
+    u8  pk;
 
-    if (g_player_hurt) g_player_hurt--;             /* decay the hurt window     */
+    /* decay each active player's hurt-flash window (per-player). */
+    for (pk = 0; pk < g_game.numPlayers; pk++)
+        if (g_game.players[pk].hurt) g_game.players[pk].hurt--;
 
     /* Faithful per-level wave scheduler: spawn the next scheduled enemies as the
      * camera advances, capped at the arcade on-screen count (no recycle pile-up). */
     entity_schedule_tick();
 
-    for (i = 0; i < ENTITY_MAX; i++)
+    /* Enemy AI tracks a LIVE player: P1 normally, P2 if P1 is out (co-op). (The
+     * arcade tracks the player(s); nearest-of-two targeting is a later refinement.) */
     {
-        Entity *e = &g_entities[i];
-        if (e->active) entity_update_one(e, p);
+        const Player *track = &g_game.players[0];
+        if (g_game.numPlayers > 1 && g_game.players[0].flow == FLOW_GAME_OVER)
+            track = &g_game.players[1];
+
+        for (i = 0; i < ENTITY_MAX; i++)
+        {
+            Entity *e = &g_entities[i];
+            if (e->active) entity_update_one(e, track);
+        }
     }
 
-    collision_pass(p);
+    collision_pass();
 }
 
 /* ------------------------------------------------------------------------- */

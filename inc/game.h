@@ -293,39 +293,45 @@ typedef struct
     u8  tier;          /* tier index the hero is on/heading to (0=bottom..5) */
     u8  climbing;      /* nonzero while climbing/falling (drives climb anim) */
     u8  facing;        /* FACING_LEFT / FACING_RIGHT -> SAT flipH            */
+    u8  which;         /* 0 = P1 (SonSon, anim set + bank0), 1 = P2 (TonTon) */
     u8  anim;          /* walk/climb-cycle frame index (legacy state var)    */
     u8  animTimer;     /* counts down to the next anim step (legacy)         */
     u8  firePrev;      /* fire button state last frame (press-edge debounce) */
     u8  fireAnim;      /* frames left to keep showing the FIRE anim (recoil) */
     Anim av;           /* faithful animation cursor (run/climb/fire/death)   */
     u16 tile;          /* absolute VRAM base tile (SPRITE_SIZE(2,2))        */
+    /* --- per-player GAME state (co-op: each hero owns its own; SonSon's
+     * SONSON/HIGH/TONTON header proves separate scores). Moved here from
+     * GameState in the 2-player split (tools/TWO_PLAYER_SPEC.md). --- */
+    u32 score;         /* this player's running score                        */
+    u8  lives;         /* this player's remaining lives (init g_config.lives) */
+    u8  bonusNextIdx;  /* next bonus-life threshold index (per-player score)  */
+    u8  flow;          /* GameFlow for THIS player (ALIVE/DYING/RESPAWN/OVER) */
+    u16 flowTimer;     /* frames left in this player's DYING/RESPAWNING beat  */
+    u8  deadReq;       /* lethal contact pending (set by entity collision)    */
+    u8  invuln;        /* i-frames: published to the collision pass           */
+    u8  hurt;          /* on-contact hurt-flash countdown (blink)             */
 } Player;
 
 /* ---- Game state -----------------------------------------------------------
  * Small native global state. cameraX is the BG/world scroll origin in px
  * (the world x of the left screen edge); the player is kept roughly centered
  * and the camera is clamped to the level bounds. */
+/* SonSon is 2-player SIMULTANEOUS co-op (tools/TWO_PLAYER_SPEC.md): SonSon (P1)
+ * and TonTon (P2) share ONE auto-scrolling world. players[0]=P1, players[1]=P2;
+ * numPlayers (1 or 2) is set from the front-end (g_numPlayers) in game_init. In a
+ * 1-player game only players[0] runs (arcade $0089 single-player flag). The shared
+ * world (camera/scroll, ribbon, stage/round) lives in GameState; per-player run
+ * state lives in each Player. (Per-player score/lives/flow split lands in a later
+ * phase; for now score/lives/flow below are still shared while only P1 is live.) */
+#define MAX_PLAYERS 2
 typedef struct
 {
-    Player player;
-    u32    score;      /* running score (enemy defeats + item pickups)       */
-    /* --- life economy / flow (Phase 8c game-flow) ---
-     * lives    = remaining lives, initialised from g_config.lives in game_init
-     *            (so the DIP/options LIVES setting takes effect). A life is lost
-     *            on lethal enemy contact; when it would drop below 0 -> GAME OVER.
-     * flow     = the death/respawn/game-over state machine (GameFlow).
-     * flowTimer= frame countdown for the current non-ALIVE phase.            */
-    u8     lives;
-    /* --- extra-life (bonus) economy (arcade DSW2 0x18 thresholds) ---
-     * bonusNextIdx = index of the NEXT not-yet-awarded bonus threshold in the
-     *   active g_config.bonusLife list (see game.c k_bonus_thresholds[]). Each time
-     *   the running score crosses k_bonus_thresholds[bonusLife][bonusNextIdx], a
-     *   life is granted and this advances; when it passes the list end no more
-     *   bonus lives are awarded (the arcade tables are fixed 3-shot / 1-shot lists,
-     *   not "every N"). Reset to 0 in game_init. */
-    u8     bonusNextIdx;
-    u8     flow;       /* GameFlow                                            */
-    u16    flowTimer;  /* frames left in the current DYING/RESPAWNING/GAMEOVER */
+    Player players[MAX_PLAYERS];
+    u8     numPlayers; /* 1 or 2 (from g_numPlayers); >1 enables P2 (TonTon)   */
+    /* NOTE: score / lives / bonusNextIdx / flow / flowTimer are now PER-PLAYER
+     * (in Player) -- SonSon co-op gives each hero its own score + lives + death
+     * flow. The shared WORLD state (camera/scroll, ribbon, stage/round) stays here. */
     /* --- round / stage progression (seamless looping ribbon) ---
      * round    = the ribbon SEGMENT (baked scenery) currently under the camera,
      *            1-based (segIdx+1, cycles 1..8). Set by segment_advance() the
@@ -371,6 +377,11 @@ extern u8 g_mode;
  * title then begins a real game). Set/cleared by title_attract_run (title.c). */
 extern volatile u8 g_attract;
 extern volatile u8 g_attract_started;
+
+/* Number of players for the NEXT game (1 or 2), chosen at the front-end: the home
+ * menu "1 PLAYER"/"2 PLAYERS" rows and the arcade 1P/2P start. game_init copies it
+ * into g_game.numPlayers. SonSon is simultaneous co-op (tools/TWO_PLAYER_SPEC.md). */
+extern volatile u8 g_numPlayers;
 
 /* ===========================================================================
  *  GameConfig -- the front-end-selected game parameters (Phase 8b).

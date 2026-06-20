@@ -13,13 +13,17 @@ scene=json.load(open(os.path.join(HERE,"title_capture.json")))
 roms=G.Roms(os.path.join(G.REPO,"arcade"))
 pack,nametable,sprites,n_char=G.assemble(roms,scene,BASE)
 
-# Append the full alphabet A-Z in the arcade font at the prompt's color bank (4),
-# as a CONTIGUOUS block, so the renderer can draw home-mode text. Arcade char code
-# for a letter = 17 + (letter-'A'); space = 16.
-GLYPH_LOCAL = pack.total_tiles
-for code in range(17, 17 + 26):          # 'A'..'Z'
-    pack.tiles.extend(G.bake_char_tile(roms, code, 4))
-GLYPH_BASE = BASE + GLYPH_LOCAL          # absolute VRAM tile index of 'A'
+# Append CONTIGUOUS arcade-font glyph blocks (char codes 0..42) at the title's
+# WHITE (bank 3) and RED (bank 4) color banks, so the renderer can draw home-mode
+# menu text with a red-selected / white-unselected highlight (the deprecated port's
+# look). Arcade char codes: digits 0-9 = 0-9, space = 16, A-Z = 17-42. Tile for a
+# char code c = SS_TITLE_GLYPH_W + c (white) or SS_TITLE_GLYPH_R + c (red).
+GLYPH_W_LOCAL = pack.total_tiles
+for code in range(0, 43): pack.tiles.extend(G.bake_char_tile(roms, code, 3))   # white
+GLYPH_R_LOCAL = pack.total_tiles
+for code in range(0, 43): pack.tiles.extend(G.bake_char_tile(roms, code, 4))   # red
+GLYPH_W = BASE + GLYPH_W_LOCAL
+GLYPH_R = BASE + GLYPH_R_LOCAL
 n=pack.total_tiles
 
 h=open(os.path.join(G.REPO,"inc","ss_title.h"),"w",newline="\n")
@@ -29,7 +33,10 @@ h.write("#ifndef SS_TITLE_H\n#define SS_TITLE_H\n#include <genesis.h>\n#include 
 h.write("#define SS_TITLE_TILE_BASE   %d\n"%BASE)
 h.write("#define SS_TITLE_TILE_COUNT  %d\n"%n)
 h.write("#define SS_TITLE_CHAR_TILE_COUNT %d\n"%n_char)
-h.write("#define SS_TITLE_GLYPH_BASE  %d   /* abs VRAM tile of 'A' (arcade font, bank4) */\n"%GLYPH_BASE)
+h.write("/* glyph blocks: tile for arcade char code c = SS_TITLE_GLYPH_{W,R} + c\n")
+h.write(" * (digits 0-9, space 16, A-Z 17-42). W = white (bank3), R = red (bank4). */\n")
+h.write("#define SS_TITLE_GLYPH_W  %d\n"%GLYPH_W)
+h.write("#define SS_TITLE_GLYPH_R  %d\n"%GLYPH_R)
 h.write("#define SS_TITLE_SPRITE_COUNT %d\n\n"%len(sprites))
 h.write("extern const u32 ss_title_tiles[SS_TITLE_TILE_COUNT*8];\n")
 h.write("extern const u16 ss_title_nametable[32*32];\n")
