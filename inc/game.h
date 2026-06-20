@@ -365,6 +365,13 @@ extern const SsLevel *g_curLevel;
  * options branch -- Phase 8b). */
 extern u8 g_mode;
 
+/* ATTRACT (self-playing demo) state. g_attract: while nonzero, game_update drives
+ * the player from an autopilot pad (not JOY) and game_run polls START to abort.
+ * g_attract_started: set TRUE if the player pressed START during the demo (the
+ * title then begins a real game). Set/cleared by title_attract_run (title.c). */
+extern volatile u8 g_attract;
+extern volatile u8 g_attract_started;
+
 /* ===========================================================================
  *  GameConfig -- the front-end-selected game parameters (Phase 8b).
  * ===========================================================================

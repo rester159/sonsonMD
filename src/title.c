@@ -76,10 +76,10 @@ static void title_draw(void)
 /* Show the title screen and wait for START. Returns when the player starts
  * (caller then runs a real game). Idle timeout -> run the attract demo, then
  * redraw the title. mode selects the arcade/home flavor (prompt text TODO). */
+#define TITLE_IDLE_FRAMES  900      /* ~15s on the title with no input -> attract demo */
+
 void title_attract_run(u8 mode)
 {
-    u16 prevDown = 1;           /* swallow a button held over from the prior screen */
-    u16 settle = 0;
     const u16 GO = (u16)(BUTTON_START | BUTTON_A | BUTTON_B | BUTTON_C);
     (void)mode;
 
@@ -87,17 +87,41 @@ void title_attract_run(u8 mode)
     JOY_setSupport(PORT_1, JOY_SUPPORT_3BTN);
     JOY_setSupport(PORT_2, JOY_SUPPORT_3BTN);
 
-    title_draw();
-
+    /* Arcade attract cycle: TITLE (wait for START / idle timeout) <-> self-playing
+     * DEMO, until the player starts. */
     for (;;)
     {
-        u16 joy, downNow;
-        VDP_waitVSync();
-        JOY_update();           /* engine vint is OFF in the front-end -> refresh */
-        joy = (u16)(JOY_readJoypad(JOY_1) | JOY_readJoypad(JOY_2));
-        downNow = (joy & GO) ? 1 : 0;
-        if (settle < 20) { settle++; prevDown = downNow; continue; }
-        if (downNow && !prevDown) return;       /* fresh press -> begin the game */
-        prevDown = downNow;
+        u16 prevDown = 1;       /* swallow a button held over from the prior stage */
+        u16 settle = 0;
+        u32 idle = 0;
+        u8  toDemo = 0;
+
+        title_draw();
+
+        for (;;)
+        {
+            u16 joy, downNow;
+            VDP_waitVSync();
+            JOY_update();       /* engine vint is OFF in the front-end -> refresh */
+            joy = (u16)(JOY_readJoypad(JOY_1) | JOY_readJoypad(JOY_2));
+            downNow = (joy & GO) ? 1 : 0;
+            if (settle < 20) { settle++; prevDown = downNow; continue; }
+            if (downNow && !prevDown) return;   /* fresh press -> begin a real game */
+            prevDown = downNow;
+            if (++idle >= TITLE_IDLE_FRAMES) { toDemo = 1; break; }
+        }
+
+        if (toDemo)
+        {
+            /* Run a self-playing demo (game_run drives the player from attract_pad
+             * and polls START to abort). It ends on demo game-over or the time cap,
+             * then we redraw the title. A START during the demo starts a real game. */
+            g_attract = 1;
+            g_attract_started = 0;
+            game_run();
+            g_attract = 0;
+            if (g_attract_started) return;      /* START during demo -> real game */
+            /* else: demo ended -> loop back and redraw the title */
+        }
     }
 }

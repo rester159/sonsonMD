@@ -54,6 +54,11 @@ const SsLevel *g_curLevel = &ss_levels[0];
 volatile u16   g_levelW   = 0;
 static u8      g_levelIdx = 0;
 
+/* ATTRACT demo state (see game.h). */
+volatile u8    g_attract = 0;
+volatile u8    g_attract_started = 0;
+#define ATTRACT_MAX_FRAMES  2400      /* ~40s demo cap (else ends on demo game-over) */
+
 /* RIBBON GEOMETRY (px). Computed once in game_init from ss_ribbon_col0[]. The
  * ribbon LOOPS at g_ribbonW: cameraX (and the player / entities / spawn cursor)
  * are wrapped by this so a long session never overflows s16 -- the wrap is
@@ -97,6 +102,19 @@ static inline u16 ribbon_wrap_col(s16 c)
  * a lower rate (the loop runs less often than the 60Hz V-blank). Harmless in
  * the shipped game (a single counter). */
 volatile u32 g_frameCounter = 0;
+
+/* Autopilot pad for the attract demo: walk forward (RIGHT), fire on a cadence,
+ * and weave tiers (Up/Down) so the demo navigates like the arcade's. Driven by
+ * g_frameCounter so it's deterministic. */
+static u16 attract_pad(void)
+{
+    u16 pad = BUTTON_RIGHT;
+    u32 t = g_frameCounter;
+    if ((t % 16) < 3)        pad |= BUTTON_B;     /* steady fire stream     */
+    if ((t % 200) < 24)      pad |= BUTTON_UP;    /* climb to a higher tier */
+    else if ((t % 200) < 48) pad |= BUTTON_DOWN;  /* drop back down         */
+    return pad;
+}
 
 /* Mode chosen at the front-end selector (set by main.c after selector_run).
  * Defaults to MODE_ARCADE (0). The game can read this for mode-specific
@@ -919,7 +937,7 @@ bool game_update(void)
     /* Player control: live only while ALIVE or RESPAWNING (he moves during the
      * i-frames). DYING / GAME_OVER coast on a zero pad (no input). */
     if (g_game.flow == FLOW_ALIVE || g_game.flow == FLOW_RESPAWNING)
-        player_control(JOY_readJoypad(JOY_1));
+        player_control(g_attract ? attract_pad() : JOY_readJoypad(JOY_1));
     else
         player_control(0);
 
@@ -1267,6 +1285,7 @@ void game_render(void)
  *  so the busy-scene frame budget is untouched. */
 void game_run(void)
 {
+    u16 demoT = 0;
     game_init();
     while (TRUE)
     {
@@ -1274,6 +1293,11 @@ void game_run(void)
         game_render();
         SYS_doVBlankProcess();
         if (done) break;           /* GAME OVER finished -> back to the selector */
+        if (g_attract)             /* attract demo: abort on START, else time-cap */
+        {
+            if (JOY_readJoypad(JOY_1) & BUTTON_START) { g_attract_started = 1; break; }
+            if (++demoT >= ATTRACT_MAX_FRAMES) break;
+        }
     }
 
     /* AUDIO teardown: stop the music/SFX, silence the chips, and DETACH the
