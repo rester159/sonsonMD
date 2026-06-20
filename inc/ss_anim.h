@@ -18,8 +18,8 @@
 #define SS_ANIM_TILE_BASE   346
 
 /* Total baked 8x8 tiles (deduped 16x16 frames * 4). */
-#define SS_ANIM_TILE_COUNT  220
-#define SS_ANIM_FRAME_COUNT 55   /* distinct 16x16 frames (deduped) */
+#define SS_ANIM_TILE_COUNT  224
+#define SS_ANIM_FRAME_COUNT 56   /* distinct 16x16 frames (deduped) */
 
 /* Baked 4bpp Genesis tiles: SS_ANIM_TILE_COUNT tiles, 8 u32 each
  * (one 8px row/long, hi nibble = leftmost px); sprite frames in
@@ -53,27 +53,28 @@ typedef enum {
     SS_ANIM_THROWER_THROW = 9,
     SS_ANIM_THROWER_DEATH = 10,
     SS_ANIM_ESHOT_FLY = 11,
-    SS_ANIM_CREG_WALK = 12,
-    SS_ANIM_CREG_THROW = 13,
-    SS_ANIM_CREG_DEATH = 14,
-    SS_ANIM_CREC_WALK = 15,
-    SS_ANIM_CREC_DEATH = 16,
-    SS_ANIM_CMPE_WALK = 17,
-    SS_ANIM_CMPE_DEATH = 18,
-    SS_ANIM_HOP_HOP = 19,
-    SS_ANIM_HOP_DEATH = 20,
-    SS_ANIM_FRUIT_CHERRY = 21,
-    SS_ANIM_FRUIT_ORANGE = 22,
-    SS_ANIM_FRUIT_APPLE = 23,
-    SS_ANIM_FRUIT_GOLD = 24,
-    SS_ANIM_LARGE_WALK = 25,
-    SS_ANIM_LARGE_DEATH = 26,
-    SS_ANIM_EMIT_IDLE = 27,
-    SS_ANIM_EMIT_FIRE = 28,
-    SS_ANIM_EMIT_DEATH = 29,
-    SS_ANIM_ORB_FLOAT = 30,
-    SS_ANIM_ORB_DEATH = 31,
-    SS_ANIM_COUNT = 32
+    SS_ANIM_ELOB = 12,
+    SS_ANIM_CREG_WALK = 13,
+    SS_ANIM_CREG_THROW = 14,
+    SS_ANIM_CREG_DEATH = 15,
+    SS_ANIM_CREC_WALK = 16,
+    SS_ANIM_CREC_DEATH = 17,
+    SS_ANIM_CMPE_WALK = 18,
+    SS_ANIM_CMPE_DEATH = 19,
+    SS_ANIM_HOP_HOP = 20,
+    SS_ANIM_HOP_DEATH = 21,
+    SS_ANIM_FRUIT_CHERRY = 22,
+    SS_ANIM_FRUIT_ORANGE = 23,
+    SS_ANIM_FRUIT_APPLE = 24,
+    SS_ANIM_FRUIT_GOLD = 25,
+    SS_ANIM_LARGE_WALK = 26,
+    SS_ANIM_LARGE_DEATH = 27,
+    SS_ANIM_EMIT_IDLE = 28,
+    SS_ANIM_EMIT_FIRE = 29,
+    SS_ANIM_EMIT_DEATH = 30,
+    SS_ANIM_ORB_FLOAT = 31,
+    SS_ANIM_ORB_DEATH = 32,
+    SS_ANIM_COUNT = 33
 } SSAnimId;
 
 extern const SSAnim ss_anims[SS_ANIM_COUNT];

@@ -432,6 +432,7 @@ static u8 thrower_fire_period(void)
 #define FLYER_TILE          (ss_anims[SS_ANIM_FLYER_FLY].frames[0].tile)
 #define THROWER_TILE        (ss_anims[SS_ANIM_THROWER_IDLE].frames[0].tile)
 #define ESHOT_TILE          (ss_anims[SS_ANIM_ESHOT_FLY].frames[0].tile)
+#define ELOB_TILE           (ss_anims[SS_ANIM_ELOB].frames[0].tile)  /* classI enemy lob */
 /* Batch-2 archetypes (cold-start = walk/hop frame 0). */
 #define CREG_TILE           (ss_anims[SS_ANIM_CREG_WALK].frames[0].tile)
 #define CREC_TILE           (ss_anims[SS_ANIM_CREC_WALK].frames[0].tile)
@@ -532,8 +533,11 @@ Entity *entity_spawn(u8 type, s16 x, s16 y)
 
             case ET_ENEMY_SHOT:
                 e->hp   = 0;
-                anim_restart(&e->av, SS_ANIM_ESHOT_FLY);
-                e->tile = ESHOT_TILE;
+                /* ENEMY lobbed shot = classI, the green creature codes 96-109 bank9
+                 * (RE'd from the $0DA8 pool capture) -- a DIFFERENT sprite from the
+                 * player bullet (70/71). Uses its own SS_ANIM_ELOB. */
+                anim_restart(&e->av, SS_ANIM_ELOB);
+                e->tile = ELOB_TILE;
                 /* vx / vy set by the thrower at launch (toward the player) */
                 break;
 
@@ -1355,7 +1359,7 @@ static void entity_update_one(Entity *e, const Player *p)
          * or leaves the view / max-life. */
         case ET_ENEMY_SHOT:
         {
-            anim_set(&e->av, SS_ANIM_ESHOT_FLY);
+            anim_set(&e->av, SS_ANIM_ELOB);                /* classI green-creature lob */
             e->tile = anim_tick(&e->av);
 
             e->vy += ESHOT_GRAVITY;                        /* gravity -> the arc */

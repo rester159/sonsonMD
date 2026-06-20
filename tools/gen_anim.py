@@ -177,7 +177,12 @@ ANIMS = [
 
     # ---- ENEMY SHOT / lobbed projectile (classI $D352): a small fireball that
     # flickers between two cells as it arcs (2-frame loop). ----
+    # ESHOT_FLY = the PLAYER bullet (codes 70/71, the small dot -- confirmed). The
+    # ENEMY lobbed shot (classI) is a DIFFERENT sprite: pool capture ($0DA8) shows
+    # the green creature codes 96-109 bank9 (4 lobbed instances at varied Y). So the
+    # enemy lob gets its own ELOB anim; player keeps ESHOT_FLY.
     ("ESHOT_FLY",    True,  [(70, ENEMY_BANK, 4), (71, ENEMY_BANK, 4)]),
+    ("ELOB",         True,  [(96, 9, 4), (108, 9, 4)]),
 
     # =======================================================================
     #  BATCH 2 -- four more SPAWNED archetypes (census `spawn=true` families),
@@ -193,8 +198,10 @@ ANIMS = [
     #   of a red/tan creature. RE-CONFIRMED from code + render (tools/cmp_creg.py).
     #   The old 272-274 bank2 was a wrong "eyeballed" pick. THROW reuses the same
     #   creature frames (the exact arcade lunge pose is a refinement). ----
-    ("CREG_WALK",   True,  [(168, 12, 6), (169, 12, 6), (170, 12, 6), (169, 12, 6)]),
-    ("CREG_THROW",  False, [(170, 12, 8), (169, 12, 6)]),
+    # classG body is codes 160-162 bank12 (definitive wave-swept pool capture,
+    # tools/arc_roster.txt: $0C28 dominant 161 b12). 168-170 was a wrong sub-state.
+    ("CREG_WALK",   True,  [(160, 12, 6), (161, 12, 6), (162, 12, 6), (161, 12, 6)]),
+    ("CREG_THROW",  False, [(162, 12, 8), (161, 12, 6)]),
     ("CREG_DEATH",  False, SHARED_BURST),
 
     # ---- CREATURE_C (classC creature family): the body anim script is set at spawn
@@ -261,7 +268,11 @@ ANIMS = [
     #   THROW-less. Death = shared burst. (Native HP is 3, not the arcade 7 --
     #   see entity.c TODO; the literal 4-sprite composite render needs the $F2F8
     #   program-ROM sprite-assembly table, not in the gfx bake -- TODO there too.)
-    ("LARGE_WALK",  True,  [(322, ENEMY_BANK, 7), (323, ENEMY_BANK, 7)]),
+    # obj16x16 is a multi-piece composite; pool capture ($0E48) shows codes
+    # 360 b0 / 361 b1 / 362 b2 (distinct banks/positions per piece). The native
+    # renders ONE 16x16, so we use the dominant piece 362 b2 as a representative
+    # (a lossy simplification of the composite; was a wrong 322/323 pick).
+    ("LARGE_WALK",  True,  [(362, 2, 8)]),
     ("LARGE_DEATH", False, SHARED_BURST),
 
     # ---- EMITTER (classD projectile/thrower family, spawn $BF6B idx0; the
@@ -271,8 +282,10 @@ ANIMS = [
     #   periodically FIRES a projectile (re-using the classI ENEMY_SHOT). FLY =
     #   a distinct white dragonfly/stinger insect pair 318/319 (it hovers in
     #   place, wings flicking, and looses shots). Death = shared burst. ----
-    ("EMIT_IDLE",   True,  [(318, ENEMY_BANK, 6), (319, ENEMY_BANK, 6)]),
-    ("EMIT_FIRE",   False, [(319, ENEMY_BANK, 8), (318, ENEMY_BANK, 6)]),
+    # classD body = code 23 bank25 (definitive pool capture, $0AE8 dominant 23 b25;
+    # same shape family as classC but the bank-25 color). Was a wrong 318/319 pick.
+    ("EMIT_IDLE",   True,  [(23, 25, 6), (22, 25, 6)]),
+    ("EMIT_FIRE",   False, [(23, 25, 8), (22, 25, 6)]),
     ("EMIT_DEATH",  False, SHARED_BURST),
 
     # ---- ORB (objSingle unique object, spawn $E1C4 -> behaviour $E1F5; a
