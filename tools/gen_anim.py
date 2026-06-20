@@ -212,11 +212,16 @@ ANIMS = [
     ("CMPE_WALK",   True,  [(110, 4, 6), (111, 4, 6), (112, 4, 6), (111, 4, 6)]),
     ("CMPE_DEATH",  False, SHARED_BURST),
 
-    # ---- HOPPER (classH scrolling actor, spawn $CF39, leaping hopper $D0A2/
-    #   $D0B5, tracking walker $D02D): a white duck/penguin hopper. HOP = the
-    #   388/389 pair (flapped on the up-arc; the engine holds frame 0 grounded and
-    #   cycles airborne). Death = shared burst. ----
-    ("HOP_HOP",     True,  [(388, ENEMY_BANK, 6), (389, ENEMY_BANK, 6)]),
+    # ---- HOPPER (classH): the body anim script, set at spawn $CF39 -> $D1A2 via
+    #   table $D1B5 -> script $D1BD = codes 304,305,306 bank2 -- i.e. classH renders
+    #   the SAME walker sprite as enemyMain (its death script $D1CB even uses the
+    #   walker death frames 307-310). RE-CONFIRMED from code + the live pool read of
+    #   $0CE8. The old 388/389 (a bird) was a wrong "eyeballed" pick. classH is the
+    #   2nd-most-common class (34 waves) and is fundamentally a tracking walker that
+    #   sometimes hops -- so its sprite is the walker. (Behavioral note: the native's
+    #   always-leaping HOPPER AI is a separate, deeper mismap -- classH mostly WALKS
+    #   ($D02D tracking-walker) -- left for a later behavioral pass.) ----
+    ("HOP_HOP",     True,  [(304, ENEMY_BANK, 6), (305, ENEMY_BANK, 6), (306, ENEMY_BANK, 6), (305, ENEMY_BANK, 6)]),
     ("HOP_DEATH",   False, SHARED_BURST),
 
     # =======================================================================

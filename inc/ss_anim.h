@@ -18,8 +18,8 @@
 #define SS_ANIM_TILE_BASE   346
 
 /* Total baked 8x8 tiles (deduped 16x16 frames * 4). */
-#define SS_ANIM_TILE_COUNT  224
-#define SS_ANIM_FRAME_COUNT 56   /* distinct 16x16 frames (deduped) */
+#define SS_ANIM_TILE_COUNT  216
+#define SS_ANIM_FRAME_COUNT 54   /* distinct 16x16 frames (deduped) */
 
 /* Baked 4bpp Genesis tiles: SS_ANIM_TILE_COUNT tiles, 8 u32 each
  * (one 8px row/long, hi nibble = leftmost px); sprite frames in
