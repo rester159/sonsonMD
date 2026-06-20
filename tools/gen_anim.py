@@ -187,12 +187,14 @@ ANIMS = [
     #  distinct + non-blank via tools/sheet_browse.py + sheet_pick.py); the AI is
     #  the behavioural RE. All drive the same anim runtime (anim_tick / sub_9617).
     # =======================================================================
-    # ---- CREATURE_G (classG ground creature, spawn $C6DA, walk $C744, throw
-    #   $C7F2, hop $C920, death $C9A0): a red/orange horned demon-creature. WALK
-    #   = the 272/273 stride pair; THROW = a brief 274 lunge on the lob (one-shot,
-    #   like the player FIRE / thrower THROW). Death reuses the shared burst. ----
-    ("CREG_WALK",   True,  [(272, ENEMY_BANK, 6), (273, ENEMY_BANK, 6)]),
-    ("CREG_THROW",  False, [(274, ENEMY_BANK, 8), (272, ENEMY_BANK, 6)]),
+    # ---- CREATURE_G (classG ground creature): the BODY anim script classG runs is
+    #   $CB7A (set via the handler's table at $C805 -> $CB7A/$CB88), which decodes to
+    #   codes 168,169,170 bank12 -- a looping 3-frame walk cycle (168->169->170->169)
+    #   of a red/tan creature. RE-CONFIRMED from code + render (tools/cmp_creg.py).
+    #   The old 272-274 bank2 was a wrong "eyeballed" pick. THROW reuses the same
+    #   creature frames (the exact arcade lunge pose is a refinement). ----
+    ("CREG_WALK",   True,  [(168, 12, 6), (169, 12, 6), (170, 12, 6), (169, 12, 6)]),
+    ("CREG_THROW",  False, [(170, 12, 8), (169, 12, 6)]),
     ("CREG_DEATH",  False, SHARED_BURST),
 
     # ---- CREATURE_C (classC creature family, spawn $BC20, flyer dispatch $BC6C,
