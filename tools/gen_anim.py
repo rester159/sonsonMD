@@ -197,10 +197,14 @@ ANIMS = [
     ("CREG_THROW",  False, [(170, 12, 8), (169, 12, 6)]),
     ("CREG_DEATH",  False, SHARED_BURST),
 
-    # ---- CREATURE_C (classC creature family, spawn $BC20, flyer dispatch $BC6C,
-    #   walk $BC74): a blue/gray robed humanoid. WALK = the 264/265 pair (the
-    #   family's on-screen stride). Death = shared burst. ----
-    ("CREC_WALK",   True,  [(264, ENEMY_BANK, 6), (265, ENEMY_BANK, 6)]),
+    # ---- CREATURE_C (classC creature family): the body anim script is set at spawn
+    #   $BC20 ($BC2F: `LDD #$BD01; STD -$2,X`) and the move handler $BC6C does NOT
+    #   change it -> script $BD01 = codes 16,17,18 bank5, a LOOPING anim (16->17->18
+    #   ->17). RE'd from code; rendered it's a small creature with an extended
+    #   beam/tongue element (an unusual but genuine arcade sprite -- this is what
+    #   classC renders throughout). The old 264/265 bank2 was a wrong "eyeballed"
+    #   pick (an unrelated robot). Code is ground truth over appearance. ----
+    ("CREC_WALK",   True,  [(16, 5, 6), (17, 5, 6), (18, 5, 6), (17, 5, 6)]),
     ("CREC_DEATH",  False, SHARED_BURST),
 
     # ---- COMPOSITE_E (classE large entity): the WALK body. classE's walker AI
