@@ -2007,7 +2007,15 @@ u16 entity_render_all(u16 *sat, u16 firstSlot)
         sat[slot * 4 + 0] = (u16)((0x80 + sy) & 0x3FF);
         /* link to the NEXT slot; the loop tail patches the final link to 0 */
         sat[slot * 4 + 1] = (u16)((SPRITE_SIZE(2, 2) << 8) | (slot + 1));
-        sat[slot * 4 + 2] = (u16)TILE_ATTR_FULL(PAL1, 0, 0, e->facing, e->tile);
+        /* flipH = !facing: the arcade ENEMY/projectile sprite art is drawn facing
+         * LEFT at flip0 (opposite the PLAYER art, which faces right at flip0 -- the
+         * player render in game.c uses flipH=facing and is correct). The AI sets
+         * e->facing toward the player CORRECTLY (verified live: facing values track
+         * the player's side), so only the sprite orientation was inverted -- enemies
+         * faced AWAY from the player, and throwers visually faced/"shot" backward
+         * toward other enemies. Inverting the flip here makes every enemy face the
+         * player, matching the arcade (white skulls face the hero, tools/arcdemo). */
+        sat[slot * 4 + 2] = (u16)TILE_ATTR_FULL(PAL1, 0, 0, (u8)(!e->facing), e->tile);
         sat[slot * 4 + 3] = (u16)((0x80 + sx) & 0x1FF);
 
         slot++;
