@@ -203,10 +203,13 @@ ANIMS = [
     ("CREC_WALK",   True,  [(264, ENEMY_BANK, 6), (265, ENEMY_BANK, 6)]),
     ("CREC_DEATH",  False, SHARED_BURST),
 
-    # ---- COMPOSITE_E (classE large entity, gate-spawn $C306, walker AI
-    #   $C350/$C35E, composite emitter $F2B3): a white-helmeted armored soldier --
-    #   the "tougher" 2-HP lane walker. WALK = 352/353. Death = shared burst. ----
-    ("CMPE_WALK",   True,  [(352, ENEMY_BANK, 7), (353, ENEMY_BANK, 7)]),
+    # ---- COMPOSITE_E (classE large entity): the WALK body. classE's walker AI
+    #   $C350 calls $C4B5, which sets the anim script from table $C4C8 (indexed by
+    #   variant): scripts $C4E8.. decode to codes 110-121 bank4 (4 variants, each a
+    #   looping 3-frame walk 110->111->112->111). RE-CONFIRMED from code (the script
+    #   LOOPS -> walk, not a one-shot death) + render (tools/cmp_cmpe.py). The old
+    #   352/353 bank2 was a wrong "eyeballed" pick. Variant 0 = 110-112. ----
+    ("CMPE_WALK",   True,  [(110, 4, 6), (111, 4, 6), (112, 4, 6), (111, 4, 6)]),
     ("CMPE_DEATH",  False, SHARED_BURST),
 
     # ---- HOPPER (classH scrolling actor, spawn $CF39, leaping hopper $D0A2/
