@@ -152,10 +152,12 @@ ANIMS = [
     # engine despawns at the end of the last frame.
     ("ENEMY_DEATH",  False, SHARED_BURST),
 
-    # ---- FLYER (classF $DF18/$DF90): a 2-frame wing-flap glide loop. The flyer
-    # glides its arc/path then dives; both phases share this flap (the arcade
-    # swaps the anim SCRIPT on the dive, but the on-screen cell set is this pair).
-    ("FLYER_FLY",    True,  [(296, ENEMY_BANK, 5), (297, ENEMY_BANK, 5)]),
+    # ---- FLYER (classF): the BODY anim script, read from the arcade spawn handler
+    # $DED8: `LDD #$E040; STD -$2,X` -> script $E040 = codes 183,184,185 bank15
+    # (3-frame wing-flap loop 183->184->185->184; variant $E032 is the same codes
+    # mirrored). RE-CONFIRMED from code + rendered ROM gfx (a blue/orange winged
+    # creature). The old 296/297 bank2 was a wrong "eyeballed" pick (a red cluster).
+    ("FLYER_FLY",    True,  [(183, 15, 4), (184, 15, 4), (185, 15, 4), (184, 15, 4)]),
     # FLYER DEATH: the flyer's OWN distinct burst (bank 9 codes 110..119 -- green
     # body parts + yellow sparks scattering, NOT the walker's white debris). Frame
     # order is the authoritative arcade sheet; cadence modeled on the walker burst
