@@ -12,6 +12,14 @@ BASE=0
 scene=json.load(open(os.path.join(HERE,"title_capture.json")))
 roms=G.Roms(os.path.join(G.REPO,"arcade"))
 pack,nametable,sprites,n_char=G.assemble(roms,scene,BASE)
+
+# Append the full alphabet A-Z in the arcade font at the prompt's color bank (4),
+# as a CONTIGUOUS block, so the renderer can draw home-mode text. Arcade char code
+# for a letter = 17 + (letter-'A'); space = 16.
+GLYPH_LOCAL = pack.total_tiles
+for code in range(17, 17 + 26):          # 'A'..'Z'
+    pack.tiles.extend(G.bake_char_tile(roms, code, 4))
+GLYPH_BASE = BASE + GLYPH_LOCAL          # absolute VRAM tile index of 'A'
 n=pack.total_tiles
 
 h=open(os.path.join(G.REPO,"inc","ss_title.h"),"w",newline="\n")
@@ -21,6 +29,7 @@ h.write("#ifndef SS_TITLE_H\n#define SS_TITLE_H\n#include <genesis.h>\n#include 
 h.write("#define SS_TITLE_TILE_BASE   %d\n"%BASE)
 h.write("#define SS_TITLE_TILE_COUNT  %d\n"%n)
 h.write("#define SS_TITLE_CHAR_TILE_COUNT %d\n"%n_char)
+h.write("#define SS_TITLE_GLYPH_BASE  %d   /* abs VRAM tile of 'A' (arcade font, bank4) */\n"%GLYPH_BASE)
 h.write("#define SS_TITLE_SPRITE_COUNT %d\n\n"%len(sprites))
 h.write("extern const u32 ss_title_tiles[SS_TITLE_TILE_COUNT*8];\n")
 h.write("extern const u16 ss_title_nametable[32*32];\n")

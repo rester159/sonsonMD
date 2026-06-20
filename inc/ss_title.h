@@ -6,8 +6,9 @@
 #include "ss_gfx.h" /* SSSprite + ss_pal_char/sprite */
 
 #define SS_TITLE_TILE_BASE   0
-#define SS_TITLE_TILE_COUNT  149
+#define SS_TITLE_TILE_COUNT  175
 #define SS_TITLE_CHAR_TILE_COUNT 137
+#define SS_TITLE_GLYPH_BASE  149   /* abs VRAM tile of 'A' (arcade font, bank4) */
 #define SS_TITLE_SPRITE_COUNT 24
 
 extern const u32 ss_title_tiles[SS_TITLE_TILE_COUNT*8];

@@ -73,6 +73,26 @@ static void title_draw(void)
     title_sprites();
 }
 
+/* HOME variant: overwrite the arcade "PLEASE DEPOSIT COIN" prompt (dest row 12,
+ * the arcade's row 13 after the 1-row up-shift) with "PRESS START" in the arcade
+ * font (the appended A-Z glyph block). A console port has no coin slot. */
+static void title_home_prompt(void)
+{
+    static const char S[] = "PRESS START";
+    const u16 blank = ss_title_nametable[0];          /* a known-blank title cell */
+    const u16 len   = (u16)(sizeof(S) - 1);
+    const u16 start = (u16)((32 - len) / 2);
+    u16 i;
+    for (i = 0; i < 32; i++) VDP_setTileMapXY(BG_A, blank, i, 12);   /* clear row */
+    for (i = 0; S[i]; i++)
+    {
+        if (S[i] == ' ') continue;
+        VDP_setTileMapXY(BG_A,
+            (u16)TILE_ATTR_FULL(PAL0, 0, 0, 0, SS_TITLE_GLYPH_BASE + (S[i] - 'A')),
+            (u16)(start + i), 12);
+    }
+}
+
 /* Show the title screen and wait for START. Returns when the player starts
  * (caller then runs a real game). Idle timeout -> run the attract demo, then
  * redraw the title. mode selects the arcade/home flavor (prompt text TODO). */
@@ -81,7 +101,6 @@ static void title_draw(void)
 void title_attract_run(u8 mode)
 {
     const u16 GO = (u16)(BUTTON_START | BUTTON_A | BUTTON_B | BUTTON_C);
-    (void)mode;
 
     /* 3-button mode (kill the 6-button TH phantom presses, as the selector does). */
     JOY_setSupport(PORT_1, JOY_SUPPORT_3BTN);
@@ -97,6 +116,7 @@ void title_attract_run(u8 mode)
         u8  toDemo = 0;
 
         title_draw();
+        if (mode == MODE_HOME) title_home_prompt();   /* "PRESS START" (no coin slot) */
 
         for (;;)
         {
