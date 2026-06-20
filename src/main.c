@@ -90,6 +90,11 @@ int main(bool hardReset)
         VDP_setScreenWidth256();
         VDP_setPlaneSize(64, 32, TRUE);
 
+        /* Arcade TITLE screen + attract: the baked "SONSON" title (RE'd from the
+         * real machine) in the game's H32 mode. Blocks until START, then a real
+         * game begins. (Idle attract demo: TODO next.) */
+        title_attract_run(g_mode);
+
         /* Play one session. game_run() does game_init() (re-inits palettes /
          * tiles / planes + reads g_config.lives) then runs the update/render/
          * V-blank loop, returning here when the game is over -> back to the

@@ -39,6 +39,11 @@ void capcom_splash_run(void);
  * Blocks until the player picks a mode; returns MODE_ARCADE or MODE_HOME. */
 u8 selector_run(void);
 
+/* Arcade TITLE screen + ATTRACT loop (RE'd from the real machine): the baked
+ * "SONSON" title (logo + score/HIGH header + deposit-coin prompt + flanking
+ * characters). Runs in the game's H32 video mode. Blocks until START. */
+void title_attract_run(u8 mode);
+
 /* ARCADE branch (Phase 8b): the authentic arcade DIP-switch / service screen.
  * Presents SonSon's real DIP bank (Coinage, Lives, Bonus, Difficulty, Demo
  * Sounds, Flip, ...) as a scrollable toggle list; Up/Down move, Left/Right
