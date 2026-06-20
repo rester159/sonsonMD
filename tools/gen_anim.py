@@ -171,8 +171,12 @@ ANIMS = [
     # ---- THROWER (enemyMain idx4 $BAB3): IDLE = the standing/approach pair the
     # walker-class thrower shows while closing on the player; THROW = a brief
     # one-shot lunge (321 held) on the lob, mirroring the player FIRE stab. ----
-    ("THROWER_IDLE", True,  [(320, ENEMY_BANK, 6), (321, ENEMY_BANK, 6)]),
-    ("THROWER_THROW",False, [(321, ENEMY_BANK, 8), (320, ENEMY_BANK, 6)]),
+    # THROWER = enemyMain ($0828), the white ghost/skull-faced enemy with a red eye:
+    # codes 136-143 bank10 (definitive isolated capture, tools/arc_enemymain.txt --
+    # pinned the bit0-only waves 12/44/50/74). Was a wrong 320/321 pick. Used for
+    # enemyMain (bit0) AND as the lobbing stand-in for classI (bit7).
+    ("THROWER_IDLE", True,  [(136, 10, 6), (137, 10, 6)]),
+    ("THROWER_THROW",False, [(138, 10, 8), (137, 10, 6)]),
     ("THROWER_DEATH",False, SHARED_BURST),
 
     # ---- ENEMY SHOT / lobbed projectile (classI $D352): a small fireball that

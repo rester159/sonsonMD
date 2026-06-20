@@ -750,22 +750,9 @@ static const u8 k_wave_row[4][WAVE_LEN] =
     /* group3 (Y: C8 A8 88 48 28 68 88 C8 28 C8 A8 48) */
     { 5,4,3,1,0,2,3,5,0,5,4,1 },
 };
-/* group-2 per-entry type (the captured 00/01 interleave at list@F1A9:
- *   A8/00 A8/01 88/00 48/01 28/00 68/01 88/00 C8/01 28/00 C8/01 A8/00 48/01). */
-static const u8 k_wave_mix[WAVE_LEN] = { 0,1,0,1,0,1,0,1,0,1,0,1 };
-
-/* type_byte (0x00/0x01/0x02) -> native archetype. All are right-edge ground
- * marchers; the variants escalate (basic walker -> creature -> tough composite),
- * matching how the arcade's groups get tougher with the stage. */
-static u8 sched_type_to_et(u8 t)
-{
-    switch (t)
-    {
-        case 0:  return ET_ENEMY_A;       /* group0 walker variant A           */
-        case 1:  return ET_CREATURE_C;    /* group1 walker variant B (creature) */
-        default: return ET_COMPOSITE_E;   /* group2/3 tougher variant (2 HP)    */
-    }
-}
+/* (k_wave_mix / sched_type_to_et removed: enemyMain now spawns ET_THROWER directly,
+ *  so the old type-byte->variant mapping is no longer used. k_wave_row still supplies
+ *  enemyMain's faithful $F0C9 row placement.) */
 
 /* stage -> ground-wave group, faithful to the arcade's ((stage&0x30)>>1) deriv.
  * The stage byte $005A (mirrored to the wave selector $0096) selects the group:
@@ -867,16 +854,15 @@ static void wave_spawn_bit(u8 bit, u8 place)
 
     if (bit == SS_WAVE_BIT_ENEMYMAIN)
     {
-        /* enemyMain: byte-faithful $F0C9 ground placement (row + walker variant from
-         * the stage group), as the arcade enemyMain spawner does ($EFED -> $F01F:
-         * stage&0x30 -> $F0C9 list). It does not consume param $E. */
+        /* enemyMain ($0828) = the white ghost/skull-faced enemy, codes 136-143 b10
+         * (RE'd: isolated bit0-only-wave pool capture). That IS the native THROWER
+         * sprite (marches + lobs), so enemyMain spawns ET_THROWER. Row placement
+         * stays the byte-faithful $F0C9 ground list ($F01F: stage&0x30 -> $F0C9). */
         u8 grp = sched_group_for_round();
         u8 row = k_wave_row[grp][s_sched_gcursor];
-        u8 tb  = (grp == 2) ? k_wave_mix[s_sched_gcursor]
-                            : (grp == 3 ? 2 : (grp == 1 ? 1 : 0));
         s_sched_gcursor = (u8)((s_sched_gcursor + 1) % WAVE_LEN);
         sy   = k_spawn_row_y[row];
-        type = sched_type_to_et(tb);
+        type = ET_THROWER;
     }
     else
     {
