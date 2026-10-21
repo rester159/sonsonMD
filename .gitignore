@@ -1,0 +1,24 @@
+/out/
+/arcade/
+/nvram/
+/cfg/
+/snap/
+__pycache__/
+*.pyc
+*.o
+*.bin
+*.rom
+*.gen
+*.smd
+*.zip
+*.7z
+*.sav
+*.srm
+*.nv
+# Private boot branding must never enter this repository.
+/src/sega_splash.c
+/src/capcom_splash.c
+/src/sega_logo*.c
+/src/capcom_logo.c
+/inc/sega_logo*.h
+/inc/capcom_logo.h
