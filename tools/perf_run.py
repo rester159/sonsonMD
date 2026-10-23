@@ -42,7 +42,7 @@ end)
 '''
 for key,val in {'CPULOAD':syms['cpuFrameLoad'],'PC':syms.get('g_presentCounter',syms['g_frameCounter']),'FC':syms['g_frameCounter'],'LW':syms['g_levelW'],'GG':syms['g_game'],'NP':syms['g_numPlayers'],'ATTR':syms['g_attract'],'ENT':syms['g_entities'],'PLAYERS':a.players,'FRAMES':a.frames,'OUTPUT':json.dumps(str(out/'frames.csv'))}.items():script=re.sub(r'\b'+key+r'\b',str(val),script)
 (out/'run.lua').write_text(script)
-subprocess.run(['mame','genesis','-cart',str(rom),'-autoboot_script',str(out/'run.lua'),'-skip_gameinfo','-window','-keyboardprovider','none','-mouseprovider','none','-joystickprovider','none','-nothrottle','-video','none','-sound','none','-noreadconfig','-nvram_directory',str(out/'nvram'),'-snapshot_directory',str(out/'snap')],cwd=root,stdout=(out/'mame.txt').open('w'),stderr=subprocess.STDOUT,check=True)
+subprocess.run(['mame','genesis','-cart',str(rom),'-autoboot_script',str(out/'run.lua'),'-skip_gameinfo','-window','-nomaximize','-resolution','512x448','-keyboardprovider','none','-mouseprovider','none','-joystickprovider','none','-nothrottle','-video','none','-sound','none','-noreadconfig','-nvram_directory',str(out/'nvram'),'-snapshot_directory',str(out/'snap')],cwd=root,stdout=(out/'mame.txt').open('w'),stderr=subprocess.STDOUT,check=True)
 import csv,collections
 rows=list(csv.DictReader((out/'frames.csv').open()));ticks=[int(r['tick']) for r in rows];deltas=[b-c for b,c in zip(ticks[1:],ticks)]
 assert hashlib.sha256(rom.read_bytes()).hexdigest()==rom_hash, 'ROM changed during measurement'

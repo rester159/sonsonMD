@@ -9,7 +9,7 @@
 #define SS_TITLE_TILE_COUNT  235
 #define SS_TITLE_CHAR_TILE_COUNT 137
 /* glyph blocks: tile for arcade char code c = SS_TITLE_GLYPH_{W,R} + c
- * (digits 0-9, space 16, A-Z 17-42). W = white (bank3), R = red (bank4). */
+ * (digits 0-9, space 16, A-Z 17-42). W = white (bank11), R = red (bank4). */
 #define SS_TITLE_GLYPH_W  149
 #define SS_TITLE_GLYPH_R  192
 #define SS_TITLE_SPRITE_COUNT 24

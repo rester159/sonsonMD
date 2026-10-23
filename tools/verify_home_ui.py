@@ -35,5 +35,5 @@ end)
 '''
 for k,v in {'CONFIG':syms['g_config'],'MODE':syms['g_mode'],'LW':syms['g_levelW'],'GG':syms['g_game'],'HC':syms['g_homeCredits'],'PAUSE':syms['g_paused'],'FC':syms['g_frameCounter'],'RESULT':json.dumps(str(out/'results.txt'))}.items():s=re.sub(r'\b'+k+r'\b',str(v),s)
 (out/'run.lua').write_text(s)
-subprocess.run(['mame','genesis','-cart',str(root/'out/rom.bin'),'-autoboot_script',str(out/'run.lua'),'-window','-keyboardprovider','none','-mouseprovider','none','-joystickprovider','none','-skip_gameinfo','-nothrottle','-video','none','-sound','none','-noreadconfig','-nvram_directory',str(out/'nvram'),'-snapshot_directory',str(out/'snap')],cwd=root,stdout=(out/'mame.txt').open('w'),stderr=subprocess.STDOUT,check=True)
+subprocess.run(['mame','genesis','-cart',str(root/'out/rom.bin'),'-autoboot_script',str(out/'run.lua'),'-window','-nomaximize','-resolution','512x448','-keyboardprovider','none','-mouseprovider','none','-joystickprovider','none','-skip_gameinfo','-nothrottle','-video','none','-sound','none','-noreadconfig','-nvram_directory',str(out/'nvram'),'-snapshot_directory',str(out/'snap')],cwd=root,stdout=(out/'mame.txt').open('w'),stderr=subprocess.STDOUT,check=True)
 r=(out/'results.txt').read_text();print(r);assert 'CHECKS 10 FAILURES 0' in r

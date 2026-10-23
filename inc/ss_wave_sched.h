@@ -10,7 +10,7 @@
  */
 #ifndef SS_WAVE_SCHED_H
 #define SS_WAVE_SCHED_H
-#include <genesis.h>
+#include "arcade_types.h"
 
 #define SS_WAVE_COUNT 87
 #define SS_WAVE_BIT_ENEMYMAIN 0

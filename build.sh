@@ -7,7 +7,7 @@ case "$(uname -s)" in
     export GDK="${GDK:-D:/portForge/tools/sgdk}"
     export PATH="$GDK/bin:$PATH"
     mkdir -p out
-    "$GDK/bin/make.exe" -f "$GDK/makefile.gen" release GDK="$GDK" "$@" > out/build.txt 2>&1
+    "$GDK/bin/make.exe" -f "$GDK/makefile.gen" release GDK="$GDK" EXTRA_FLAGS="-fno-strict-aliasing" "$@" > out/build.txt 2>&1
     ;;
   *) exec python3 tools/build_native.py "$@" ;;
 esac

@@ -24,7 +24,7 @@ emu.register_frame_done(function()
  for fr,label in shots:lua+=f' if fr=={fr} then manager.machine.video:snapshot() end\n'
  lua+=f' if fr>={end} then manager.machine:exit() end\nend)\n'
  (d/'run.lua').write_text(lua)
- cmd=['mame','genesis','-cart',str(r/'out/rom.bin'),'-autoboot_script',str(d/'run.lua'),'-window','-video','none','-keyboardprovider','none','-mouseprovider','none','-joystickprovider','none','-noreadconfig','-sound','none','-nothrottle','-skip_gameinfo','-nvram_directory',str(d/'nvram'),'-snapshot_directory',str(d/'raw')]
+ cmd=['mame','genesis','-cart',str(r/'out/rom.bin'),'-autoboot_script',str(d/'run.lua'),'-window','-nomaximize','-resolution','512x448','-video','none','-keyboardprovider','none','-mouseprovider','none','-joystickprovider','none','-noreadconfig','-sound','none','-nothrottle','-skip_gameinfo','-nvram_directory',str(d/'nvram'),'-snapshot_directory',str(d/'raw')]
  subprocess.run(cmd,cwd=r,stdout=(d/'mame.txt').open('w'),stderr=subprocess.STDOUT,check=True)
  images=sorted((d/'raw').rglob('*.png'));assert len(images)==len(shots),(name,len(images))
  for image,(frame,label) in zip(images,shots):

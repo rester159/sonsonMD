@@ -43,6 +43,9 @@ u8 selector_run(void);
  * "SONSON" title (logo + score/HIGH header + deposit-coin prompt + flanking
  * characters). Runs in the game's H32 video mode. Blocks until START. */
 void title_attract_run(u8 mode);
+/* Arcade title owns the demo lifetime while its blocking gameplay renderer runs. */
+extern u8 arcade_title_demo_owned;
+u8 arcade_title_demo_update(u8 game_done);
 
 /* ARCADE branch (Phase 8b): the authentic arcade DIP-switch / service screen.
  * Presents SonSon's real DIP bank (Coinage, Lives, Bonus, Difficulty, Demo

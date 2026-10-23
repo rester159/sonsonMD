@@ -15,7 +15,8 @@ __pycache__/
 *.sav
 *.srm
 *.nv
-# Private boot branding must never enter this repository.
+# Markdown documentation is source.
+!# Private boot branding must never enter this repository.
 /src/sega_splash.c
 /src/capcom_splash.c
 /src/sega_logo*.c

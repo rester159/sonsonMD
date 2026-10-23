@@ -18,8 +18,8 @@
 #define SS_ANIM_TILE_BASE   290
 
 /* Total baked 8x8 tiles (deduped 16x16 frames * 4). */
-#define SS_ANIM_TILE_COUNT  260
-#define SS_ANIM_FRAME_COUNT 65   /* distinct 16x16 frames (deduped) */
+#define SS_ANIM_TILE_COUNT  440
+#define SS_ANIM_FRAME_COUNT 110   /* distinct 16x16 frames (deduped) */
 
 /* Baked 4bpp Genesis tiles: SS_ANIM_TILE_COUNT tiles, 8 u32 each
  * (one 8px row/long, hi nibble = leftmost px); sprite frames in
@@ -78,7 +78,9 @@ typedef enum {
     SS_ANIM_EMIT_DEATH = 34,
     SS_ANIM_ORB_FLOAT = 35,
     SS_ANIM_ORB_DEATH = 36,
-    SS_ANIM_COUNT = 37
+    SS_ANIM_SHOT_END = 37,
+    SS_ANIM_ARCADE_FOE_POSES = 38,
+    SS_ANIM_COUNT = 39
 } SSAnimId;
 
 extern const SSAnim ss_anims[SS_ANIM_COUNT];

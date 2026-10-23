@@ -49,5 +49,5 @@ end)
  vals={'CONFIG':syms['g_config'],'STATUS':syms['g_saveStatus'],'GG':syms['g_game'],'HC':syms['g_homeCredits'],'BEST':syms['run_best_score'],'BESTTICKS':syms['run_best_ticks'],'RUN':syms['g_survivalRun'],'STAGE':stage,'RESULT':json.dumps(str(o/f'stage{stage}.txt'))}
  for k,v in vals.items():s=re.sub(r'\b'+k+r'\b',str(v),s)
  lua=o/f'stage{stage}.lua';lua.write_text(s)
- subprocess.run(['mame','genesis','-cart',str(r/'out/rom.bin'),'-autoboot_script',str(lua),'-window','-skip_gameinfo','-keyboardprovider','none','-mouseprovider','none','-joystickprovider','none','-nothrottle','-video','none','-sound','none','-noreadconfig','-nvram_directory',str(survival_nvram if stage==5 else o/'nvram')],cwd=r,stdout=(o/f'mame{stage}.txt').open('w'),stderr=subprocess.STDOUT,check=True)
+ subprocess.run(['mame','genesis','-cart',str(r/'out/rom.bin'),'-autoboot_script',str(lua),'-window','-nomaximize','-resolution','512x448','-skip_gameinfo','-keyboardprovider','none','-mouseprovider','none','-joystickprovider','none','-nothrottle','-video','none','-sound','none','-noreadconfig','-nvram_directory',str(survival_nvram if stage==5 else o/'nvram')],cwd=r,stdout=(o/f'mame{stage}.txt').open('w'),stderr=subprocess.STDOUT,check=True)
  result=(o/f'stage{stage}.txt').read_text();print(result,flush=True);assert 'FAILURES 0' in result and 'PASS ' in result

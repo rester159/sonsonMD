@@ -16,6 +16,7 @@ static void defaults(void)
 {
     u16 i;data.arcade1=data.home1=DSW1_DEFAULT;data.arcade2=data.home2=DSW2_DEFAULT;data.homeCredits=3;
     for(i=0;i<SAVE_RECORDS;i++) {data.records[i].key=0;data.records[i].score=0;data.records[i].ticks=0;}
+    arcade_ranking_init(&data.ranking);
 }
 static void read_slot(u8 slot,uint8_t *p)
 {
@@ -112,5 +113,12 @@ void save_reset_options(void)
 }
 void save_clear_scores(void)
 {
-    u16 i;for(i=0;i<SAVE_RECORDS;i++) {data.records[i].key=0;data.records[i].score=data.records[i].ticks=0;}dirty=1;save_commit();
+    u16 i;for(i=0;i<SAVE_RECORDS;i++) {data.records[i].key=0;data.records[i].score=data.records[i].ticks=0;}
+    arcade_ranking_init(&data.ranking);dirty=1;save_commit();
+}
+void save_get_rankings(ArcadeRanking *out) {*out=data.ranking;}
+void save_set_rankings(const ArcadeRanking *ranking)
+{
+    u16 i;const u8 *a=(const u8 *)ranking,*b=(const u8 *)&data.ranking;
+    for(i=0;i<sizeof(*ranking);i++)if(a[i]!=b[i]){data.ranking=*ranking;dirty=1;return;}
 }

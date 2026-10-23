@@ -100,7 +100,7 @@ static const DipRow DIPS[] =
     { "LIVES",        1, 0x03, 0, 4, { "7", "5", "4", "3" } }, /* idx3=3 default*/
     { "2 PLAYERS", 1, 0x04, 2, 2, { "2 CREDITS", "1 CREDIT" } },
     { "BONUS LIFE",   1, 0x18, 3, 4,
-        { "30K 90K 120K", "20K 80K 100K", "30K ONLY", "20K ONLY" } },
+        { "20K ONLY", "30K ONLY", "20K 80K +100K", "30K 90K +120K" } },
     { "LEVEL",   1, 0x60, 5, 4, { "VERY HARD", "HARD", "NORMAL", "EASY" } },
     { "FREEZE",       1, 0x80, 7, 2, { "ON", "OFF" } },        /* 0=On,0x80=Off */
     { "SERVICE", 0, 0x40, 6, 2, { "ON", "OFF" } },        /* 0=On,0x40=Off */

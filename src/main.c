@@ -25,8 +25,7 @@ int main(bool hardReset)
 
     /* ---- BOOT BRANDING (ONCE, default H40) ----
      * SEGA + CAPCOM are the power-on splashes; they play a single time and are
-     * NOT part of the re-entry loop (a game-over returns to the selector, not
-     * the logos). */
+     * NOT part of either mode's game-over re-entry loop. */
     /* Private SEGA/CAPCOM intro modules are omitted from this export. */
 
 
@@ -62,16 +61,15 @@ int main(bool hardReset)
         VDP_setScreenWidth256();
         VDP_setPlaneSize(64, 32, TRUE);
 
-        /* Arcade TITLE screen + attract: the baked "SONSON" title (RE'd from the
-         * real machine) in the game's H32 mode. Blocks until START, then a real
-         * game begins. (Idle attract demo: TODO next.) */
-        title_attract_run(g_mode);
+        /* Source97ED/9258 returns to arcade attract without a mode chooser
+         * or DIP confirmation. Existing demo returns already reuse this same
+         * title drawing path after game_run tears down audio. */
+        do
+        {
+            title_attract_run(g_mode);
+            game_run();
+        } while (g_mode == MODE_ARCADE);
 
-        /* Play one session. game_run() does game_init() (re-inits palettes /
-         * tiles / planes + reads g_config.lives) then runs the update/render/
-         * V-blank loop, returning here when the game is over -> back to the
-         * selector for the next session. */
-        game_run();
     }
     return 0;
 }

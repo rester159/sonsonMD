@@ -17,7 +17,7 @@ static const u32 font[96*8] = {
     0x00000000,0x000FF000,0x000FF000,0x0FFFFFF0,0x000FF000,0x000FF000,0x00000000,0x00000000,
     0x00000000,0x00000000,0x00000000,0x00000000,0x00000000,0x000FF000,0x000FF000,0x00FF0000,
     0x00000000,0x00000000,0x00000000,0x0FFFFFF0,0x00000000,0x00000000,0x00000000,0x00000000,
-    0x00000000,0x00000000,0x00000000,0x00000000,0x00000000,0x00000000,0x00000000,0x00000000,
+    0x00000000,0x00000000,0x00000000,0x00000000,0x00000000,0x00000000,0x000FF000,0x000FF000,
     0x000000F0,0x00000FF0,0x0000FF00,0x000FF000,0x00FF0000,0x0FF00000,0xFF000000,0x00000000,
     0x00000000,0x00000000,0x00FFFF00,0x0FF00FF0,0x0FF00FF0,0x0FF00FF0,0x0FF00FF0,0x00FFFF00,
     0x00000000,0x000FF000,0x00FFF000,0x0F0FF000,0x000FF000,0x000FF000,0x000FF000,0x0FFFFFF0,
@@ -89,7 +89,7 @@ static const u32 font[96*8] = {
     0x00000000,0x00FFFFF0,0x0FF000FF,0x0FF00000,0x00FFFFF0,0x000000FF,0x0FF000FF,0x00FFFFF0,
     0x00000000,0x0FFFFFFF,0x0000FF00,0x0000FF00,0x0000FF00,0x0000FF00,0x0000FF00,0x0000FF00,
     0x00000000,0x0FF000FF,0x0FF000FF,0x0FF000FF,0x0FF000FF,0x0FF000FF,0x0FF000FF,0x00FFFFF0,
-    0x00000000,0x0FF000FF,0x0FF000FF,0x0FF000FF,0x0FF000FF,0x0FF000FF,0x00FF0FF0,0x000FFF00,
+    0x00000000,0x00000000,0x00000000,0x00000000,0x0FF00FF0,0x0FF00FF0,0x00FFFF00,0x000FF000,
     0x00000000,0x0FF000FF,0x0FF000FF,0x0FF000FF,0x0FF000FF,0x0FF0F0FF,0x0FFFFFFF,0x00FF0FF0,
     0x00000000,0x0FF000FF,0x00FF0FF0,0x000FFF00,0x000FFF00,0x00FF0FF0,0x0FF000FF,0x0F00000F,
     0x00000000,0x00FF00FF,0x00FF00FF,0x00FF00FF,0x000FFFF0,0x0000FF00,0x0000FF00,0x0000FF00,
@@ -123,4 +123,43 @@ void arcade_menu_begin(u8 logo)
         for(y=0;y<11;y++) for(x=0;x<32;x++)
             VDP_setTileMapXY(BG_A,ss_title_nametable[(y+1)*32+x],x,y);
     }
+}
+
+/* Gameplay owns unused ASCII a..g slots; frontends reload the normal font. */
+extern const u32 arcade_gameplay_label_tiles[23*8];
+void arcade_gameplay_font_load(void)
+{
+    static const u16 score_palette[16]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0x0AAA};
+    arcade_font_load();
+    VDP_loadTileData(arcade_gameplay_label_tiles,TILE_FONT_INDEX+('a'-32),23,DMA);
+    PAL_setColors(PAL2*16,score_palette,16,CPU);
+}
+void arcade_gameplay_labels(u8 two_players,u8 survival)
+{
+    /* 4886/489A SONSON;4890 TONTON;486F HIGH. Source row1 -> display row0. */
+    const u16 blue_or_orange=TILE_ATTR_FULL(PAL0,1,0,0,0);
+    VDP_drawTextEx(BG_B,"abcabc",blue_or_orange,two_players?2:1,0,CPU);
+    if(two_players)VDP_drawTextEx(BG_B,"dbcdbc",blue_or_orange,25,0,CPU);
+    if(survival)VDP_drawText("BEST",14,0);
+    else {
+        VDP_drawTextEx(BG_B,"efge",blue_or_orange,14,0,CPU);
+        /* Source4877: TOTAL SCORE at106B; source row3 -> display row2. */
+        if(two_players)VDP_drawTextEx(BG_B,"hihjk lmino",blue_or_orange,11,2,CPU);
+    }
+}
+
+void arcade_gameplay_lives(u8 owner,u8 reserves)
+{
+    /* 51D8/5260 clear eight columns on both rows; 522D repeats one
+     * source2x2 icon per reserve, capped at four. p..w hold the tiles. */
+    char top[9],bottom[9];u8 i;
+    if(reserves>4)reserves=4;
+    for(i=0;i<8;i++)
+    {
+        top[i]=i<reserves*2?(char)('p'+owner*4+(i&1)):' ';
+        bottom[i]=i<reserves*2?(char)('r'+owner*4+(i&1)):' ';
+    }
+    top[8]=bottom[8]=0;
+    VDP_drawTextEx(BG_B,top,TILE_ATTR_FULL(PAL0,1,0,0,0),owner?23:2,2,CPU);
+    VDP_drawTextEx(BG_B,bottom,TILE_ATTR_FULL(PAL0,1,0,0,0),owner?23:2,3,CPU);
 }

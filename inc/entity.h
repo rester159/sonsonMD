@@ -44,7 +44,7 @@
  *   fruit TYPE: cherry/orange/apple/gold, each its own sprite colour + escalating
  *   point value + a floating "+N" score popup) PLUS three more SPAWNED archetypes:
  *   ET_LARGE   (obj16x16 $D57F/$D58B/$D5F3, seeded by $D54B: a TOUGH multi-HP
- *               patroller -- arcade HP 7, native 3; composite render is a TODO),
+ *               patroller -- seven hits; composite render is a TODO),
  *   ET_EMITTER (classD $BF6B/$BFE5/$BF75: a STATIONARY emplacement that
  *               periodically FIRES a projectile -- reuses the classI ENEMY_SHOT),
  *   ET_ORB     (objSingle $E1C4/$E1F5: a slow HOVERING lethal unique object).
@@ -66,7 +66,7 @@ typedef enum
     ET_CREATURE_C,  /* classC creature ($BC6C family): a lane-seeking walker    */
     ET_COMPOSITE_E, /* classE large entity ($C35E walker): tough 2-HP lane walk */
     ET_HOPPER,      /* classH leaping hopper ($D0B5): ballistic leaps at player */
-    ET_LARGE,       /* obj16x16 ($D57F/$D58B): tough 3-HP patroller            */
+    ET_LARGE,       /* obj16x16 ($D57F/$D58B): tough 7-HP patroller            */
     ET_EMITTER,     /* classD ($BF6B/$BF75): stationary periodic shot emitter  */
     ET_ORB,         /* objSingle ($E1C4): slow hovering lethal unique object   */
     ET_POPUP        /* floating "+N" score popup (classK $0ED8 child, $CBC8)   */
@@ -141,28 +141,10 @@ typedef struct
 
 extern Entity g_entities[ENTITY_MAX];
 
-/* ---- Faithful per-level WAVE SCHEDULER (arcade $F0C9 spawn tables) ---------
- * Replaces the old ad-hoc "seed a fixed wave + recycle off-left" spawner (which
- * let enemies ACCUMULATE on the right edge beyond what the arcade ever shows --
- * the measured cause of the sub-60 dips under load). The arcade spawns enemies
- * one at a time from a per-stage placement list (sub_F065/F019 -> sub_F080),
- * keyed to the scroll advancing, at worldX = scroll($90)+$F8 (right edge), into
- * the 16-slot $0828 pool, and STOPS when the live count hits the cap ($00A6 ==
- * 0x10). We re-express that: a scroll-position cursor walks the captured list and
- * spawns the next (row,type) at the right edge whenever the camera advances a
- * faithful spacing AND the live scheduled count is under SPAWN_ONSCREEN_CAP. See
- * tools/spawn_sched.json (the static RE of $F0C9, validated by live md=02
- * capture: arcade on-screen enemies avg ~2.6, peak 10).
- *
- * On-screen simultaneous cap for SCHEDULED wave enemy BODIES. The arcade hard cap
- * is the 16-slot pool ($00A6 != 0x10 gate); live md=02 play PEAKS at exactly 10
- * (tools/arch_census.txt + spawn_cap_L0.txt). We cap at 10 -- the arcade's true
- * observed maximum, so the busy scene matches the arcade AND the co-resident body
- * count (bodies + their lobbed projectiles + the player's shots) stays inside the
- * VDP per-scanline sprite budget at the dense flyer/hopper/projectile worst case
- * (a clean 60fps -- a cap of 12 grazed 59 in a transient burst; see arch_deepfps).
- * The lobbed projectiles the creatures/throwers fire are NOT scheduled bodies, so
- * they don't count against this cap (they are children, like the arcade $0DA8). */
+/* Native arcade producer and G/H six-slot formation controllers are independently
+ * compared with source CPU execution. Other class controllers and combat AI are
+ * still provisional. The fallback cap below applies only to those older spawns;
+ * it is not a source-wide cap and never suppresses the dedicated G/H formations. */
 #define SPAWN_ONSCREEN_CAP  10
 
 void entity_schedule_init(void);              /* (re)arm the scheduler for the   *
@@ -179,6 +161,9 @@ void entity_shift_worldx(s16 dx);
 
 /* ---- Lifecycle (called from game.c) -------------------------------------- */
 void entity_init(void);                       /* clear the pool + spawn waves  */
+/* Course transition reset: retains session RNG, clock and conversion grades.
+ * Player/section/food ownership and display restoration belong to game.c. */
+void entity_course_restart(u8 two_players,const u8 out[2]);
 Entity *entity_spawn(u8 type, s16 x, s16 y);  /* allocate + init a slot (or 0) */
 void entity_update_all(void);                 /* AI + motion + collision + score*/
 
@@ -196,6 +181,11 @@ void entity_update_all(void);                 /* AI + motion + collision + score
  * popup glyphs at ENTITY_POPUP_GLYPH_MAX, so the SAT buffer must hold
  * 1 + ENTITY_SAT_MAX + ENTITY_POPUP_GLYPH_MAX sprites. */
 #define ENTITY_POPUP_GLYPH_MAX  10
+/* Prior-render logical source-cell readiness from the shared admission pass. */
+u8 entity_arcade_sprite_ready(void);
+u8 entity_arcade_conversion_contact(u16 x,u8 y,u8 owner);
+/* Normal modes build the complete chain including players at source priority.
+ * Survival appends entities after its separately reserved player slots. */
 u16  entity_render_all(u16 *sat, u16 firstSlot);
 
 /* ---- Player-driven hooks (game.c calls these) ---------------------------- */
@@ -203,6 +193,11 @@ u16  entity_render_all(u16 *sat, u16 firstSlot);
  * Debouncing (fire-once-per-press) is handled in game.c at the input edge. The
  * arcade allows only ONE player shot at a time ($0E28 single slot): returns TRUE
  * iff a shot was actually fired (FALSE while a prior shot is still live). */
+void entity_arcade_prepare_admission(void);
+u8 entity_arcade_clock(void);
+u16 entity_arcade_clock_full(void);
+void entity_arcade_title_seed(void);
+void entity_arcade_clock_advance(void);
 bool entity_player_fire(u8 owner, s16 px, s16 py, u8 facing);
 
 /* ---- Player hit / life-loss bridge (now PER-PLAYER, in Player; co-op) ------

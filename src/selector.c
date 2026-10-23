@@ -115,6 +115,8 @@ u8 selector_run(void)
     draw_title();
 
     draw_center(26, CREDIT_STR, PAL_WHITE);
+    VDP_setTextPalette(PAL_WHITE);
+    VDP_drawTextBG(BG_A, "v1.0", 27, 27);
     edges_rearm();
     draw_choices(sel);
 

@@ -73,7 +73,7 @@ end)
 vals={**{k:syms[v] for k,v in {'GG':'g_game','RUN':'g_survivalRun','PRESSURE':'g_survivalPressure','TICKS':'g_survivalTicks','SECONDS':'g_survivalSeconds','HC':'g_homeCredits','PAUSE':'g_paused','FC':'g_frameCounter','PC':'g_presentCounter','ENT':'g_entities','CPU':'cpuFrameLoad','STATUS':'g_saveStatus'}.items()},'STRESS':'true' if a.stress else 'false','PLAYERS':a.players,'FRAMES':a.frames,'RESULT':json.dumps(str(o/'results.txt')),'TRACE':json.dumps(str(o/'frames.csv'))}
 for k,v in vals.items():s=re.sub(r'\b'+k+r'\b',str(v),s)
 (o/'run.lua').write_text(s)
-subprocess.run(['mame','genesis','-cart',str(r/'out/rom.bin'),'-autoboot_script',str(o/'run.lua'),'-window','-skip_gameinfo','-keyboardprovider','none','-mouseprovider','none','-joystickprovider','none','-nothrottle','-video','none','-sound','none','-noreadconfig','-nvram_directory',str(o/'nvram'),'-snapshot_directory',str(o/'snap')],cwd=r,stdout=(o/'mame.txt').open('w'),stderr=subprocess.STDOUT,check=True)
+subprocess.run(['mame','genesis','-cart',str(r/'out/rom.bin'),'-autoboot_script',str(o/'run.lua'),'-window','-nomaximize','-resolution','512x448','-skip_gameinfo','-keyboardprovider','none','-mouseprovider','none','-joystickprovider','none','-nothrottle','-video','none','-sound','none','-noreadconfig','-nvram_directory',str(o/'nvram'),'-snapshot_directory',str(o/'snap')],cwd=r,stdout=(o/'mame.txt').open('w'),stderr=subprocess.STDOUT,check=True)
 if not a.stress:
  text=(o/'results.txt').read_text();print(text);assert 'CHECKS 10 FAILURES 0' in text
 else:

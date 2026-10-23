@@ -18,6 +18,13 @@
 #include "mode_controls.h"
 #include "survival.h"
 #include "save.h"
+#include "sound.h"
+#include "arcade_postgame.h"
+#include "entity.h"
+#include "arcade_pacing.h"
+#include "arcade_title_flow.h"
+#include "arcade_prelude_display.h"
+#include "arcade_prelude_terrain.h"
 
 /* Build a raw SAT word set from the baked title sprites and DMA it to the VDP
  * sprite list. Each SSSprite is a 16x16 (SPRITE_SIZE(2,2)); screen coords add the
@@ -114,10 +121,16 @@ static void text_center(u16 row, const char *s, u8 red)
 
 static void title_high(void)
 {
-    char digits[12]; u16 i;
-    intToStr((s32)save_mode_high(g_mode), digits, 6);
-    for (i = 0; i < 6; i++)
-        VDP_setTileMapXY(BG_A, TILE_ATTR_FULL(PAL0,0,0,0,glyph(digits[i],0)),12+i,1);
+    char digits[12]; u16 i; u8 leading=1;
+    /* Captured source row2 owns eight cells, columns13..20. Replace the
+     * complete field so the baked 10000 cannot leave trailing stale digits. */
+    intToStr((s32)(save_mode_high(g_mode)%100000000UL), digits, 8);
+    for (i = 0; i < 8; i++)
+    {
+        char ch=digits[i];
+        if(ch!='0' || i==7)leading=0;
+        VDP_setTileMapXY(BG_A,TILE_ATTR_FULL(PAL0,0,0,0,glyph(leading?' ':ch,0)),13+i,1);
+    }
 }
 
 static void home_choices(u8 selected)
@@ -149,65 +162,136 @@ static u16  edges_read(void)
     return pressed;
 }
 
-/* Run the self-playing attract demo (game_run with the autopilot). Returns TRUE
- * if the player pressed a button during it (or it ended) -- the caller decides
- * what that means per mode. */
+/* Run the scripted demo. Returns whether input interrupted it; Arcade also
+ * preserves controller Start edges for the shared title purchase path. */
 static u8 run_demo(void)
 {
     g_attract = 1;
     g_attract_started = 0;
+    g_attract_startPlayers = 0;
     game_run();
     g_attract = 0;
     return g_attract_started;
 }
 
-/* C deposits a coin; each controller's Start buys its own player. */
+/* Shared purchase path for title and demo Start edges; spends credits once. */
+static u8 arcade_title_start(u8 starts)
+{
+    u8 selected = 0;
+    if (starts == 3 && (g_config.dsw2 & 4))
+    {
+        if (arcade_take_credit()) selected = 3;
+    }
+    else
+    {
+        if ((starts & 1) && arcade_take_credit()) selected |= 1;
+        if ((starts & 2) && arcade_take_credit()) selected |= 2;
+    }
+    if (!selected) return 0;
+    g_survivalChoice = 0;
+    g_startPlayers = selected;
+    g_numPlayers = (selected & 2) ? 2 : 1;
+    return 1;
+}
+
+/* One persistent source-rate owner across prelude, gameplay demo and boards. */
+static ArcadeTitleFlow title_flow;
+static ArcadePrelude title_prelude;
+static ArcadePreludeRewards title_rewards;
+u8 arcade_title_demo_owned;
+volatile u8 arcade_title_state,arcade_title_phase;
+
+u8 arcade_title_demo_update(u8 game_done)
+{
+    ArcadeTitleInput in={g_arcadeCredits,entity_arcade_clock(),0,!(g_config.dsw1&15)};
+    ArcadeTitleEvent event;
+    arcade_title_step(&title_flow,&in,&event);
+    /* 97E3 advances05 when both players' ending sequence completes. */
+    if(game_done) {
+        /* 97E3 increments05 inside94B6; a simultaneous outer timeout
+         * then increments it again before931E applies any credit change. */
+        if(title_flow.state==3){title_flow.state=4;title_flow.phase=0;}
+        else if(title_flow.state==4 && (event.flags&TITLE_CLEAR_SPRITES))
+            {title_flow.state=5;title_flow.phase=0;}
+    }
+    arcade_title_state=title_flow.state;arcade_title_phase=title_flow.phase;
+    if(mode_input_starts_held() && (g_arcadeCredits || !(g_config.dsw1&15))) {
+        g_attract_startPlayers=mode_input_starts_held();g_attract_started=1;
+        return 1;
+    }
+    return title_flow.state!=3;
+}
+
+/* C deposits a coin; each controller's held Start buys its own player. */
 static void arcade_attract(void)
 {
-    for (;;)
+    ArcadePacing *pacing;ArcadePreludeTerrain terrain={0};
+    u8 pending=arcade_postgame_start,scene=0,dirty=0;
+    arcade_postgame_start=0;
+    if(pending && arcade_title_start(pending))return;
+    memset(&title_flow,0,sizeof(title_flow));
+    snd_init();mode_input_rearm();
+    pacing=arcade_pacing_enter(SYS_isPAL(),(u16)vtimer);
+    for(;;)
     {
-        u16 settle = 0;
-        u32 idle = 0;
-        u8 shown = 255;
-        title_draw();
-        clear_row(24);
-        clear_row(25);
-        mode_input_rearm();
-        for (;;)
-        {
-            u8 starts, selected = 0;
-            VDP_waitVSync(); JOY_update();
-            starts = mode_input_poll();
-            if (shown != g_arcadeCredits)
-            {
-                char line[] = "CREDIT 00";
-                shown = g_arcadeCredits;
-                line[7] = (char)('0' + shown / 10);
-                line[8] = (char)('0' + shown % 10);
-                text_center(26, (g_config.dsw1 & 15) ? line : "FREE PLAY", 0);
-                idle = 0;
-            }
-            if (settle < 20) { settle++; continue; }
-            if (starts == 3 && (g_config.dsw2 & 4))
-            {
-                if (arcade_take_credit()) selected = 3;
-            }
-            else
-            {
-                if ((starts & 1) && arcade_take_credit()) selected |= 1;
-                if ((starts & 2) && arcade_take_credit()) selected |= 2;
-            }
-            if (selected)
-            {
-                g_survivalChoice = 0;
-                g_startPlayers = selected;
-                g_numPlayers = (selected & 2) ? 2 : 1;
-                return;
-            }
-            if (starts) idle = 0;
-            if (++idle >= TITLE_IDLE_FRAMES) break;
+        SYS_doVBlankProcess();JOY_update();(void)mode_input_poll();
+        if(mode_input_coins())snd_play_coin();
+        /* Gameplay owns the same scheduler and clock during state3. */
+        if(title_flow.state==3 && (*(volatile u8 *)&g_config.dsw2&128)) {
+            snd_shutdown();arcade_title_demo_owned=1;(void)run_demo();
+            arcade_title_demo_owned=0;
+            arcade_pacing_observe(pacing,(u16)vtimer,1);snd_init();
+            if(arcade_title_start(g_attract_startPlayers)){snd_shutdown();return;}
+            scene=0;continue;
         }
-        (void)run_demo();
+        arcade_pacing_observe(pacing,(u16)vtimer,0);
+        while(arcade_pacing_take(pacing)) {
+            ArcadeTitleInput in;ArcadeTitleEvent event;u8 i;
+            entity_arcade_clock_advance();
+            if(!(*(volatile u8 *)&g_config.dsw2&128))continue;
+            in.credits=g_arcadeCredits;in.clock=entity_arcade_clock();
+            in.busy=0;in.free_play=!(g_config.dsw1&15);
+            arcade_title_step(&title_flow,&in,&event);
+            if(event.flags&TITLE_SEED_RNG)entity_arcade_title_seed();
+            if(event.flags&TITLE_PRELUDE_WORLD) {
+                u8 out[2]={0};
+                title_prelude.animation[0].attr=0xc0;title_prelude.animation[1].attr=0xc1;
+                arcade_players_course_begin(title_prelude.players,title_prelude.animation,0,1,out);
+                memset(&title_rewards,0,sizeof(title_rewards));
+                arcade_prelude_display_begin();scene=1;dirty=1;
+            }
+            if(event.flags&TITLE_PRELUDE_PLAYERS) {
+                arcade_prelude_players_begin(&title_prelude,arcade_prelude_floor,&terrain,0);dirty=1;
+            }
+            if(event.flags&TITLE_PRELUDE_DECOR){arcade_prelude_decor_begin(&title_prelude);dirty=1;}
+            if(event.flags&TITLE_PRELUDE_TICK) {
+                ArcadeBonusAward awards[2];u8 count;
+                (void)arcade_prelude_step(&title_prelude,in.clock,arcade_prelude_floor,&terrain,0);
+                count=arcade_prelude_collect(&title_prelude,&title_rewards,awards);
+                for(i=0;i<count;i++)snd_command(awards[i].sound);
+                dirty=1;
+            }
+            if(event.flags&TITLE_CLEAR_SPRITES) {
+                u16 empty[4]={0};DMA_doDma(DMA_VRAM,empty,VDP_getSpriteListAddress(),4,2);
+            }
+            for(i=0;i<event.count;i++) {
+                u16 command=event.commands[i];
+                if(command==0x0900 || command==0x0a00) {
+                    arcade_title_ranking_draw(command==0x0a00);scene=2;dirty=0;
+                }
+                else if(command==0x020c){arcade_prelude_display_begin();scene=3;dirty=1;}
+                else if(command==0x0700)dirty=1;
+            }
+            arcade_title_state=title_flow.state;arcade_title_phase=title_flow.phase;
+            if(arcade_title_start(mode_input_starts_held())){snd_shutdown();return;}
+            if(title_flow.state==3)break;
+        }
+        if(dirty && (scene==1 || scene==3)) {
+            arcade_prelude_display_hud(save_mode_high(MODE_ARCADE),g_arcadeCredits,
+                                       !(g_config.dsw1&15),scene==3);
+            if(scene==1)(void)arcade_prelude_display_publish(&title_prelude);
+            dirty=0;
+        }
     }
 }
 

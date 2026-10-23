@@ -6,17 +6,53 @@ This repository contains the native game source. **No ROMs or SEGA/CAPCOM intro 
 
 The owner’s local boot sequence includes about nine seconds of intro screens. Controller-driven emulator fixtures currently use those timings; adapt their input frame offsets for this intro-free source build. The host save tests and gameplay implementation are independent of the boot intros.
 
+**Arcade parity rebuild in progress.** The earlier native release contains simplified gameplay. Performance checks do not establish 1:1 logic. See [the parity audit](tools/ARCADE_PARITY.md) for verified corrections and remaining work.
+
+The current build includes native player, enemy, collision, reward and course
+systems with extensive component checks. Full-game parity remains unproven.
+The latest retained benchmark (ROM `9c0518802e10d72b5e4994501fe8e847f5e380bc75ce0d3b658f4211dab27cfd`)
+completed 55,000 simulation updates in each mode, traversing one course and
+continuing after its reset. Average presentation rates were 59.71 Hz in 1P and
+58.96 Hz in 2P; worst 60-refresh windows contained 36/30 presentations.
+Both sustained 60 FPS gates still fail. Source simulation averaged 55.40 Hz,
+with zero final pending updates. These controller-driven tests refill lives;
+they do not establish normal playthroughs or arcade equivalence throughout.
+Their simulation-indexed input script is sampled through the frontend and game
+input latch; it is not an exact per-tick replay. Diagnostic capture found different
+consumed inputs across timing changes. Use isolated per-tick replay and state
+comparison to attribute local CPU costs; retain controller-driven runs for
+integrated pacing validation.
+The retained contact-state snapshot and fixed-family G/H entry points reduce
+repeated decisions while preserving tested state-machine and contact ordering.
+The G/H target routines passed 19,200 archived original-CPU cases. Results are in
+`out/genplus-results.json`; runtime timing can affect trajectories, so these
+whole-workload results are not matched-state cycle measurements.
+
+The source arcade runs at 55.4 Hz according to the pinned MAME 0.288 driver.
+Arcade simulation cadence and Genesis display cadence must be validated
+separately. The main-wave clock bytes now share one carry-aware simulation owner. The title/game scheduler is connected. The measured workloads end without
+simulation debt, but heavy scenes still miss display refreshes and full-course
+arcade timing remains unverified. Home pause freezes the scheduler. Repeated display commits are
+not interpolated motion. Rendering
+at 60 Hz alone will not establish arcade-speed gameplay.
+
 A from-scratch **native** Genesis re-implementation of Capcom's SonSon (1984), targeting full 60fps. See [ROADMAP.md](ROADMAP.md) for the plan and the *why* (it removes the per-frame graphics-translation tax that caps the sibling transliteration port at ~87%).
 
 ## Build
 ```bash
-bash build.sh        # standard SGDK build -> out/rom.bin   (fast; not the LTO port build)
+bash build.sh        # native C with link-time optimization -> out/rom.bin
 ```
 On macOS/Linux this uses native `m68k-elf-gcc` and SGDK 2.11. Set
 `SONSON_GDK` to the SDK directory if it is not in the existing portForge location.
 The compiler, SDK library, source, ROM and symbol identities are recorded in
 `out/build-manifest.json`. `bash build.sh --clean` recompiles all native sources.
-Windows retains the standard SGDK make workflow.
+`bash build.sh --opt 2 --no-lto` builds the earlier comparison baseline.
+The default native build uses `-O3`, LTO and `-fno-strict-aliasing`.
+The aliasing flag is required because SGDK CPU transfers read 16-bit source
+buffers through 32-bit pointers; GCC16/LTO otherwise removes palette writes.
+`python3 tools/verify_gameplay_palette.py` checks actual emulator CRAM after boot. Boot objects and the
+SDK library remain conventional objects. Windows retains the standard SGDK make
+workflow; the measured LTO build uses the native m68k-elf toolchain.
 
 Run the native `out/rom.bin` in a **window** with
 `mame genesis -window -cart out/rom.bin` (NTSC). The sibling `../sonson/` is the
@@ -42,6 +78,8 @@ fixture, not a claim of an unassisted playthrough.
 - **Arcade:** C on either controller inserts a coin. Start starts or rejoins that
   controller's player, spending a credit. Start never pauses. A/B fire; C is
   reserved for coins. The coinage DIP is respected, including free play.
+  After game over, Arcade returns to its title with remaining credits retained.
+  Reset returns to the opening mode selector.
 - **Home:** choose 1 Player or 2 Players on the title menu. Either controller's
   Start pauses/resumes gameplay; held menu Start does not pause the new game.
   A/B/C fire. Music continues during pause while the world and game timers freeze.
@@ -87,7 +125,12 @@ The save format uses two 512-byte slots in conventional odd-byte cartridge
 SRAM (header range 0x200001–0x20FFFF). Version, generation, CRC-32 and a final
 commit marker protect against corrupt and incomplete writes. Readback failures
 keep the old slot; absent/read-only SRAM leaves the game playable with session
-settings. Unknown newer save versions are preserved. This is a battery-save
+settings. Version 2 reserves 100 payload bytes for the original individual and total
+ranking tables. Version 1 settings and records migrate without loss; missing
+rankings initialize to arcade defaults. The ranking/name-entry gameplay
+path is connected. Windowless target checks cover 1P/2P entry, paid Start
+interruption and ranking restoration in a fresh process. Natural game-over
+reachability and exact original scene timing remain unverified. Unknown newer save versions are preserved. This is a battery-save
 feature, not a mid-game save-state feature. Physical console/flashcart persistence
 still requires testing on the particular device.
 
@@ -121,12 +164,11 @@ All under `../` (the sibling `sonson/` project + RE):
 - **Tooling** — MAME at `D:/portForge/tools/mame` (GF meter `gf.sh`, snapshot luas) for verification; SGDK at `D:/portForge/tools/sgdk`.
 
 ## Status
-Native one- and two-player simultaneous co-op are implemented. The October 2026
-performance pass caches unchanged HUD fields and preserves the background ring
-phase at world wrap, removing the full-plane transfer that stalled both modes.
-See `tools/performance_results.json` for measured coverage and artifact identity.
-Physical console testing and the inherited arcade-faithfulness gaps recorded in
-`../session_resume_docs/NEXT_WORK.md` remain separate from performance validation.
+Native one- and two-player simultaneous co-op are implemented. Release readiness
+is governed by the milestones at the top of `ROADMAP.md` and the evidence in
+`tools/ARCADE_PARITY.md`. Historical performance reports describe their own ROMs;
+they are not proof for the current build. Full-course gameplay, final graphics and
+audio comparison, and physical-console testing remain pending.
 
 ### Arcade presentation
 

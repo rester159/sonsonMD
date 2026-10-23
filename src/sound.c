@@ -1,3 +1,4 @@
+#include "sound_ym_pitch.h"
 /* sound.c -- SonSon NATIVE audio engine: record-&-replay arcade music + SFX,
  * mapped to the Genesis PSG + YM2612 and advanced from the V-Blank interrupt so
  * it never slows with the game loop.  See inc/sound.h for the full rationale and
@@ -18,6 +19,7 @@
  */
 #include <genesis.h>
 #include "sound.h"
+#include "game.h"
 
 /* ---- recorded data (sound_replay_data.c, generated) ----------------------- */
 extern const uint8_t  snd_replay_blob[];
@@ -297,12 +299,9 @@ static void ay1_to_ym(void)
             continue;
         }
         {
-            u32 tot = 1845281UL / period;             /* fnum * 2^block          */
-            u8  block = 0;
-            while (tot >= 2048 && block < 7) { tot >>= 1; block++; }
-            if (tot >= 2048) tot = 2047;
-            YM2612_writeReg(0, 0xA4 + c, (u8)((block << 3) | (tot >> 8)));
-            YM2612_writeReg(0, 0xA0 + c, (u8)tot);
+            const u16 pitch = sound_ym_pitch[period];
+            YM2612_writeReg(0, 0xA4 + c, (u8)(pitch >> 8));
+            YM2612_writeReg(0, 0xA0 + c, (u8)pitch);
         }
         YM2612_writeReg(0, 0x4C + c, (u8)((15 - v) * 2 + SFX_TL_BIAS)); /* OP4 TL */
         if (!ym_keyed[c]) { YM2612_writeReg(0, 0x28, 0xF0 | c); ym_keyed[c] = 1; }
@@ -333,12 +332,9 @@ static void ay_1up_to_ym(void)
             continue;
         }
         {
-            u32 tot = 1845281UL / period;             /* fnum * 2^block          */
-            u8  block = 0;
-            while (tot >= 2048 && block < 7) { tot >>= 1; block++; }
-            if (tot >= 2048) tot = 2047;
-            YM2612_writeReg(1, 0xA4 + c, (u8)((block << 3) | (tot >> 8)));
-            YM2612_writeReg(1, 0xA0 + c, (u8)tot);
+            const u16 pitch = sound_ym_pitch[period];
+            YM2612_writeReg(1, 0xA4 + c, (u8)(pitch >> 8));
+            YM2612_writeReg(1, 0xA0 + c, (u8)pitch);
         }
         YM2612_writeReg(1, 0x4C + c, (u8)((15 - v) * 2 + ONEUP_TL_BIAS)); /* OP4 TL */
         if (!ym_keyed2[c]) { YM2612_writeReg(0, 0x28, 0xF0 | 0x04 | c); ym_keyed2[c] = 1; }
@@ -420,8 +416,16 @@ void snd_shutdown(void)
     }
 }
 
+void snd_play_coin(void)
+{
+    replay_start(SND_CMD_COIN);
+}
+
 void snd_command(u8 cmd)
 {
+    /* Original 6347: ordinary commands require demo sound (52) or live play
+     * (22). Shutdown uses replay_start directly so cleanup is never gated. */
+    if (g_attract && !g_config.demoSound) return;
     replay_start(cmd);
 }
 
@@ -432,6 +436,8 @@ void snd_command(u8 cmd)
 void snd_play_1up(void)
 {
     u8 i;
+    /* 6410 sends this event through the same ordinary-command gate. */
+    if (g_attract && !g_config.demoSound) return;
     for (i = 0; i < 16; i++) ay[2][i] = 0;
     ay[2][7] = 0xFF;                                  /* start muted; stream opens it */
     rp_1up.base = rp_1up.pos = snd_1up_oneshot;
