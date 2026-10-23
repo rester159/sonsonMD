@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SonSon MD</title>
+<meta name="description" content="SonSon MD: an unofficial, native Sega Genesis / Mega Drive port of the 1984 arcade game SonSon, written from scratch with SGDK. Source only.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f6f3ec;--surface:#ffffff;--ink:#1d1b26;--muted:#5d5a6b;--line:#e3ddd0;
+  --accent:#c2410c;--accent-ink:#ffffff;--good:#15803d;--code:#efe9dc;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121019;--surface:#1b1825;--ink:#ece8f5;--muted:#a49fb5;--line:#2c2839;
+    --accent:#fb923c;--accent-ink:#1b1206;--good:#4ade80;--code:#231f30;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121019;--surface:#1b1825;--ink:#ece8f5;--muted:#a49fb5;--line:#2c2839;
+  --accent:#fb923c;--accent-ink:#1b1206;--good:#4ade80;--code:#231f30;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+a{color:var(--accent)}
+.wrap{max-width:980px;margin:0 auto;padding:0 16px}
+header{padding:56px 0 32px;border-bottom:1px solid var(--line)}
+h1,h2,.pixel{font-family:"Press Start 2P",monospace;font-weight:400;letter-spacing:.02em}
+h1{font-size:clamp(28px,6vw,48px);margin:0 0 16px;line-height:1.2}
+h2{font-size:16px;margin:48px 0 16px;line-height:1.5}
+.lede{font-size:clamp(17px,2.4vw,20px);color:var(--muted);max-width:44em;margin:0 0 24px}
+.badges{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 28px}
+.badge{font-size:13px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 12px;color:var(--muted)}
+.cta{display:flex;flex-wrap:wrap;gap:12px}
+.btn{display:inline-block;text-decoration:none;font-weight:600;border-radius:8px;padding:11px 18px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.shots{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:32px 0 0}
+figure{margin:0}
+.shots img{width:100%;height:auto;display:block;image-rendering:pixelated;border-radius:6px;border:1px solid var(--line);background:#000}
+figcaption{font-size:13px;color:var(--muted);margin-top:6px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px 20px}
+.card h3{margin:0 0 6px;font-size:16px}
+.card p{margin:0;color:var(--muted);font-size:15px}
+table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:15px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line)}
+th{font-weight:600;color:var(--muted);font-size:13px}
+td.num{font-variant-numeric:tabular-nums}
+.good{color:var(--good);font-weight:600}
+.note{font-size:14px;color:var(--muted);margin-top:10px}
+pre{background:var(--code);border-radius:8px;padding:14px 16px;overflow-x:auto;font-size:14px;line-height:1.5}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.notice{border-left:4px solid var(--accent);background:var(--surface);padding:14px 18px;border-radius:0 8px 8px 0;margin-top:48px}
+footer{margin:56px 0 0;padding:24px 0 48px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+@media (max-width:720px){
+  .shots{grid-template-columns:1fr}
+  .grid{grid-template-columns:1fr}
+  header{padding-top:36px}
+  th,td{padding:8px 10px}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <p class="pixel" style="font-size:12px;color:var(--muted);margin:0 0 16px">Sega Genesis / Mega Drive · v1.0</p>
+    <h1>SonSon MD</h1>
+    <p class="lede">An unofficial, native Genesis port of Capcom's 1984 arcade game SonSon. It was rewritten from scratch in C with SGDK rather than emulated or translated, so it runs at the console's full 60&nbsp;fps.</p>
+    <div class="badges">
+      <span class="badge">1–2 players, simultaneous co-op</span>
+      <span class="badge">Arcade &amp; Home modes</span>
+      <span class="badge">Instadeath survival</span>
+      <span class="badge">Battery saves</span>
+      <span class="badge">Source only</span>
+    </div>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/rester159/sonsonMD">View source on GitHub</a>
+      <a class="btn" href="https://github.com/rester159/sonsonMD/archive/refs/tags/v1.0.zip">Download v1.0 source (.zip)</a>
+    </div>
+    <div class="shots">
+      <figure><img src="img/1p.png" width="256" height="224" alt="One-player gameplay: SonSon running along the lanes of a stone fortress level"><figcaption>1 player</figcaption></figure>
+      <figure><img src="img/2p.png" width="256" height="224" alt="Two-player co-op gameplay with both scores and the combined total score shown"><figcaption>2 player co-op</figcaption></figure>
+      <figure><img src="img/2p-stop.png" width="256" height="224" alt="Two-player co-op at a fortress section with enemies on several lanes"><figcaption>Fortress section, co-op</figcaption></figure>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <h2>Modes</h2>
+  <div class="grid">
+    <div class="card"><h3>Arcade</h3><p>Coin up with C, then Start on either controller to join or rejoin. Arcade coinage DIP switches are respected, including free play.</p></div>
+    <div class="card"><h3>Home</h3><p>Choose 1 or 2 players from the title menu. Start pauses, A/B/C fire, and a shared pool of 0, 3, 5 or 9 continues is set in Options.</p></div>
+    <div class="card"><h3>Instadeath survival</h3><p>One life each; any contact kills. Pressure rises every 20 seconds with more enemies, faster spawns and faster foes. Best times are kept separately for 1P and 2P.</p></div>
+    <div class="card"><h3>SRAM saves</h3><p>High scores, survival records, Home options and Arcade DIP switches persist in cartridge SRAM. Two CRC-protected slots guard against interrupted writes.</p></div>
+  </div>
+
+  <h2>Frame rate</h2>
+  <p>v1.0 fixes how the game handles frames that run late. The arcade logic still runs at its original 55.4&nbsp;Hz; display and logic are decoupled, so the game speed is unchanged.</p>
+  <table>
+    <thead><tr><th>55,000-tick run, NTSC</th><th>Dropped frames before</th><th>Dropped frames v1.0</th><th>Worst second v1.0</th></tr></thead>
+    <tbody>
+      <tr><td>1 player</td><td class="num">75</td><td class="num good">6</td><td class="num">58 fps</td></tr>
+      <tr><td>2 players</td><td class="num">768</td><td class="num good">57</td><td class="num">52 fps</td></tr>
+    </tbody>
+  </table>
+  <p class="note">Measured headless in Genesis Plus GX with a scripted controller (~15 minutes of play per mode). One very dense two-player scene can still dip briefly. PAL (50&nbsp;Hz) is not yet tuned.</p>
+
+  <h2>Build it</h2>
+  <p>Requires SGDK 2.11 and an <code>m68k-elf-gcc</code> toolchain. The repository includes the generated game graphics and sound tables, so no arcade ROM is needed to compile.</p>
+<pre><code>git clone https://github.com/rester159/sonsonMD.git
+cd sonsonMD
+SONSON_GDK=/path/to/sgdk bash build.sh   # writes out/rom.bin</code></pre>
+  <p>Run <code>out/rom.bin</code> in an accurate Genesis emulator such as Genesis Plus GX, BlastEm or MAME (<code>mame genesis -window -cart out/rom.bin</code>), or on hardware with a flash cart.</p>
+
+  <div class="notice">
+    <strong>No ROMs are distributed here.</strong> This is a fan project with no affiliation to or endorsement from Capcom or SEGA. SonSon is a trademark of Capcom. The repository contains source code only; it includes no original arcade ROM images and no SEGA or CAPCOM boot intros. Arcade-accurate behaviour is an ongoing effort; see the <a href="https://github.com/rester159/sonsonMD/blob/main/tools/ARCADE_PARITY.md">parity audit</a> for what has been verified.
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">Ported by rester159, 2026 · <a href="https://github.com/rester159/sonsonMD">github.com/rester159/sonsonMD</a></div>
+</footer>
+</body>
+</html>
