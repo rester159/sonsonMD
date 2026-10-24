@@ -9,6 +9,8 @@
 
 #define B9(a)  (ss2_bank9[(u16)(a) - 0xC000])
 
+extern u16 ss2_text_request;                /* ss2_objfix.c: $BADE text */
+
 static void move(void);
 static void main_body(void);
 static void mode_other(void);
@@ -22,6 +24,9 @@ static void jump_start(void);
 static void stop_on_ground(void);
 static void hurt_mode(void);
 static void buttons(void);
+static void cloud_steer(void);
+static void cloud_face(void);
+static void demo_knock(void);
 
 /* ---- shared helpers ---------------------------------------------------- */
 
@@ -227,9 +232,20 @@ static void move(void)
 static void mode_other(void)
 {
     u8 y;
-    if (Z_DEMOFX) { ss2_unported(0xC4D7); return; }
+    if (Z_DEMOFX) { demo_knock(); return; }
     if (P_MODE == 0x20) { hurt_mode(); return; }
-    if (P_FLAGSC1 & 0x02) { ss2_unported(0xC4B8); return; }
+    if (P_FLAGSC1 & 0x02)
+    {
+        /* $C4B8: message $4E8F (bank 4 $BADE: BAT text, presentation),
+         * then hurt with half the maximum life */
+        ss2_text_request = 0x4E8F;
+        ZP(0x8B) = 0x02;
+        P_MODE = 0x20;
+        P_LIFE = (u8)(R(0x22B9) >> 1);
+        P_FLAGSC1 &= (u8)~0x02;
+        mode_other();
+        return;
+    }
     if (!P_DEATH)
     {
         /* $C33F: start the death leap */
@@ -310,7 +326,7 @@ static void hurt_mode(void)
             ss2_set_vy(0);
             P_ATTRL |= 0x0F;
             ss2_sfx(0x15);
-            ss2_unported(0xCFAF);
+            cloud_steer();
             return;
         }
         if (t == 0x53)
@@ -321,7 +337,7 @@ static void hurt_mode(void)
             main_body();
             return;
         }
-        if (t > 0x53) { ss2_unported(0xCFAF); return; }
+        if (t > 0x53) { cloud_steer(); return; }
         main_body();
         return;
     }
@@ -922,15 +938,167 @@ static void jump_attack(void)
     if (P_MAGICSEL && ss2_rom_byte((u16)(0x4CEA + P_MAGICSEL)) <= P_MAGIC && (Z_PRESS & 0x01))
     {
         if (!P_JUMPING) { P_JUMPREQ = 0; P_JUMPING = 0; }
-        ss2_unported(0xD1E8);
+        ss2_magic_cast();                   /* $D1E8 ... JMP $CC35 */
+        attack();
         return;
     }
     jump();
 }
 
+/* ---- $C4D7: thrown by the hitter ($86 set) --------------------------- */
+static void demo_knock(void)
+{
+    P_ANIMTICK++;
+    if (P_HURT == 0x5A)
+    {
+        u8 x;
+        P_HURT--;
+        P_ANIMSET = 0x0C;
+        P_ATTRL &= (u8)~0x0F;
+        x = (u8)(P_HITOBJ - 1);
+        P_VXH = R(0x25BA + x);
+        P_VXL = R(0x25DA + x);
+        ss2_set_vy(0);
+        P_ATTACKING = 0;
+        P_ATTACKREQ = 0;
+        R(0x243C) = 0;
+        ZP(0x8B) = 0x02;                    /* $C50D: SATB 2-6 cleared */
+        staff_clear();
+    }
+    /* $C531 */
+    if (!((s8)P_VXH < 0 ? ss2_probe(0x00, 0x10) : ss2_probe(0x20, 0x10))) { move(); return; }
+    P_MODE = 0x80;
+    P_HURT = 0;
+    stop_on_ground();
+}
+
 /* ---- $CE74: Kinto'un cloud -------------------------------------------- */
+
+/* $CF4A: hop up onto the arriving cloud, then gravity */
+static void cloud_hop(void)
+{
+    u16 t;
+    if (!Z_VLOCK)
+    {
+        Z_VLOCK = 1;
+        P_ANIMSET = 0x04;
+        ss2_set_vy(0xFD00);
+        ss2_set_vx(0);
+    }
+    t = (u16)(P_VYL + 0x30);
+    P_VYL = (u8)t;
+    P_VYH = (u8)(P_VYH + (t >> 8));
+}
+
 static void cloud(void)
 {
-    (void)stop_on_ground;
-    ss2_unported(0xCE74);
+    u16 t;
+    R(0x23CF) = B9(0xDAF5 + ((Z_FRAME >> 3) & 1));
+    P_ANIMTICK = 0;
+    if (P_ONCLOUD)
+    {
+        /* $CF79: riding: eight-way flight */
+        if (Z_INLOCK2 || !(Z_PAD & 0xF0))
+        {
+            ss2_set_vx(0);
+            ss2_set_vy(0);
+            cloud_face();
+            return;
+        }
+        {
+            u8 x = (u8)((Z_PAD & 0xF0) >> 2);
+            P_VXL = B9(0xDA7B + x);
+            P_VXH = B9(0xDA7B + x + 1);
+            P_VYL = B9(0xDA7B + x + 2);
+            P_VYH = B9(0xDA7B + x + 3);
+        }
+        cloud_steer();
+        return;
+    }
+    if (R(0x23C5) != 0x80)
+    {
+        /* $CE94: summon: cloud record from $DA3B */
+        u8 i;
+        for (i = 0; i < 0x18; i++) R(0x23C5 + i) = B9(0xDA3B + i);
+        ss2_set_vx(0);
+        ss2_set_vy(0);
+        P_JUMPREQ = 0;
+        P_JUMPING = 0;
+        P_ATTACKREQ = 0;
+        P_ATTACKING = 0;
+        ss2_sfx(0x1F);
+        move();
+        return;
+    }
+    /* $CEBB: flying in */
+    if (R(0x23CA) >= 0xB0)
+    {
+        R(0x23D2) = 0;
+        R(0x23D3) = 0;
+        R(0x23CC) |= 0x08;
+        if ((s8)R(0x23D0) >= 0) cloud_hop();
+        t = (u16)(R(0x23D1) + 0x38);
+        R(0x23D1) = (u8)t;
+        R(0x23D0) = (u8)(R(0x23D0) + (t >> 8));
+    }
+    /* $CEE5 */
+    t = (u16)(R(0x23C8) + R(0x23D1));
+    R(0x23C8) = (u8)t;
+    R(0x23C7) = (u8)(R(0x23C7) + R(0x23D0) + (t >> 8));
+    t = (u16)(R(0x23CB) + R(0x23D3));
+    R(0x23CB) = (u8)t;
+    R(0x23CA) = (u8)(R(0x23CA) + R(0x23D2) + (t >> 8));
+    if ((R(0x23D2) | R(0x23D3)) || R(0x23C7) < 0x70) { move(); return; }
+    /* $CF20: aboard */
+    Z_VLOCK = 0;
+    P_ANIMSET = 0;
+    Z_HSCROLL = 1;
+    P_ONCLOUD = 1;
+    P_CLOUDREQ = 0;
+    ss2_set_vy(0);
+    R(0x23D0) = 0;
+    R(0x23D1) = 0;
+    P_YL = 0x96;
+    R(0x23C7) = 0x6B;
+    move();
+}
+
+/* $CFAF: keep the cloud between y $38 and $A0 and out of walls */
+static void cloud_steer(void)
+{
+    if ((s8)P_VYH < 0) { if (P_YL < 0x38) ss2_set_vy(0); }
+    else if (P_YL >= 0xA0) ss2_set_vy(0);
+    if ((s8)P_VXH >= 0) { if (PROBE_RIGHT()) ss2_set_vx(0); }
+    else if (PROBE_LEFT()) ss2_set_vx(0);
+    cloud_face();
+}
+
+/* $CFE1: facing, cloud offset, staff or magic */
+static void cloud_face(void)
+{
+    u8 a = P_DIR;
+    if (a != 2 && a != 5)
+    {
+        a = (u8)((a + 1) & 4);
+        P_LASTDIR = a;
+        if (!a)
+        {
+            R(0x23CC) |= 0x08;
+            R(0x23C7) = (u8)(P_XL - 2);
+        }
+        else
+        {
+            R(0x23CC) &= (u8)~0x08;
+            R(0x23C7) = (u8)(P_XL + 2);
+        }
+    }
+    P_DIR = P_LASTDIR;
+    if (!(P_ATTACKREQ | P_ATTACKING)) { move(); return; }
+    if (P_MAGICSEL && (Z_PRESS & 0x01))
+    {
+        P_JUMPREQ = 0;
+        P_JUMPING = 0;
+        ss2_magic_cast();                   /* $D1E8 ... JMP $CC35 */
+    }
+    attack();
 }
