@@ -16,5 +16,5 @@ cc -O1 -g -fsanitize=address,undefined -DROUTINE=$R -I"$ROOT/tools/ss2/hosttest/
    "$ROOT/tools/ss2/hosttest/test_routine.c" "${SRCS[@]}" "$ROOT/tools/ss2/hosttest/frame_tick.c" -o "$OUT/replay_b5"
 for p in "$@"; do
     echo "== $p"
-    SS2_IRQ_MASK="$ROOT/out/ss2/irq_mask.bin" "$OUT/replay_b5" "$p" "${MAXREP:-3}" || true
+    SS2_IRQ_MASK="${MASK:-$ROOT/out/ss2/irq_mask.bin}" "$OUT/replay_b5" "$p" "${MAXREP:-3}" || true
 done
