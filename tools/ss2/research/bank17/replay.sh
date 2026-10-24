@@ -25,6 +25,12 @@ new = """    for (x = 0; x < 0x20; x++)
         }
 }"""
 assert old in s
+s = s.replace(old, new)
+# and the bank 2 boss-death hit handler $6F6D (ss2_o17_boss_sparks)
+old = """    if (addr < 0xA000) return ss2_item_handler(addr, x) || ss2_objfix_handler(addr, x);"""
+new = """    if (addr == 0x6F6D) { extern void ss2_o17_boss_sparks(u8); ss2_o17_boss_sparks(x); return 1; }
+    if (addr < 0xA000) return ss2_item_handler(addr, x) || ss2_objfix_handler(addr, x);"""
+assert old in s
 open(sys.argv[2], 'w').write(s.replace(old, new))
 PY
     SRCS=("$OUT/ss2_objects_xout.c")

@@ -16,6 +16,8 @@ opts: life   -- refill life at each frame start (before the pre snapshot,
                 (X,Y), a spawn record position (see spawns.py -v); with a
                 negative DX the player stands to the right
       magic  -- refill magic like life
+      weak   -- each frame start: bank $17/$07 objects keep at most 1 HP
+      cloud  -- with warp: give the cloud ($22C1 bit 3)
       boss   -- with warp: set the boss-room lock $7F once
       solo   -- at each frame start remove objects of the other code banks
                 ($05/$09/$0F/$1F) and block their spawners ($2B5A = $FF),
@@ -143,8 +145,14 @@ def tr(c, pc, op):
             pairs.append((m.frame, pending[0], bytes(m.ram)))
         if warp and pending[0] is None:
             do_warp(m.ram)
+            if 'cloud' in opts:
+                m.ram[0x2C1] |= 0x08
             if 'boss' in opts:
                 m.ram[0x7F] = 1       # boss spawners wait for the room lock
+        if 'weak' in opts:
+            for x in range(32):
+                if m.ram[0x45A + x] and m.ram[0x75A + x] in (0x17, 0x07) and m.ram[0x6DA + x] > 1:
+                    m.ram[0x6DA + x] = 1
         if solo:
             for x in range(32):
                 if m.ram[0x45A + x] and m.ram[0x75A + x] in OTHER:

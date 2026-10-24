@@ -27,6 +27,13 @@ RUNS=(
   "boss3    2 1500 explore 0,0,E0,F0 boss"
   "boss7a   6 1500 explore 3,0,A0,38 boss"
   "boss7b   6 1500 explore 1,1,D0,50 boss"
+  "boss2c   1 1200 explore 6,2,F0,D8 boss cloud"
+  "boss2w   1 900  explore 6,2,F0,D8 boss weak"
+  "boss3w   2 900  explore 0,0,E0,F0 boss weak"
+  "boss7aw  6 900  explore 3,0,A0,38 boss weak"
+  "boss7bw  6 900  explore 1,1,D0,50 boss weak"
+  "lob1w    0 900  explore 1,4,78,70 weak"
+  "lob6w    5 900  explore 2,3,78,D0 weak"
 )
 want=" $* "
 for r in "${RUNS[@]}"; do
