@@ -1,30 +1,6 @@
-/* selector.c -- ARCADE / HOME mode selector (native boot-flow, Phase 8).
- *
- * A clean NATIVE re-creation of the sibling port's mode_selector() (home.c).
- * The original draws into the 6809 engine's videoram mirror (ram_lo) using the
- * game's own font tiles and the transliteration present path -- none of which
- * exist in this native build -- so this is a faithful-enough re-creation per
- * the Phase-8 directive: same screen content + layout (SONSON title up high,
- * ARCADE / HOME choice, the prompt, and the EXACT credit string), rendered with
- * SGDK's font on a text plane. No old-port engine state.
- *
- * Layout (FRONTEND_SPEC 3, re-centred for the native H40 / 40-col text grid):
- *   rows  7- 9   SONSON title banner
- *   row  18      ARCADE   (highlight = red, else white)
- *   row  20      HOME     (highlight = red, else white)
- *   row  24      PRESS ANY BUTTON TO SELECT   (yellow)
- *   row  26      PORTED BY RESTER 159, 2026   (white)  <- exact shipped string
- *
- * Behaviour (matches home.c::mode_selector): Up/Down moves the highlight
- * (wraps between the 2 rows), any button (A/B/C/Start) confirms; edge-triggered
- * with the 3-read debounce + 20-frame settle that kill the SGDK 6-button
- * TH-detect phantom presses at power-on (both pads forced to 3-button mode).
- * Engine-off frame loop: wait a VBlank (vtimer ticks in SGDK's V-Int), update
- * the pads here, redraw, repeat.
- *
- * Returns MODE_ARCADE (0) or MODE_HOME (1).
- */
+/* Opening mode selector: original arcade logo and lettering. */
 #include <genesis.h>
+#include "arcade_ui.h"
 #include "frontend.h"
 
 /* Three font palette lines so individual text lines can be coloured by
@@ -36,11 +12,11 @@
 
 /* The exact credit string the owner shipped (home.c, owner request 2026-06-12).
  * Kept verbatim -- this is the load-bearing presentation requirement. */
-#define CREDIT_STR  "PORTED BY RESTER 159, 2026"
+#define CREDIT_STR  "PORTED BY RESTER159, 2026"
 
 #define ROW_ARCADE  18
 #define ROW_HOME    20
-#define COLS        40   /* H40 text grid width */
+#define COLS        32   /* H40 text grid width */
 
 /* ---- one-colour font palette: a flat colour in index 15, 0 transparent. */
 static void set_font_pal(u16 palLine, u16 color)
@@ -73,8 +49,8 @@ static void draw_title(void)
     set_font_pal(PAL_RED,    0x000E);   /* red           */
     set_font_pal(PAL_YELLOW, 0x00EE);   /* yellow        */
 
-    draw_center(7, "S O N S O N", PAL_WHITE);
-    draw_center(8, "============", PAL_RED);
+    
+    
 }
 
 /* ---- redraw the two choice rows with the current highlight. */
@@ -134,9 +110,13 @@ u8 selector_run(void)
     VDP_clearPlane(BG_B, TRUE);
     VDP_setBackgroundColor(0);
 
+    arcade_menu_begin(1);
+    VDP_clearTextArea(0,0,32,2);
     draw_title();
-    draw_center(24, "PRESS ANY BUTTON TO SELECT", PAL_YELLOW);
+
     draw_center(26, CREDIT_STR, PAL_WHITE);
+    VDP_setTextPalette(PAL_WHITE);
+    VDP_drawTextBG(BG_A, "v1.0", 27, 27);
     edges_rearm();
     draw_choices(sel);
 

@@ -6,7 +6,7 @@
  * 6809 globals, no port_present_frame). The two logo splashes reuse the owner's
  * verified kits verbatim (sega_logo.{c,h}, capcom_logo.{c,h}); the selector is
  * a clean native re-creation that keeps the SONSON title look + the exact
- * "PORTED BY RESTER 159, 2026" credit string.
+ * "PORTED BY RESTER159, 2026" credit string.
  *
  * Boot order (main.c): sega_splash_run() -> capcom_splash_run() ->
  * mode = selector_run() -> game_init() + the native game loop.
@@ -43,6 +43,9 @@ u8 selector_run(void);
  * "SONSON" title (logo + score/HIGH header + deposit-coin prompt + flanking
  * characters). Runs in the game's H32 video mode. Blocks until START. */
 void title_attract_run(u8 mode);
+/* Arcade title owns the demo lifetime while its blocking gameplay renderer runs. */
+extern u8 arcade_title_demo_owned;
+u8 arcade_title_demo_update(u8 game_done);
 
 /* ARCADE branch (Phase 8b): the authentic arcade DIP-switch / service screen.
  * Presents SonSon's real DIP bank (Coinage, Lives, Bonus, Difficulty, Demo

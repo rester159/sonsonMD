@@ -26,24 +26,26 @@
  * list panning under it. Up/Down move the cursor, Left/Right change the
  * highlighted switch's value, Start/A/B/C confirm.
  *
- * Title: arcade service look ("SONSON  DIP SWITCH SETTINGS").
+ * Title: arcade service look ("DIP SWITCHES").
  */
 #include <genesis.h>
+#include "arcade_ui.h"
 #include "frontend.h"
 #include "game.h"
+#include "save.h"
 
 /* Font palette lines (selector.c parity): index 0 transparent, 15 = glyph. */
 #define PAL_WHITE   PAL1
 #define PAL_RED     PAL2
 #define PAL_YELLOW  PAL3
 
-#define COLS        40            /* H40 text grid width                       */
+#define COLS        32            /* H40 text grid width                       */
 
 /* Layout: the DIP list scrolls inside a fixed row window. */
-#define LIST_TOP    8             /* first on-screen list row                  */
+#define LIST_TOP    6             /* first on-screen list row                  */
 #define VIS_ROWS    10            /* visible list rows (we show 10 of 10 here) */
 #define NAME_COL    3             /* left column of the switch name            */
-#define VAL_COL     22            /* left column of the value string           */
+#define VAL_COL     19            /* left column of the value string           */
 
 /* ---- DIP switch model ----------------------------------------------------
  * Each row is one hardware switch: which bank byte it lives in, a mask, a shift,
@@ -91,17 +93,17 @@ static const DipRow DIPS[] =
         { COINAGE[0],COINAGE[1],COINAGE[2],COINAGE[3],COINAGE[4],COINAGE[5],
           COINAGE[6],COINAGE[7],COINAGE[8],COINAGE[9],COINAGE[10],COINAGE[11],
           COINAGE[12],COINAGE[13],COINAGE[14],COINAGE[15] } },
-    { "COINAGE AFFECTS", 0, 0x10, 4, 2, { "COIN B", "COIN A" } },
+    { "COIN SLOT", 0, 0x10, 4, 2, { "COIN B", "COIN A" } },
     { "DEMO SOUNDS",  0, 0x20, 5, 2, { "ON", "OFF" } },        /* 0=On default  */
     { "FLIP SCREEN",  0, 0x80, 7, 2, { "ON", "OFF" } },        /* 0=On,0x80=Off */
     /* --- DSW2 --- */
     { "LIVES",        1, 0x03, 0, 4, { "7", "5", "4", "3" } }, /* idx3=3 default*/
-    { "2 PLAYERS GAME", 1, 0x04, 2, 2, { "2 CREDITS", "1 CREDIT" } },
+    { "2 PLAYERS", 1, 0x04, 2, 2, { "2 CREDITS", "1 CREDIT" } },
     { "BONUS LIFE",   1, 0x18, 3, 4,
-        { "30K 90K 120K", "20K 80K 100K", "30K ONLY", "20K ONLY" } },
-    { "DIFFICULTY",   1, 0x60, 5, 4, { "VERY HARD", "HARD", "NORMAL", "EASY" } },
+        { "20K ONLY", "30K ONLY", "20K 80K +100K", "30K 90K +120K" } },
+    { "LEVEL",   1, 0x60, 5, 4, { "VERY HARD", "HARD", "NORMAL", "EASY" } },
     { "FREEZE",       1, 0x80, 7, 2, { "ON", "OFF" } },        /* 0=On,0x80=Off */
-    { "SERVICE MODE", 0, 0x40, 6, 2, { "ON", "OFF" } },        /* 0=On,0x40=Off */
+    { "SERVICE", 0, 0x40, 6, 2, { "ON", "OFF" } },        /* 0=On,0x40=Off */
 };
 #define DIP_COUNT  (sizeof(DIPS) / sizeof(DIPS[0]))
 
@@ -222,7 +224,7 @@ static void draw_list(u16 cursor, u16 top)
     for (i = 0; i < VIS_ROWS; i++)
     {
         u16 idx = (u16)(top + i);
-        u16 row = (u16)(LIST_TOP + i);
+        u16 row = (u16)(LIST_TOP + i*2);
         if (idx < DIP_COUNT) draw_row(idx, row, (u8)(idx == cursor));
         else                 VDP_clearTextArea(0, row, COLS, 1);
     }
@@ -244,14 +246,15 @@ void dip_screen_run(void)
     VDP_clearPlane(BG_B, TRUE);
     VDP_setBackgroundColor(0);
 
+    arcade_menu_begin(0);
     set_font_pal(PAL_WHITE,  0x0EEE);   /* bright white                        */
     set_font_pal(PAL_RED,    0x000E);   /* red                                 */
     set_font_pal(PAL_YELLOW, 0x00EE);   /* yellow                              */
 
-    draw_center(2, "SONSON  DIP SWITCH SETTINGS", PAL_YELLOW);
-    draw_center(4, "------------------------------", PAL_RED);
-    draw_center(25, "UP/DOWN  SELECT     LEFT/RIGHT  CHANGE", PAL_WHITE);
-    draw_center(26, "START TO CONFIRM", PAL_YELLOW);
+    draw_center(2, "DIP SWITCHES", PAL_YELLOW);
+
+
+    draw_center(26, "START", PAL_YELLOW);
 
     edges_rearm();
     draw_list(cursor, top);
@@ -289,6 +292,7 @@ void dip_screen_run(void)
 
     /* commit: derive the engine-facing scalar fields from the edited banks. */
     sync_from_dsw();
+    save_capture_settings(MODE_ARCADE);
 
     VDP_clearPlane(BG_A, TRUE);
     VDP_clearPlane(BG_B, TRUE);

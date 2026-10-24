@@ -1,0 +1,24 @@
+:DSW1  ::  Demo Sounds
+:DSW1  ::  Flip Screen
+:DSW1  ::  Coinage affects
+:DSW1  ::  Coinage
+:DSW1  ::  Service Mode
+:DSW2  ::  Lives
+:DSW2  ::  Bonus Life
+:DSW2  ::  2 Players Game
+:DSW2  ::  Difficulty
+:DSW2  ::  Freeze
+:P1  ::  P1 Left
+:P1  ::  P1 Up
+:P1  ::  P1 Down
+:P1  ::  P1 Right
+:P1  ::  P1 Button 1
+:P2  ::  P2 Up
+:P2  ::  P2 Left
+:P2  ::  P2 Right
+:P2  ::  P2 Button 1
+:P2  ::  P2 Down
+:SYSTEM  ::  1 Player Start
+:SYSTEM  ::  Coin 1
+:SYSTEM  ::  2 Players Start
+:SYSTEM  ::  Coin 2

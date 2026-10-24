@@ -1,16 +1,13 @@
-#!/bin/bash
-# Build sonson_native -- a NORMAL SGDK project (standard makefile.gen, fast build,
-# NOT the LTO-heavy transliteration build the sibling port uses). Run with the BASH
-# tool (not PowerShell -- PS wraps benign make stderr as a fatal NativeCommandError).
-set -e
-GDK="D:/portForge/tools/sgdk"
-PROJ="D:/genesis ports/_capcom/son son/sonson_native"
-cd "$PROJ"
-export GDK
-export PATH="$GDK/bin:$PATH"
-mkdir -p out
-LOG="out/build.txt"
-echo "=== build start $(date) ===" | tee "$LOG"
-"$GDK/bin/make.exe" -f "$GDK/makefile.gen" release GDK="$GDK" "$@" >> "$LOG" 2>&1
-echo "=== make exit $? ===" | tee -a "$LOG"
-ls -la out/rom.bin | tee -a "$LOG"
+#!/usr/bin/env bash
+# Native host build on macOS/Linux; retain SGDK's Windows make workflow.
+set -euo pipefail
+cd "$(dirname "$0")"
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    export GDK="${GDK:-D:/portForge/tools/sgdk}"
+    export PATH="$GDK/bin:$PATH"
+    mkdir -p out
+    "$GDK/bin/make.exe" -f "$GDK/makefile.gen" release GDK="$GDK" EXTRA_FLAGS="-fno-strict-aliasing" "$@" > out/build.txt 2>&1
+    ;;
+  *) exec python3 tools/build_native.py "$@" ;;
+esac

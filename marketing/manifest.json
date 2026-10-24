@@ -1,0 +1,87 @@
+{
+  "rom": "dist/SonSonMD-v1.0.bin",
+  "rom_sha256": "c4908453899526b02229c7ac67b0e1af9e81fb1c243ac30b6a4e48ec4c82c9c4",
+  "capture": "Genesis Plus GX (headless, tools/frame_profile_libretro.c SHOT_FRAMES), 2-player scripted run; nearest-neighbor 3x enlargement. SEGA/CAPCOM boot logos deliberately excluded.",
+  "screenshots": [
+    {
+      "file": "01-coop-grasslands.png",
+      "refresh": 1980,
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "02-teal-platforms.png",
+      "refresh": 4140,
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "03-purple-platforms.png",
+      "refresh": 6300,
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "04-grey-castle.png",
+      "refresh": 9180,
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "05-brickwork-battle.png",
+      "refresh": 12540,
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "06-blue-stone.png",
+      "refresh": 15420,
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "07-blue-castle-swarm.png",
+      "refresh": 30540,
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "08-statue-boss.png",
+      "refresh": 52380,
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "09-title-screen.png",
+      "refresh": 780,
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "10-dip-switches.png",
+      "refresh": 690,
+      "native_size": [
+        256,
+        224
+      ]
+    }
+  ]
+}

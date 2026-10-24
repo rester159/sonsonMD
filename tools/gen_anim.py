@@ -31,15 +31,11 @@ PROVENANCE OF THE FRAME SEQUENCES (authoritative = the arcade):
             clean 4-cycle exactly while the actor's Y stepped between lanes)
     FIRE  : 83 (distinct crouch/action pose, observed held at a fixed lane) then
             back to the run-pass frame -- a short 2-cell shoot stab.
-    DEATH : RE-EXTRACTED from real on-camera deaths (tools/ss_pdeath_cap.lua +
-            ss_pdeath_all.lua, 6 forced deaths, tools/death_anim_cap.json). The
-            arcade hero has NO on-screen tumble: on a lethal hit the player sprite
-            VANISHES instantly (~4 frames), then RESPAWNS holding sprite code 83
-            (the standby/arms pose, ~17f) before resuming the run. The all-sprite
-            dump confirms no death-specific sprite of ANY code/bank plays during
-            the gap (sheet codes 74-77 are scrambled garbage, 88-90 decorative).
-            So faithful PLAYER_DEATH = HOLD pose 83 (what the arcade shows at the
-            death/respawn beat); the engine already blinks the hero during DYING.
+    DEATH : Legacy PLAYER_DEATH below is a placeholder, not arcade behavior.
+            Original AD9B uses AFFC/B00A four-frame loops before the rise/fall
+            and AF9A/AF9F return poses. arcade_life.c owns the verified timing;
+            arcade_life_art.c selects the resident tiles by source code/attr.
+            Earlier sampled captures missed this sequence. See ARCADE_PARITY.md.
 
   ENEMY (the bank-2 ground enemy, the most common chaser in the demo):
     WALK  : 304 -> 305 -> 306 -> 305   (0x130..0x132; ~4-7 frames/cell)
@@ -136,11 +132,8 @@ ANIMS = [
     ("PLAYER_CLIMB", True,  [(66, PLAYER_BANK, 4), (67, PLAYER_BANK, 4),
                              (68, PLAYER_BANK, 4), (69, PLAYER_BANK, 4)]),
     ("PLAYER_FIRE",  False, [(83, PLAYER_BANK, 6), (65, PLAYER_BANK, 4)]),
-    # DEATH: FAITHFUL (re-extracted from 6 real on-camera deaths -- see header +
-    # death_anim_cap.json). The arcade hero shows NO tumble: he vanishes then holds
-    # the code-83 standby pose at the death/respawn beat. We bake that as the held
-    # pose 83 (one-shot, never loops); game.c blinks the sprite through the DYING
-    # window (DEATH_FRAMES) so it reads as the authentic vanish+death-pose beat.
+    # Legacy held-pose placeholder retained until game.c lifecycle integration.
+    # Original death timing/pose selection belongs to arcade_life.c/art.c.
     ("PLAYER_DEATH", False, [(83, PLAYER_BANK, 64)]),
 
     # ---- PLAYER 2 (TonTon) -- the SECOND co-op hero. SonSon is 2-player SIMULTANEOUS
@@ -316,6 +309,8 @@ ANIMS = [
     #   shared burst. ----
     ("ORB_FLOAT",   True,  [(231, 14, 6), (230, 14, 6)]),
     ("ORB_DEATH",   False, SHARED_BURST),
+    # Source $AFF4: projectile end puff, distinct from the flying bullet.
+    ("SHOT_END", False, [(78, 2, 2), (79, 2, 2)]),
 ]
 
 
@@ -343,8 +338,11 @@ def bake(roms, base):
         combo[key] = local
         return local
 
+    from arcade_foe_data import extract
+    extra=extract(roms.dir)['poses']
+    specs=ANIMS+[("ARCADE_FOE_POSES",False,[(code,bank,1)for code,bank in extra])]
     anim_table = []
-    for name, loop, frames in ANIMS:
+    for name, loop, frames in specs:
         out_frames = []
         for (code, bank, dur) in frames:
             local = frame_tile_base(code, bank)

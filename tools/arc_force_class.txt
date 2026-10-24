@@ -1,0 +1,17 @@
+=== FORCE-ARMED per-class sprite (code,bank) from pool records ===
+everInGame=true
+bit0 enemyMain (rec $0638 pool $0828): 
+    code= 73 bank= 1  n=153   y=[40..40]
+    code= 64 bank= 0  n=151   y=[40..40]
+    code= 88 bank=29  n=107   y=[40..40]
+    code=388 bank=30  n=95    y=[40..40]
+    code=379 bank=21  n=92    y=[61..160]
+bit1 classC (rec $0648 pool $0A28): (never active)
+bit2 classD (rec $0658 pool $0AE8): (never active)
+bit3 classE (rec $0668 pool $0B68): (never active)
+bit4 classF (rec $0678 pool $0BA8): (never active)
+bit5 classH (rec $0688 pool $0CE8): 
+    code=305 bank= 2  n=1005  y=[71..135]
+bit6 classG (rec $0698 pool $0C28): (never active)
+bit7 classI (rec $06A8 pool $0DA8): (never active)
+bit9 obj16x16 (rec $06C8 pool $0E48): (never active)

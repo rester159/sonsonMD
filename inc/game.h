@@ -185,27 +185,10 @@ extern volatile u16 g_levelW;                     /* ribbon pixel width (in-game
 #define GAMEOVER_FRAMES     150     /* ~2.5s GAME OVER overlay before returning  */
 #define BLINK_MASK          2       /* sprite shown when (timer & BLINK_MASK)==0 */
 
-/* ===========================================================================
- *  EXTRA-LIFE (BONUS) -- arcade DSW2 0x18 thresholds, RE-sourced.
- * ===========================================================================
- *  SonSon awards bonus lives when the score crosses fixed thresholds selected by
- *  the arcade Bonus-Life switch (DSW2 0x18 -> g_config.bonusLife 0..3). The labels
- *  (dipswitch.c, verbatim from MAME -listxml sonson) and their threshold lists:
- *    idx0 "30K 90K 120K"  -> extra life at  30000,  90000, 120000  (three, then none)
- *    idx1 "20K 80K 100K"  -> extra life at  20000,  80000, 100000  (default)
- *    idx2 "30K ONLY"      -> extra life at  30000                  (one only)
- *    idx3 "20K ONLY"      -> extra life at  20000                  (one only)
- *  The "ONLY" suffix on idx2/idx3 confirms idx0/idx1 are fixed 3-award lists (NOT
- *  "first at X then every Y"). All six threshold VALUES (20K/30K/80K/90K/100K/120K)
- *  were confirmed present in the arcade program ROM as BCD constants near the score
- *  code (rom/ss.01e ~$4E60-$4EBC). The running score is plain decimal here (game.c
- *  g_game.score), so thresholds are stored as decimal points -- no BCD/x10 needed.
- *
- *  LIVES CAP: the arcade lives display is a small field; we cap the in-hand count
- *  so a long high-scoring run can't overflow the HUD digit. 9 keeps the single-digit
- *  "Lx N" readout valid (the HUD already clamps the glyph to 9). */
-#define BONUS_LIST_MAX      3       /* longest threshold list (idx0/idx1 = 3 entries) */
-#define LIFE_MAX            9       /* cap on lives in hand (HUD is one digit)        */
+/* Bonus-life thresholds and cadence are owned by arcade_bonus_life.
+ * Player.lives keeps its byte ABI; game.c tracks the256-in-hand case separately.
+ * Raw DIP indices0/1:20K/30K only;2/3:first20K/30K,second80K/90K,
+ * then recurring increments100K/120K. */
 
 /* ===========================================================================
  *  ROUND / STAGE PROGRESSION -- faithful auto-scroll advance + difficulty ramp.
@@ -305,7 +288,7 @@ typedef struct
      * GameState in the 2-player split (tools/TWO_PLAYER_SPEC.md). --- */
     u32 score;         /* this player's running score                        */
     u8  lives;         /* this player's remaining lives (init g_config.lives) */
-    u8  bonusNextIdx;  /* next bonus-life threshold index (per-player score)  */
+    u8  bonusNextIdx;  /* source bonus-life phase mirror (0 then1)           */
     u8  flow;          /* GameFlow for THIS player (ALIVE/DYING/RESPAWN/OVER) */
     u16 flowTimer;     /* frames left in this player's DYING/RESPAWNING beat  */
     u8  deadReq;       /* lethal contact pending (set by entity collision)    */
@@ -376,7 +359,25 @@ extern u8 g_mode;
  * g_attract_started: set TRUE if the player pressed START during the demo (the
  * title then begins a real game). Set/cleared by title_attract_run (title.c). */
 extern volatile u8 g_attract;
+/* Original4CBE exits before score writes when live-game22 is clear. Keep
+ * reward evaluation outside this gate: collisions/collection still happen. */
+static inline void game_score_add(Player *player,u32 points)
+{
+    if(!g_attract)
+    {
+        /* 4CD9..4CF3 adds four packed-BCD bytes, discarding the final carry.
+         * Normalize external/old-save values too; ordinary awards skip division. */
+        u32 score=player->score;
+        if(score>=100000000UL)score%=100000000UL;
+        if(points>=100000000UL)points%=100000000UL;
+        score+=points;
+        if(score>=100000000UL)score-=100000000UL;
+        player->score=score;
+    }
+}
+
 extern volatile u8 g_attract_started;
+extern volatile u8 g_attract_startPlayers; /* pending controller Start edges */
 
 /* Number of players for the NEXT game (1 or 2), chosen at the front-end: the home
  * menu "1 PLAYER"/"2 PLAYERS" rows and the arcade 1P/2P start. game_init copies it
@@ -433,6 +434,7 @@ typedef struct
     u8 bonusLife;    /* Bonus-Life table index 0..3 (see dipswitch.c labels)   */
     u8 demoSound;    /* 1=demo sounds on, 0=off                                */
     u8 flipScreen;   /* 1=screen flipped (cocktail), 0=normal                  */
+    u8 homeCredits;  /* shared Home continues, configured in Options */
 } GameConfig;
 
 extern GameConfig g_config;
@@ -458,6 +460,18 @@ void sync_from_dsw(void);
 void game_init(void);
 bool game_update(void);
 void game_render(void);
+/* Internal SAT append, used between source shots and ordinary actor pools. */
+u16 game_render_players(u16 *sat,u16 first,u16 limit);
 void game_run(void);
 
+/* Original $A847 floor predicate; source Y grows upward. */
+s16 game_arcade_floor(u16 x,u8 y,void *context);
+u8 game_player_started(u8 which);
+u8 game_arcade_column_advance(void);
+u8 game_arcade_stopped(void);
+/* Simulation scroll/section owner, after players and before world actors. */
+void game_arcade_scroll_tick(void);
+u16 game_player_target_flags(u8 which);
+void game_arcade_food_contact(u8 owner);
+void game_arcade_special_contact(u8 owner);
 #endif /* GAME_H */

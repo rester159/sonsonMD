@@ -1,6 +1,7 @@
 #include <genesis.h>
 #include "game.h"
 #include "frontend.h"
+#include "save.h"
 
 /* ===========================================================================
  *  SON SON  --  NATIVE Sega Genesis re-implementation
@@ -13,7 +14,7 @@
  *
  *  The two logo splashes reuse the owner's verified SGDK kits verbatim
  *  (sega_logo / capcom_logo); the selector is a clean native re-creation that
- *  carries the SONSON title + the "PORTED BY RESTER 159, 2026" credit and
+ *  carries the SONSON title + the "PORTED BY RESTER159, 2026" credit and
  *  returns the chosen mode (stored in g_mode). See inc/frontend.h, ROADMAP.md
  *  Phase 8, and ../sonson/port/FRONTEND_SPEC.md.
  *
@@ -24,17 +25,9 @@
  *  call game_run(), which fully re-initialises the palettes / tiles / planes
  *  -- so the front-end and the game never need to share VRAM or palette state.
  *
- *  RE-ENTRY (Phase 8c game-flow): the game now has STAKES -- lose all your lives
- *  and it's GAME OVER, after which the boot flow returns to the SELECTOR for a
- *  fresh session (selector -> play -> die -> game-over -> selector). This mirrors
- *  the arcade's game-over unwind back to attract (project memory: the front-end
- *  "re-entry for(;;) loop in main()"). So the boot is split:
- *    - SEGA + CAPCOM run ONCE (boot-only branding), then
- *    - a for(;;) SESSION loop: selector -> per-mode config -> game_run().
- *  game_run() returns when the game is over; the loop restores the front-end's
- *  H40 video mode and falls back to the selector. The mode + g_config are
- *  re-chosen from the selector + its config screen on every re-entry, so the
- *  player can switch ARCADE/HOME and re-pick LIVES/difficulty between sessions.
+ *  Arcade game over returns to the arcade title/attract loop, retaining credits
+ *  and DIP settings. Reset returns to the opening mode selector. Home retains
+ *  its console return path. Ranking/name-entry interposition is still pending.
  * =========================================================================== */
 
 int main(bool hardReset)
@@ -53,11 +46,11 @@ int main(bool hardReset)
      * pads are forced to 3-button mode in selector_run() to suppress the
      * 6-button TH-detect phantom presses at power-on. */
     JOY_init();
+    save_init();
 
     /* ---- BOOT BRANDING (ONCE, default H40) ----
      * SEGA + CAPCOM are the power-on splashes; they play a single time and are
-     * NOT part of the re-entry loop (a game-over returns to the selector, not
-     * the logos). */
+     * NOT part of either mode's game-over re-entry loop. */
     sega_splash_run();                    /* SEGA opening (Sonic-1 + chant)    */
     capcom_splash_run();                  /* CAPCOM logo + register-exact FM   */
 
@@ -80,6 +73,7 @@ int main(bool hardReset)
          * Both are blocking, run in the front-end H40 text mode, write g_config
          * (game.h), and tear back to a blank screen before the game video mode.
          * The engine reads g_config (lives/difficulty/...) in game_init. */
+        save_apply_settings(g_mode);
         if (g_mode == MODE_ARCADE) dip_screen_run();   /* arcade DIP / service */
         /* HOME: no up-front config screen -- the home title MENU (1 PLAYER /
          * 2 PLAYERS / OPTIONS, in title_attract_run below) provides OPTIONS
@@ -92,16 +86,15 @@ int main(bool hardReset)
         VDP_setScreenWidth256();
         VDP_setPlaneSize(64, 32, TRUE);
 
-        /* Arcade TITLE screen + attract: the baked "SONSON" title (RE'd from the
-         * real machine) in the game's H32 mode. Blocks until START, then a real
-         * game begins. (Idle attract demo: TODO next.) */
-        title_attract_run(g_mode);
+        /* Source97ED/9258 returns to arcade attract without a mode chooser
+         * or DIP confirmation. Existing demo returns already reuse this same
+         * title drawing path after game_run tears down audio. */
+        do
+        {
+            title_attract_run(g_mode);
+            game_run();
+        } while (g_mode == MODE_ARCADE);
 
-        /* Play one session. game_run() does game_init() (re-inits palettes /
-         * tiles / planes + reads g_config.lives) then runs the update/render/
-         * V-blank loop, returning here when the game is over -> back to the
-         * selector for the next session. */
-        game_run();
     }
     return 0;
 }

@@ -1,0 +1,11 @@
+PASS Options CREDITS increases from 3 to 5
+PASS Options CREDITS increases to 9
+PASS Options CREDITS wraps to zero
+PASS Options CREDITS changes left independently of lives
+PASS Home two-player menu launches co-op
+PASS Selected credits apply to new Home game
+PASS Held menu Start does not immediately pause gameplay
+PASS Fresh Home Start pauses
+PASS Home pause freezes the actual game loop
+PASS Fresh Home Start resumes
+CHECKS 10 FAILURES 0

@@ -1,0 +1,67 @@
+{
+  "date": "2026-10-21",
+  "rom": {
+    "path": "out/rom.bin",
+    "sha256": "9a19b07ebc5c628f6be69354356c7fcc0bffce17bbc61040cf6ec6c45828d9a9",
+    "bytes": 524288
+  },
+  "normal_controls": [
+    "PASS Start without a coin stays on arcade title",
+    "PASS Held C inserts one coin without starting",
+    "PASS Paid Start starts game and spends one credit",
+    "PASS Only the requested player starts",
+    "PASS Gameplay C adds a coin and does not fire",
+    "PASS Other controller joins; Arcade Start never pauses",
+    "PASS Controller two C inserts one coin",
+    "PASS Arcade Start rejoins an eliminated player",
+    "PASS Home Start pauses",
+    "PASS Held Start does not toggle; simulation and camera freeze",
+    "PASS Other controller Start resumes",
+    "PASS Home C does not mint credits",
+    "PASS Home continue spends one shared credit and restores both players",
+    "PASS Zero credits prevents continuing",
+    "CHECKS 14 FAILURES 0"
+  ],
+  "home_options": [
+    "PASS Options CREDITS increases from 3 to 5",
+    "PASS Options CREDITS increases to 9",
+    "PASS Options CREDITS wraps to zero",
+    "PASS Options CREDITS changes left independently of lives",
+    "PASS Home two-player menu launches co-op",
+    "PASS Selected credits apply to new Home game",
+    "PASS Held menu Start does not immediately pause gameplay",
+    "PASS Fresh Home Start pauses",
+    "PASS Home pause freezes the actual game loop",
+    "PASS Fresh Home Start resumes",
+    "CHECKS 10 FAILURES 0"
+  ],
+  "survival_rules": {
+    "1": [
+      "PASS Home Instadeath menu starts requested player count",
+      "PASS One life and no continue credits",
+      "PASS Scoring cannot award bonus lives",
+      "PASS Home Start pauses Instadeath",
+      "PASS Survival timer freezes while paused",
+      "PASS Timer resumes with gameplay",
+      "PASS Enemy pressure increases at twenty seconds",
+      "PASS One lethal hit ends each player's run immediately",
+      "PASS Final timer stops and Start cannot continue",
+      "PASS Survival record committed to SRAM",
+      "CHECKS 10 FAILURES 0"
+    ],
+    "2": [
+      "PASS Home Instadeath menu starts requested player count",
+      "PASS One life and no continue credits",
+      "PASS Scoring cannot award bonus lives",
+      "PASS Home Start pauses Instadeath",
+      "PASS Survival timer freezes while paused",
+      "PASS Timer resumes with gameplay",
+      "PASS Enemy pressure increases at twenty seconds",
+      "PASS One lethal hit ends each player's run immediately",
+      "PASS Final timer stops and Start cannot continue",
+      "PASS Survival record committed to SRAM",
+      "CHECKS 10 FAILURES 0"
+    ]
+  },
+  "full_report": "tools/survival_sram_results.json"
+}

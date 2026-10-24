@@ -1,0 +1,52 @@
+{
+  "date": "2026-10-21",
+  "rom": {
+    "path": "out/rom.bin",
+    "sha256": "9a19b07ebc5c628f6be69354356c7fcc0bffce17bbc61040cf6ec6c45828d9a9",
+    "bytes": 524288
+  },
+  "maximum_pressure_performance": [
+    {
+      "players": 1,
+      "measured_refreshes": 6000,
+      "presentation_deltas": {
+        "1": 5999
+      },
+      "cpu_peak_percent": 54.833984375,
+      "max_entities": 23,
+      "max_scheduled": 16,
+      "rom_sha256": "9a19b07ebc5c628f6be69354356c7fcc0bffce17bbc61040cf6ec6c45828d9a9",
+      "core_sha256": "88314cd8554a3cc5eebf00a4139e6f0dee9ea579dcb2321a0959579f1902fa09"
+    },
+    {
+      "players": 2,
+      "measured_refreshes": 6000,
+      "presentation_deltas": {
+        "1": 5999
+      },
+      "cpu_peak_percent": 68.408203125,
+      "max_entities": 23,
+      "max_scheduled": 16,
+      "rom_sha256": "9a19b07ebc5c628f6be69354356c7fcc0bffce17bbc61040cf6ec6c45828d9a9",
+      "core_sha256": "88314cd8554a3cc5eebf00a4139e6f0dee9ea579dcb2321a0959579f1902fa09"
+    }
+  ],
+  "mame_pressure_performance": {
+    "players": 2,
+    "samples": 1800,
+    "presentation_deltas": {
+      "1": 1799
+    },
+    "cpu_peak_percent": 67.333984375,
+    "max_entities": 22,
+    "max_scheduled": 16
+  },
+  "full_report": "tools/survival_sram_results.json",
+  "notes": [
+    "Rules tests drive the real Home menu and use overlapping enemy-body fixtures to verify actual contact death. Timer-ramp checks inject the elapsed-time checkpoint.",
+    "Pressure benchmarks inject the maximum pressure and a prolonged invulnerable grace flow; simulation, AI, projectiles, firing, rendering and audio remain active. They are computational stress fixtures, not unassisted survival runs.",
+    "Battery-save tests use fresh emulator processes and dedicated on-disk NVRAM; high-score/config fixtures are explicitly injected before normal menu confirmation or game-over finalization.",
+    "The previous base-port long-run reports are retained with their original ROM identity under out/before-survival-sram.",
+    "Physical console/cart/flashcart persistence and PAL timing are not verified."
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "rom_sha256": "e958e9ac8b9cafc0ecfe82e935637d188ba67912b78011c676d1c53a531dcff7",
+  "note": "MAME captures; nearest-neighbor 3x enlargement. Automated co-op capture replenishes lives to 3 for scenery coverage. In-game development HUD retained.",
+  "screenshots": [
+    {
+      "file": "01-coop-grasslands.png",
+      "source": "/Users/rester159/genesis ports/_capcom/son son/itch-screenshots/work/game/genesis/0002.png",
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "02-blue-platforms.png",
+      "source": "/Users/rester159/genesis ports/_capcom/son son/itch-screenshots/work/game/genesis/0005.png",
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "03-purple-platforms.png",
+      "source": "/Users/rester159/genesis ports/_capcom/son son/itch-screenshots/work/game/genesis/0012.png",
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "04-stone-ruins.png",
+      "source": "/Users/rester159/genesis ports/_capcom/son son/itch-screenshots/work/game/genesis/0016.png",
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "05-brick-transition.png",
+      "source": "/Users/rester159/genesis ports/_capcom/son son/itch-screenshots/work/game/genesis/0023.png",
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "06-brickwork-battle.png",
+      "source": "/Users/rester159/genesis ports/_capcom/son son/itch-screenshots/work/game/genesis/0027.png",
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "07-blue-stone.png",
+      "source": "/Users/rester159/genesis ports/_capcom/son son/itch-screenshots/work/game/genesis/0031.png",
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "08-late-stage-coop.png",
+      "source": "/Users/rester159/genesis ports/_capcom/son son/itch-screenshots/work/game/genesis/0036.png",
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "09-title-screen.png",
+      "source": "/Users/rester159/genesis ports/_capcom/son son/itch-screenshots/work/menus/genesis/0000.png",
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "10-home-options.png",
+      "source": "/Users/rester159/genesis ports/_capcom/son son/itch-screenshots/work/menus/genesis/0001.png",
+      "native_size": [
+        320,
+        224
+      ]
+    }
+  ]
+}

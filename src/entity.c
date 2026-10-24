@@ -1,10 +1,40 @@
 #include <genesis.h>
 #include "game.h"
+#include "survival.h"
 #include "entity.h"
 #include "ss_gfx.h"
 #include "ss_anim.h"     /* baked player/enemy animation frames + table */
 #include "ss_collision.h"/* SS_TIER_Y[6] -- the 6 terrain tiers (native sub_A847) */
+#include "arcade_food_bonus.h"
+#include "arcade_food_world.h"
 #include "sound.h"       /* snd_sfx_enemy / snd_sfx_item (verified $3010 cmds) */
+#include "arcade_waves.h"
+#include "arcade_foes.h"
+#include "arcade_i.h"
+#include "arcade_main_pool.h"
+#include "arcade_c_pool.h"
+#include "arcade_d_pool.h"
+#include "arcade_d_combat.h"
+#include "arcade_d_render.h"
+#include "arcade_f_pool.h"
+#include "arcade_f_combat.h"
+#include "arcade_f_render.h"
+#include "arcade_e_pool.h"
+#include "arcade_e_combat.h"
+#include "arcade_e_render.h"
+#include "arcade_e_upload.h"
+#include "arcade_tracking.h"
+#include "arcade_c_combat.h"
+#include "arcade_c_render.h"
+#include "arcade_main_render.h"
+#include "arcade_native_admission.h"
+#include "arcade_large_present.h"
+#include "arcade_k.h"
+#include "arcade_collision.h"
+#include "arcade_rewards.h"
+#include "arcade_foe_bonus.h"
+#include "arcade_shots.h"
+#include "arcade_difficulty.h"
 #include "ss_wave_sched.h"/* arcade $FCD9 87-wave spawn schedule (RE'd: $EF89/$EFBB) */
 
 /* ===========================================================================
@@ -132,7 +162,7 @@ Entity g_entities[ENTITY_MAX];
 
 /* Player SHOT: travels fast and horizontally (the arcade shot is a fast linear
  * projectile). Despawns when it leaves a generous world window around the view. */
-#define SHOT_SPEED          0x0400      /* 4.0 px/frame                          */
+#define SHOT_SPEED          0x0600      /* 4.0 px/frame                          */
 #define SHOT_HALF_W         4           /* shot AABB half-width  (8px wide)      */
 #define SHOT_HALF_H         3           /* shot AABB half-height                 */
 
@@ -217,14 +247,12 @@ Entity g_entities[ENTITY_MAX];
 #define HOP_VX              0x0140      /* forward speed toward the player (~1.25px) */
 #define HOP_LAND_PAUSE      26          /* frames grounded between leaps (~0.43s)   */
 
-/* ---- LARGE (obj16x16 $D57F/$D58B/$D5F3) tunables ---------------------------
- * The arcade large object inits HP $8,x=#$07 and a 16px box, then $D5F3 counts a
- * timer down and reloads a velocity vector from the $DB4B table on each expiry --
- * a periodic-velocity patrol. We re-express a brisk lane patroller that FLIPS its
- * march direction every LARGE_TURN frames (the periodic velocity reload), taking
- * LARGE_HP hits. NATIVE HP is 3, not the arcade 7 -- a fair first cut so it reads
- * as the tough archetype without becoming a bullet-sponge slog (see TODO). */
-#define LARGE_HP            3           /* tough: three shots (arcade $8,x=#$07 = 7) */
+/* ---- LARGE (obj16x16 $D57F/$D58B/$D5F3) -------------------------------
+ * D58B initializes remaining hits to 7; EE8E decrements once per accepted
+ * shot and enters death only on the transition 1 -> 0. Verified by the
+ * original CPU fixture arcade_large_damage_trace.lua. Movement below remains
+ * an approximation pending replacement of the complete D54B state machine. */
+#define LARGE_HP            7
 #define LARGE_SPEED         0x00B0      /* ~0.69 px/frame heavy patrol march         */
 #define LARGE_TURN          64          /* frames between march-direction flips      */
 
@@ -449,14 +477,17 @@ static u8 thrower_fire_period(void)
  * this is a handful of byte compares -- cheaper than maintaining a free list).
  * Re-expresses the arcade's "scan the array for an inactive slot" spawn path
  * (e.g. sub_DD31 scanning the $0ED8 pool for a free record). */
-Entity *entity_spawn(u8 type, s16 x, s16 y)
+/* Monotonic until reset: direct allocations keep the legacy range observable. */
+static u8 legacy_pool_used;
+static Entity *entity_spawn_range(u8 type,s16 x,s16 y,u16 first,u16 end)
 {
     u16 i;
-    for (i = 0; i < ENTITY_MAX; i++)
+    for (i = first; i < end; i++)
     {
         Entity *e = &g_entities[i];
         if (e->active) continue;
 
+        if(i>=24)legacy_pool_used=1;
         e->active    = 1;
         e->type      = type;
         e->x         = x;
@@ -475,6 +506,7 @@ Entity *entity_spawn(u8 type, s16 x, s16 y)
         e->fireTimer = 0;
         e->launchY   = 0;
         e->fruit     = 0;
+        e->owner     = 0;
         e->popupLen  = 0;
         e->fromSched = 0;                           /* scheduler tags its own    */
         anim_restart(&e->av, SS_ANIM_ENEMY_WALK);   /* default; per-type below   */
@@ -581,7 +613,7 @@ Entity *entity_spawn(u8 type, s16 x, s16 y)
                 break;
 
             case ET_LARGE:                 /* obj16x16 tough patroller ($D57F)      */
-                e->hp     = LARGE_HP;      /* 3 HP (arcade $8,x=#$07)               */
+                e->hp     = LARGE_HP;      /* D58B: seven accepted hits             */
                 e->facing = 1;             /* starts marching LEFT                  */
                 e->state  = 0;             /* 0 = patrol, 1 = dying                 */
                 e->vx     = (s16)(-LARGE_SPEED);
@@ -626,6 +658,12 @@ Entity *entity_spawn(u8 type, s16 x, s16 y)
     return 0;   /* pool full */
 }
 
+/* G/H own six slots each. Ordinary allocations cannot steal reserved members. */
+Entity *entity_spawn(u8 type,s16 x,s16 y)
+{
+    return entity_spawn_range(type,x,y,g_survivalRun?0:24,ENTITY_MAX);
+}
+
 /* ------------------------------------------------------------------------- */
 /* Spawn a FRUIT of a specific type (sets the type, its recoloured sprite, and
  * its anim). The SonSon signature collectible -- score on touch is per-type
@@ -663,64 +701,8 @@ static void spawn_popup(s16 x, s16 y, u16 val)
     e->popupLen = n;
 }
 
-/* ===========================================================================
- *  FAITHFUL per-level WAVE SCHEDULER -- the FULL arcade enemy variety
- * ===========================================================================
- *  This used to schedule ONLY the $0828 ground-walker wave (3 variants). The
- *  arcade actually spawns a far richer mix PER LEVEL from SEVERAL pools, each
- *  with its own per-stage placement table. Re-engineered here to reproduce that.
- *
- *  RE SOURCE (static, ../sonson/port/src + census_semantic.toml [spawn_mechanism]):
- *   - GROUND WAVE ($0828 enemyMain): wave dispatch sub_EFED($0638) -> sub_F019/
- *     F065/F080 spawn from the $F0C9 list (12 (Y,type) pairs; type -> the slot's
- *     dispatch index +3: 0=walker-A, 1=walker-B, 2=lane-shift, 4=THROWER) at
- *     worldX=scroll($90)+$F8 (right edge), capped at $00A6==$10. (spawn_sched.json)
- *   - The OTHER classes are NOT placed by sub_F080. Each has a DEDICATED per-stage
- *     spawner keyed on the stage byte $0096, firing a whole batch when its wave
- *     event triggers (it then latches `$2,x=0` done):
- *       classF flyers  ($0BA8): sub_F51C, 5 (1 if $96&0x20), list@$F57A, idx5 spawn
- *       classG creature($0C28): sub_F6CB, 6, list@$F72B, idx3
- *       classH actors  ($0CE8): sub_F83E, 6, list@$F8B2 by ($96&0x30)>>3, idx3
- *       classE large   ($0B68): sub_F47F, 2, list@$F4BC by ($96&0x38)>>1
- *       classD emitter ($0AE8): sub_F3A1, 4, list@$F403; also event sub_ED30
- *       classI lobs    ($0DA8): sub_D352 children fired by throwers/creatures
- *       objSingle      ($0E28): sub_E1C4 parent-linked unique
- *
- *  LIVE CAPTURE (tools/arch_census.txt md=02, NOT pinning $0067 so $0096 advances;
- *  tools/arch_stage_{10,20,30}.txt forcing deep stages) -- GROUND TRUTH of the mix:
- *   - EVERY level opens with the ground wave ($0828, up to 10), idx 0/1/2.
- *   - Then DOMINANT classH creature waves ($0CE8, up to 6): idx 4 tracking-walker
- *     + idx 5 leaping-HOPPER + idx 2 falling -- the leaping/special creatures.
- *   - classI lobbed projectiles ($0DA8, up to 4) fly alongside (the creatures throw).
- *   - classF FLYERS ($0BA8, up to 4) appear from LEVEL 2 (gfx 01) onward and
- *     DOMINATE deeper stages (stage 0x20/0x30: 4 flyers, idx 3 = homing dive).
- *   - objSingle (1) drifts in occasionally (the unique hazard).
- *   - classC/classD/classE/classG/obj16x16 = NEVER populated by a normal forward
- *     run (special-context: level-end / boss / scripted events) -> rare/TODO here.
- *
- *  NATIVE RE-EXPRESSION (this file):
- *   The native engine runs 8 levels (round R -> ss_levels[(R-1)%8]); the spawn
- *   "stage" escalates with the round exactly like the arcade $0096 increments. We
- *   re-express each level as a PROGRAM of wave SEGMENTS (k_wave_program[]): an
- *   ordered list of (archetype, count, spacing) that the scroll cursor walks --
- *   the arcade's opener -> creature-wave -> flyer-wave progression. Arcade class ->
- *   native ET_*:
- *       $0828 walker A/B/lane / THROWER  -> ET_ENEMY_A / ET_CREATURE_C /
- *                                           ET_COMPOSITE_E / ET_THROWER
- *       classH idx5 hopper / idx4 walker -> ET_HOPPER / ET_CREATURE_G (walk+throw,
- *                                           = the classH+classI throw combo)
- *       classI lob                       -> ET_ENEMY_SHOT (fired by THROWER/CREG)
- *       classF flyer                     -> ET_FLYER (level >=2, denser deeper)
- *       objSingle                        -> ET_ORB (rare drift-in)
- *       classE large / classD emitter    -> ET_LARGE / ET_EMITTER (rare, deep
- *                                           levels only -- special-context; TODO).
- *   Each segment spawns at the RIGHT edge (worldX ~ cameraX + SCREEN_W, the arcade
- *   scroll($90)+$F8) as the camera advances `spacing` px, and ONLY while the live
- *   scheduled count is under SPAWN_ONSCREEN_CAP (the arcade $00A6==$10 gate). No
- *   recycling -- a scheduled enemy that exits left despawns for good; population
- *   is replenished only from the program. The program LOOPS (its tail segments
- *   repeat) so a long level keeps a faithful, bounded mix coming.
- * ========================================================================= */
+/* Arcade waves: verified native producer/G/H controllers below. Remaining
+ * classes retain provisional one-body spawns and approximate combat behavior. */
 
 /* The 6 arcade spawn rows (Y_byte from the $F0C9 lists), used directly as the
  * native world-Y (both the arcade and the native screen are 224px tall; these
@@ -753,35 +735,102 @@ static const u8 k_wave_row[4][WAVE_LEN] =
  *  so the old type-byte->variant mapping is no longer used. k_wave_row still supplies
  *  enemyMain's faithful $F0C9 row placement.) */
 
-/* stage -> ground-wave group, faithful to the arcade's ((stage&0x30)>>1) deriv.
- * The stage byte $005A (mirrored to the wave selector $0096) selects the group:
- * stages 0x00-0x0F -> g0, 0x10-0x1F -> g1, 0x20-0x2F -> g2, 0x30+ -> g3. Because
- * $005A SATURATES at 0x1C (28; STAGE_MAX), only g0 (0x00-0x0F) and g1 (0x10-0x1C)
- * are EVER reachable in normal play -- exactly the arcade (its $0096 also caps at
- * 0x1C, so the tougher g2/g3 ground variants never appear from forward scroll; the
- * captures confirm the tough composite is special-context only). Reads g_game.stage
- * directly now (it IS the arcade $005A), not the unbounded round. */
+/* Wave groups read combat grade $96, which can exceed the scenery base cap. */
 static u8 sched_group_for_round(void)
 {
-    u16 stage = g_game.stage;              /* arcade $0096 = $005A (saturating)     */
+    u16 stage = g_survivalRun ? g_game.stage : (g_arcadeCombatDifficulty>>8);
     u8  g = (u8)(((stage & 0x30) >> 1) / 8);
     if (g > 3) g = 3;
     return g;
 }
 
-/* ===========================================================================
- *  WAVE SCHEDULE -- driven by the arcade $FCD9 table (see ss_wave_sched.h).
- * ===========================================================================
- *  The hand-authored per-level wave PROGRAM (k_wp_l1/l2/deep + WaveStep) is gone;
- *  enemy presence now comes straight from the arcade's RE'd 87-wave schedule. The
- *  helpers kept ABOVE (k_spawn_row_y, k_wave_row, k_wave_mix, sched_type_to_et,
- *  sched_group_for_round) still supply the byte-faithful $F0C9 ground placement
- *  for the enemyMain class; everything else is decoded from the wave mask +
- *  placement bytes by the driver BELOW (wave_id_for_camera / wave_spawn_bit /
- *  entity_schedule_tick). ======================================================= */
-
 /* ---- Scheduler state (file-static; reset by entity_schedule_init) ---------- */
-static u8  s_wave_id;           /* last loaded arcade wave-id (0xFF = none yet)    */
+static u16 survival_delay;
+static u8 survival_cursor;
+static ArcadeWaves arcade_waves;
+static ArcadeRng arcade_rng;
+void entity_arcade_title_seed(void)
+{
+    /* 933E owns reseeding. New-game8F5B preserves78:79 and7A. */
+    arcade_rng.seed=0x87cd;arcade_rng.last=0;
+}
+static u8 arcade_bonus_next,arcade_bonus_limit;
+u8 entity_arcade_conversion_contact(u16 x,u8 y,u8 owner)
+{
+    return arcade_powerup_collect_conversion(&arcade_food_conversion,x,y,owner,
+        &arcade_bonus_limit,&arcade_bonus_next,&arcade_food_conversion_pulse);
+}
+static ArcadeFoe arcade_foes[12];
+static ArcadeFoeWeapon arcade_weapons[4];
+static ArcadeFoeWorld arcade_world;
+static ArcadeLargeActor arcade_large_actors[3];
+static ArcadeKProjectile arcade_k_actors[4];
+static u16 large_last_sat[32*4],large_last_count,large_last_visible;
+static u8 large_last_resident;
+static ArcadeIActor arcade_i_actors[4];
+static ArcadeIWave arcade_i_wave;
+static ArcadeMainPool arcade_main;
+static ArcadeCPool arcade_c;
+static ArcadeDPool arcade_d;
+static ArcadeEPool arcade_e;
+static ArcadeFPool arcade_f;
+static u16 arcade_e_ready[2];
+static u8 arcade_main_ready;
+static u8 arcade_i_live,arcade_i_reservation;
+static u8 arcade_shot_budget;
+static ArcadeAdmissionCache arcade_admission_cache;
+#define arcade_admission (arcade_admission_cache.result)
+/* Map real pool owners once, producing both render admission and readiness.
+ * Legacy families still have provisional populations, ordered by source family. */
+static void entity_sprite_admission(void)
+{
+    ArcadeAdmissionInput input;u8 k,active;
+    const u8 end=legacy_pool_used?48:24;
+    if(!legacy_pool_used)
+        for(k=0;k<6;k++){input.words[6+k]=0;input.words[12+k]=0xffffffffUL;}
+    for(k=0;k<2;k++)input.state.e[k]=arcade_e.actors[k].active;
+    for(k=0;k<4;k++)input.state.f[k]=arcade_f.actors[k].active;
+    input.state.reserved=0;
+    static const u8 rank[ET_POPUP+1]={6,0,6,6,4,6,6,6,1,3,6,6,2,5,255};
+    const Entity *e=g_entities;
+    active=arcade_food_pickup.active;if(active && !(active&128))input.state.reserved++;
+    active=arcade_food_conversion.active;if(active && !(active&128))input.state.reserved++;
+    active=arcade_food_carrier.active;if(active && !(active&128))input.state.reserved++;
+    for(k=0;k<g_game.numPlayers;k++)
+    {active=(u8)(game_player_target_flags(k)>>8);if(active && !(active&128))input.state.reserved++;}
+    for(k=0;k<16;k++)input.state.main[k]=arcade_main.actors[k].active;
+    for(k=0;k<6;k++)input.state.c[k]=arcade_c.actors[k].active;
+    for(k=0;k<4;k++)input.state.d[k]=arcade_d.actors[k].active;
+    for(k=0;k<end;k++,e++)
+    {
+        active=e->active;
+        if(!active || (active&128))
+        {input.state.entities[k]=0;if(k>=24)input.state.ranks[k-24]=255;continue;}
+        input.state.entities[k]=e->type==ET_POPUP?0:active;
+        if(k>=24)input.state.ranks[k-24]=e->type<=ET_POPUP?rank[e->type]:6;
+    }
+    for(k=0;k<3;k++)input.state.large[k]=arcade_large_actors[k].body.active;
+    for(k=0;k<4;k++)input.state.children[k]=arcade_weapons[k].active?arcade_weapons[k].active:arcade_k_actors[k].active;
+    arcade_native_admission_refresh(&input,&arcade_admission_cache);
+    arcade_main_ready=arcade_admission.remaining;
+    arcade_shot_budget=(u8)(arcade_main_ready!=0);
+}
+/* Logical readiness can be published between catch-up steps without SAT/DMA.
+ * Rendering uses the same mapper, so collision/spawn budgets stay identical. */
+void entity_arcade_prepare_admission(void){entity_sprite_admission();}
+u8 entity_arcade_sprite_ready(void){return arcade_shot_budget;}
+/* Source23:24 is one counter. Keep the byte symbols for source-state probes;
+ * advance both through this owner, never derive one from host VBlank time.
+ * Boot/menu phase and source-rate pacing are separate integration work. */
+static u8 wave_clock, wave_clock_high;
+u8 entity_arcade_clock(void){return wave_clock;}
+u16 entity_arcade_clock_full(void){return ((u16)wave_clock_high<<8)|wave_clock;}
+void entity_arcade_clock_advance(void)
+{
+    if(++wave_clock==0)++wave_clock_high;
+}
+static u8 formation_reservation[2];
+static u8 player_shot_available[2];
 static u8  s_sched_gcursor;     /* enemyMain $F0C9 ground-list cursor (wraps)      */
 
 /* Count the live SCHEDULED wave enemies (the arcade $00A6 live-count gate). Body
@@ -795,36 +844,55 @@ static u16 sched_live_count(void)
     return n;
 }
 
-/* (Re)arm the wave scheduler. The arcade reloads a wave only when the scroll
- * counter $90 ticks ($EF98: CMPB ,X / BEQ $EFBA); we mirror that by caching the
- * last loaded wave-id and invalidating it here so the next tick loads a wave, and
- * reset the enemyMain $F0C9 ground cursor. */
-void entity_schedule_init(void)
+/* Reset once for a new game. Visual segment seams do not reset controllers. */
+static void entity_schedule_reset(u8 cold)
 {
-    s_wave_id       = 0xFF;     /* != any real wave-id -> first tick loads a wave */
+    survival_delay = 0; survival_cursor = 0;
+    if(cold)arcade_waves_reset(&arcade_waves,255);
+    else arcade_waves_course_begin(&arcade_waves);
+    arcade_bonus_next=0;arcade_bonus_limit=255; /* Original8F6E: first FF pickup wraps to0. */
+    /* RNG belongs to the title/session lifecycle, not pool initialization. */
+    /* Source new-game8F5B does not reset23:24. */
+    if(cold)
+    {
+        memset(arcade_i_actors,0,sizeof(arcade_i_actors));
+        memset(arcade_large_actors,0,sizeof(arcade_large_actors));
+        memset(arcade_k_actors,0,sizeof(arcade_k_actors));
+    }
+    else
+    {
+        /* 9793 clears only each actor's active byte on course startup. */
+        u8 i;
+        for(i=0;i<4;i++){arcade_i_actors[i].body.active=0;arcade_k_actors[i].active=0;}
+        for(i=0;i<3;i++)arcade_large_actors[i].body.active=0;
+    }
+    arcade_large_upload_reset();large_last_count=large_last_visible=0;large_last_resident=0;
+    if(cold)memset(&arcade_i_wave,0,sizeof(arcade_i_wave));
+    else arcade_i_wave.control=arcade_waves.controls[SS_WAVE_BIT_CLASSI];
+    arcade_i_live=arcade_i_reservation=0;
+    arcade_main_pool_reset(&arcade_main,cold);
+    arcade_c_pool_reset(&arcade_c,cold);
+    arcade_c.wave.control=arcade_waves.controls[SS_WAVE_BIT_CLASSC];
+    arcade_d_pool_reset(&arcade_d,cold);
+    arcade_e_pool_reset(&arcade_e,cold);
+    arcade_f_pool_reset(&arcade_f,cold);
+    arcade_f.wave.control=arcade_waves.controls[SS_WAVE_BIT_CLASSF];
+    arcade_e.wave=arcade_waves.controls[SS_WAVE_BIT_CLASSE];
+    arcade_e_upload_reset();arcade_e_ready[0]=arcade_e_ready[1]=65535;
+    arcade_d.wave.control=arcade_waves.controls[SS_WAVE_BIT_CLASSD];
+    arcade_main.wave.control=arcade_waves.controls[SS_WAVE_BIT_ENEMYMAIN];
+    arcade_main.wave.sequence=arcade_main.wave.cursor=arcade_main.wave.remaining=0;
+    arcade_main_ready=24;
+    {
+        u8 i;for(i=0;i<12;i++){arcade_foes[i].body.active=0;if(cold){arcade_foes[i].body.xf=arcade_foes[i].body.yf=0;arcade_foes[i].target=0;}}
+        for(i=0;i<4;i++){arcade_weapons[i].active=0;if(cold)arcade_weapons[i].xf=arcade_weapons[i].yf=0;}
+        arcade_shot_budget=1;
+    }
+    formation_reservation[0]=formation_reservation[1]=0;
     s_sched_gcursor = 0;
 }
 
-/* Map the (wrapped) camera position to an arcade wave-id. The arcade wave-id IS
- * the scroll position: $EF98 does `LDB <$90; ANDB #$7F`, and $90 is the high byte
- * of the 16-bit world-scroll ($90:$91; spawn worldX = $90:$91 + $F8) -- i.e. a new
- * wave every 256px of arcade scroll, indexing the 87-entry table $FCD9. The native
- * ribbon LOOPS at g_ribbonW px (a shorter pixel run than the arcade's for the same
- * scenery), so we re-express that cadence by mapping the ribbon's full length onto
- * all 87 waves: one ribbon loop = one full pass of the arcade wave sequence. Using
- * the WRAPPED cameraX, the wave-id wraps 86->0 exactly as cameraX wraps the ribbon
- * width ->0 (game.c) -- no seam, no separate accumulator to shift on the loop.
- * (g_levelW is the ribbon pixel width = the internal g_ribbonW; game.h.) */
-static u8 wave_id_for_camera(void)
-{
-    s16 cx = g_game.cameraX;
-    u32 w;
-    if (g_levelW == 0) return 0;
-    if (cx < 0) cx = 0;
-    w = ((u32)(u16)cx * SS_WAVE_COUNT) / (u32)g_levelW;
-    if (w >= SS_WAVE_COUNT) w = SS_WAVE_COUNT - 1;
-    return (u8)w;
-}
+void entity_schedule_init(void){entity_schedule_reset(1);}
 
 /* Spawn one entity for a set mask-bit. `place` is the arcade placement byte (the
  * consumer $EFBB writes it to the class record's param $E). What param $E MEANS is
@@ -882,7 +950,7 @@ static void wave_spawn_bit(u8 bit, u8 place)
              * native's always-leaping HOPPER, which over-emphasized the rare hop. */
             case SS_WAVE_BIT_CLASSH: type = ET_ENEMY_A;    fromLeft = (place & 0x80); break;
             case SS_WAVE_BIT_CLASSG: type = ET_CREATURE_G; fromLeft = (place & 0x80); break;
-            case SS_WAVE_BIT_CLASSI: type = ET_THROWER;     break; /* classI lobbed-shot wave -> native lobs via a thrower (a bare projectile has no parent arc) */
+            case SS_WAVE_BIT_CLASSI: return; /* Dedicated verified four-slot controller below. */
             case SS_WAVE_BIT_OBJ16:  type = ET_LARGE;       break; /* obj16x16        */
             default: return;   /* bits 8/10 (rec06B8 gated $9D / rec06D8): special-context, not armed */
         }
@@ -897,36 +965,98 @@ static void wave_spawn_bit(u8 bit, u8 place)
     if (e) e->fromSched = 1;
 }
 
-/* Per-frame: derive the wave-id from the camera; when it ADVANCES, load that wave
- * from the arcade $FCD9 schedule and spawn its classes. Faithful to the arcade
- * producer/consumer ($EF89/$EFBB): read ss_wave_mask[wid], walk the bits LSB-first
- * (the arcade LSR/ROR order), consuming exactly one placement byte per SET bit.
- * Honours the on-screen cap ($00A6==$10): a capped bit still consumes its placement
- * byte (keeping the stream aligned) but skips the spawn -- the arcade likewise
- * advances the wave phase rather than stalling. Lobbed child projectiles are not
- * fromSched, so they don't gate the wave. Called from entity_update_all. */
+/* Verified producer and G/H controllers. Other class controllers below still
+ * use the older single-birth fallback until their state machines are recovered.
+ * This runs after all actors/collisions, as in $A5E2 -> $EF51. */
+static void formation_schedule(u8 family,u16 tracked_x)
+{
+    const u8 bit=family?SS_WAVE_BIT_CLASSH:SS_WAVE_BIT_CLASSG;
+    const u16 first=family?6:0;
+    u8 i,live=0;
+    ArcadeBirth births[6];
+    for(i=0;i<6;i++)if(g_entities[first+i].active)live++;
+    if(!arcade_formation_step(&arcade_waves.controls[bit],family,live,wave_clock,
+       (u8)(g_arcadeCombatDifficulty>>8),(u16)g_game.cameraX,tracked_x,&arcade_rng,births,
+       &formation_reservation[family]))return;
+    for(i=0;i<6;i++)
+    {
+        Entity *e=entity_spawn_range(family?ET_ENEMY_A:ET_CREATURE_G,
+                       (s16)births[i].x,(s16)(239-births[i].y),first+i,first+i+1);
+        ArcadeFormationActor *a=&arcade_foes[first+i].body;
+        /* Dedicated slots are free when this controller's live count is zero. */
+        if(!e)continue;
+        e->active=128;e->fromSched=1;e->fruit=(u8)(bit+1);e->owner=128;
+        e->facing=births[i].facing==3;
+        a->x=births[i].x;a->y=births[i].y;
+        a->active=128;a->state=a->phase=0;a->delay=births[i].delay;
+        a->facing=births[i].facing;
+        if(!family)arcade_foes[first+i].kind=0;
+    }
+}
 void entity_schedule_tick(void)
 {
-    u8  wid = wave_id_for_camera();
-    u16 mask;
-    const u8 *place;
-    u8 pidx, bit;
-
-    if (wid == s_wave_id) return;       /* same wave: nothing new (arcade BEQ $EFBA) */
-    s_wave_id = wid;
-
-    mask  = ss_wave_mask[wid];
-    place = &ss_wave_place[ss_wave_place_off[wid]];
-    pidx  = 0;
-    for (bit = 0; bit < 12; bit++)      /* arcade scans 12 control records ($8=$0C) */
+    if(g_survivalRun)
     {
-        if (mask & (u16)(1u << bit))
+        static const u8 kinds[6]={1,5,1,6,4,5};
+        if(survival_delay) {survival_delay--;return;}
+        survival_delay=(u16)(120-g_survivalPressure*12);
+        if(sched_live_count() < (u16)(4+g_survivalPressure*2))
         {
-            u8 pb = place[pidx++];      /* one placement byte per set bit (LSB-first) */
-            if (sched_live_count() < SPAWN_ONSCREEN_CAP)
-                wave_spawn_bit(bit, pb);
+            wave_spawn_bit(kinds[survival_cursor%6],survival_cursor);
+            survival_cursor++;
         }
+        return;
     }
+    s16 changed=arcade_waves_step(&arcade_waves,(u8)((u16)g_game.cameraX>>8),wave_clock);
+    u8 tracked=arcade_tracking_player(g_game.numPlayers>1,
+        (u16)g_game.players[0].x,game_player_target_flags(0),
+        (u16)g_game.players[1].x,game_player_target_flags(1));
+    const Player *track=&g_game.players[tracked];
+    if(changed>=0 && changed!=SS_WAVE_BIT_ENEMYMAIN && changed!=SS_WAVE_BIT_CLASSC && changed!=SS_WAVE_BIT_CLASSD && changed!=SS_WAVE_BIT_CLASSE && changed!=SS_WAVE_BIT_CLASSF && changed!=SS_WAVE_BIT_CLASSG && changed!=SS_WAVE_BIT_CLASSH && changed!=SS_WAVE_BIT_CLASSI && changed!=SS_WAVE_BIT_OBJ16 &&
+       arcade_waves.controls[changed].active && sched_live_count()<SPAWN_ONSCREEN_CAP)
+        wave_spawn_bit((u8)changed,arcade_waves.controls[changed].parameter);
+    /* EF51: ordinary pool controller precedes the other enemy controllers.
+     * Both source23 and24 belong to the same logical counter. */
+    arcade_main.wave.control=arcade_waves.controls[SS_WAVE_BIT_ENEMYMAIN];
+    arcade_main_pool_schedule(&arcade_main,arcade_main_ready,wave_clock_high,wave_clock,
+        (u8)(g_arcadeCombatDifficulty>>8),(u16)g_game.cameraX,&arcade_rng);
+    arcade_waves.controls[SS_WAVE_BIT_ENEMYMAIN]=arcade_main.wave.control;
+    arcade_c.wave.control=arcade_waves.controls[SS_WAVE_BIT_CLASSC];
+    arcade_c_pool_schedule(&arcade_c,wave_clock,(u8)(g_arcadeCombatDifficulty>>8),(u16)g_game.cameraX);
+    arcade_waves.controls[SS_WAVE_BIT_CLASSC]=arcade_c.wave.control;
+    arcade_d.wave.control=arcade_waves.controls[SS_WAVE_BIT_CLASSD];
+    arcade_d_pool_schedule(&arcade_d,wave_clock,(u8)(g_arcadeCombatDifficulty>>8),(u16)g_game.cameraX,(u16)track->x);
+    arcade_waves.controls[SS_WAVE_BIT_CLASSD]=arcade_d.wave.control;
+    arcade_e.wave=arcade_waves.controls[SS_WAVE_BIT_CLASSE];
+    arcade_e_pool_schedule(&arcade_e,wave_clock,(u8)(g_arcadeCombatDifficulty>>8),(u16)g_game.cameraX);
+    arcade_waves.controls[SS_WAVE_BIT_CLASSE]=arcade_e.wave;
+    arcade_f.wave.control=arcade_waves.controls[SS_WAVE_BIT_CLASSF];
+    arcade_f_pool_schedule(&arcade_f,wave_clock,(u8)(g_arcadeCombatDifficulty>>8),(u16)g_game.cameraX);
+    arcade_waves.controls[SS_WAVE_BIT_CLASSF]=arcade_f.wave.control;
+    /* $EF51 calls G before H, although the producer bits are ordered H then G. */
+    formation_schedule(0,(u16)track->x);
+    formation_schedule(1,(u16)track->x);
+    {
+        ArcadeBirth birth;
+        u8 slot=arcade_i_wave.cursor;
+        arcade_i_wave.control=arcade_waves.controls[SS_WAVE_BIT_CLASSI];
+        if(arcade_i_wave_step(&arcade_i_wave,arcade_i_live,wave_clock,
+                              (u16)g_game.cameraX,&arcade_i_reservation,&birth))
+        {
+            ArcadeIActor *a=&arcade_i_actors[slot];
+            Entity *e=&g_entities[20+slot];
+            /* F9E0 writes the fixed slot directly, retaining fractions. */
+            a->body.x=birth.x;a->body.y=birth.y;a->body.facing=birth.facing;
+            a->body.active=128;a->body.state=a->body.phase=0;
+            e->active=128;e->type=ET_HOPPER;e->fromSched=1;e->owner=128;
+            e->x=(s16)birth.x;e->y=(s16)(239-birth.y);e->state=0;
+        }
+        arcade_waves.controls[SS_WAVE_BIT_CLASSI]=arcade_i_wave.control;
+    }
+    arcade_large_wave_step(&arcade_waves.controls[SS_WAVE_BIT_OBJ16],
+                           arcade_large_actors,(u16)g_game.cameraX,
+                           (u8)(g_arcadeCombatDifficulty>>8));
+
 }
 
 /* SEAMLESS-RIBBON coordinate wrap (see entity.h). Shift every live entity's world
@@ -937,9 +1067,26 @@ void entity_schedule_tick(void)
 void entity_shift_worldx(s16 dx)
 {
     u16 i;
+    if(!g_survivalRun)
+    {
+        for(i=0;i<6;i++)if(arcade_c.actors[i].active)arcade_c.actors[i].x+=dx;
+        for(i=0;i<4;i++)if(arcade_d.actors[i].active)arcade_d.actors[i].x+=dx;
+        for(i=0;i<2;i++)if(arcade_e.actors[i].active)arcade_e.actors[i].x+=dx;
+        for(i=0;i<4;i++)if(arcade_f.actors[i].active)arcade_f.actors[i].x+=dx;
+        for(i=0;i<16;i++)if(arcade_main.actors[i].active){arcade_main.actors[i].x+=dx;arcade_main.actors[i].origin+=dx;}
+        for(i=0;i<3;i++)if(arcade_large_actors[i].body.active)arcade_large_actors[i].x+=dx;
+        for(i=0;i<4;i++)if(arcade_k_actors[i].active){arcade_k_actors[i].x+=dx;arcade_k_actors[i].origin+=dx;}
+    }
     for (i = 0; i < ENTITY_MAX; i++)
         if (g_entities[i].active)
+        {
             g_entities[i].x = (s16)(g_entities[i].x + dx);
+            if(!g_survivalRun && i<12)arcade_foes[i].body.x=(u16)(arcade_foes[i].body.x+dx);
+            if(!g_survivalRun && i>=12 && i<16)
+            {arcade_weapons[i-12].x=(u16)(arcade_weapons[i-12].x+dx);arcade_weapons[i-12].origin=(u16)(arcade_weapons[i-12].origin+dx);}
+            if(!g_survivalRun && i>=20 && i<24)arcade_i_actors[i-20].body.x=(u16)(arcade_i_actors[i-20].body.x+dx);
+            if(g_entities[i].type==ET_SHOT)g_entities[i].launchY=(s16)(g_entities[i].launchY+dx);
+        }
 }
 
 /* ------------------------------------------------------------------------- */
@@ -963,37 +1110,78 @@ static void spawn_ambient(void)
     #undef LANE_Y
 }
 
-void entity_init(void)
+static void entity_reset(u8 cold)
 {
     u16 i;
     for (i = 0; i < ENTITY_MAX; i++) g_entities[i].active = 0;
+    legacy_pool_used=0;
+    player_shot_available[0]=player_shot_available[1]=2;
+    if(cold && !g_survivalRun)
+        for(i=16;i<20;i++)memset(&g_entities[i],0,sizeof(Entity));
     /* per-player hurt/invuln/deadReq are reset by game_init (in Player). */
-    spawn_ambient();            /* stationary fruit collectibles                */
-    entity_schedule_init();     /* arm the faithful per-level wave scheduler     */
+    if(g_survivalRun)spawn_ambient(); /* Standard play uses the original food pool. */
+    entity_schedule_reset(cold);
+}
+
+void entity_init(void){entity_reset(1);}
+
+void entity_course_restart(u8 two_players,const u8 out[2])
+{
+    /* 9A18 returns through96A6/8FBC, not the new-game8F5B initializer.
+     * In particular78/79/7A,24 and7B/7C survive. The existing native pool
+     * reset also owns renderer caches; save these session values around it. */
+    const u8 shots0=player_shot_available[0],shots1=player_shot_available[1];
+    const ArcadeRng rng=arcade_rng;
+    const u8 clock=wave_clock,clock_high=wave_clock_high,next=arcade_bonus_next,limit=arcade_bonus_limit;
+    entity_reset(0);
+    arcade_rng=rng;wave_clock=clock;wave_clock_high=clock_high;
+    arcade_bonus_next=next;arcade_bonus_limit=limit;
+    /* 9094 writes parent+$0C only on each eligible player branch. */
+    player_shot_available[0]=out[0]?shots0:2;
+    player_shot_available[1]=(two_players && !out[1])?2:shots1;
 }
 
 /* ------------------------------------------------------------------------- */
-/* Player FIRE -- arcade sub_B25A re-expressed. The arcade player has a SINGLE shot
- * slot ($0E28; sub_B25A @ $B26C does a literal 'ldu #$0E28' -- a fixed address, NOT
- * a pool scan), so exactly ONE player shot exists at a time and the next can't fire
- * until it despawns (off-screen / on hit). We match that here: refuse to fire while
- * a player shot is still live. Faithful AND it removes the fire-spam entity pile-up
- * (many coexisting shots was the ~30fps cliff). game.c handles the press-edge
- * debounce; this returns TRUE iff a shot was actually fired. */
+/* AD10: two fixed shot records per player, gated by the parent counter.
+ * game.c supplies the rising edge and the pre-drift launch pose. */
 bool entity_player_fire(u8 owner, s16 px, s16 py, u8 facing)
 {
-    u8 i;
-    /* PER-PLAYER single-slot gate: the arcade gives each player its OWN shot pool
+    u8 i,live=0,used=0;
+    if(!g_survivalRun)
+    {
+        u16 first=(u16)(16+owner*2);
+        ArcadeFireInput request;
+        ArcadeShotBirth birth;
+        Entity *shot;
+        u8 selected;
+        request.x=(u16)px;request.y=(u8)(239-py);request.facing=facing;
+        /* Height correction already belongs to the captured AD10 fire pose. */
+        request.state=0;request.kind=0;request.available=player_shot_available[owner];
+        request.input=1;request.previous=0;
+        selected=arcade_player_shot_fire(&request,g_entities[first].active,&birth);
+        if(selected==255)return FALSE;
+        shot=&g_entities[first+selected];
+        shot->active=1;shot->type=ET_SHOT;shot->state=shot->phase=shot->fireTimer=0;
+        shot->x=(s16)birth.x;shot->y=(s16)(239-birth.y);
+        shot->lane=birth.facing;shot->facing=(u8)(birth.facing==3);
+        shot->owner=owner;shot->fruit=selected;
+        /* Integer coordinates are copied; fractions and unused fields survive. */
+        return TRUE;
+    }
+    /* Two independent player slots: the arcade gives each player its OWN shot pool
      * (P1 $04E0, P2 $0520), so each may have one shot live independently. Refuse
      * only while THIS owner's shot is still in flight. */
     for (i = 0; i < ENTITY_MAX; i++)
         if (g_entities[i].active && g_entities[i].type == ET_SHOT &&
             g_entities[i].owner == owner)
-            return FALSE;
+        {live++;used|=(u8)(1<<(g_entities[i].fruit&1));}
+    if(live>=2)return FALSE;
     {
         Entity *s = entity_spawn(ET_SHOT, px, py);
         if (!s) return FALSE;
+        s->launchY=px; /* Shot-specific reuse: source launch X ($8,x), not Y. */
         s->owner  = owner;                         /* credit this player on a kill */
+        s->fruit  = (used&1)?1:0; /* Stable source shot slot, retained during puff. */
         s->facing = facing;
         s->vx     = facing ? (s16)(-SHOT_SPEED) : (s16)SHOT_SPEED;
         s->vy     = 0;
@@ -1038,6 +1226,12 @@ static inline void integrate(s16 *pos, u16 *sub, s16 vel)
  * exactly (and never drifts between tiers). It does NOT move toward the player. */
 static inline void seat_on_tier(Entity *e)
 {
+    /* Equally spaced tiers, with ties favoring the earlier/lower tier just as
+     * the scan below. Ordinary seated enemies stay in this admitted range. */
+    if(e->y>=40 && e->y<=200)
+    {
+        e->y=SS_TIER_Y[(u16)(215-e->y)>>5];e->ySub=0;return;
+    }
     /* nearest SS_TIER_Y band to the entity's current Y (the A847 push-out). The 6
      * tiers are {200,168,136,104,72,40}; pick the closest and snap to it. */
     u8  best = 0;
@@ -1067,8 +1261,10 @@ static inline void anim_step(Entity *e, u8 period)
 static inline u8 aabb(s16 ax, s16 ay, s16 aw, s16 ah,
                       s16 bx, s16 by, s16 bw, s16 bh)
 {
-    return (u8)(ax < bx + bw && ax + aw > bx &&
-                ay < by + bh && ay + ah > by);
+    /* Positive box sizes: overlap admits differences [-aw+1,bw-1].
+     * Keep subtraction wide so opposite s16 extremes cannot wrap together. */
+    return (u8)((u32)((s32)ax-bx+aw-1)<(u32)(aw+bw-1) &&
+                (u32)((s32)ay-by+ah-1)<(u32)(ah+bh-1));
 }
 
 /* ---- FLYER vertical-bob sine -----------------------------------------------
@@ -1147,8 +1343,34 @@ static void emitter_fire(s16 sx, s16 sy, const Player *p)
 /* Per-entity update. Returns nothing; sets e->active = 0 to despawn.
  * `p` is the live player (read-only) for AI/contact; the camera/score live in
  * g_game. */
-static void entity_update_one(Entity *e, const Player *p)
+static inline __attribute__((always_inline)) void native_foe_update(Entity *e,u16 i)
 {
+
+        ArcadeFoe *a=&arcade_foes[i];
+        if(a->body.state==255)
+            arcade_foe_bonus_step(a,arcade_world.camera,arcade_world.purge,
+                                  &arcade_bonus_next,arcade_bonus_limit);
+        else
+        {
+            u8 k,reserved=0;
+            if(i<6 && a->body.state==3)
+                for(k=0;k<4;k++)if(arcade_k_actors[k].active)reserved|=(u8)(1u<<k);
+            if(i<6)arcade_foe_step_g(a,(u8)i,&arcade_world,
+                            game_arcade_floor,0,arcade_weapons,reserved);
+            else arcade_foe_step_h(a,(u8)(i-6),&arcade_world,
+                            game_arcade_floor,0,arcade_weapons);
+        }
+        e->active=a->body.active;
+}
+static inline __attribute__((always_inline)) void native_i_update(Entity *e,u16 index)
+{
+        ArcadeIActor *a=&arcade_i_actors[index-20];
+        arcade_i_actor_step(a,(u16)g_game.cameraX,arcade_world.scroll_stopped,&arcade_i_live);
+        e->active=a->body.active;
+}
+static void entity_update_one(Entity *e, const Player *p,u8 survival)
+{
+    
     switch (e->type)
     {
         /* ----- enemyA: march LEFT toward the player, lane-tracked ----------
@@ -1202,13 +1424,31 @@ static void entity_update_one(Entity *e, const Player *p)
          * RE: the player shot ($0E28) is a fast linear projectile. */
         case ET_SHOT:
         {
-            integrate(&e->x, &e->xSub, e->vx);
-            integrate(&e->y, &e->ySub, e->vy);
-            anim_step(e, 4);
-            /* despawn when it leaves a generous world window around the view */
-            if (e->x < g_game.cameraX - 16 ||
-                e->x > g_game.cameraX + SCREEN_W + 16)
-                e->active = 0;
+            if(!survival)
+            {
+                ArcadePlayerShot a;
+                a.x=(u16)e->x;a.origin=(u16)e->launchY;a.xf=(u8)e->xSub;
+                a.y=(u8)(239-e->y);a.yf=(u8)e->ySub;a.active=e->active;
+                a.state=e->phase;a.phase=e->fireTimer;a.facing=e->lane;
+                a.timer=e->timer;a.anim_timer=e->av.timer;a.cursor=e->av._pad;a.pose=e->av.frame;
+                if(e->state && a.state<2){a.state=2;a.phase=0;}
+                arcade_player_shot_step(&a,(u16)g_game.cameraX,&player_shot_available[e->owner&1]);
+                e->x=(s16)a.x;e->xSub=a.xf;e->launchY=(s16)a.origin;e->active=a.active;
+                e->phase=a.state;e->fireTimer=a.phase;e->state=(u8)(a.state>=2);
+                e->timer=a.timer;e->av.timer=a.anim_timer;e->av._pad=a.cursor;e->av.frame=a.pose;
+                e->tile=ss_anims[a.pose<2?SS_ANIM_ESHOT_FLY:SS_ANIM_SHOT_END].frames[a.pose&1].tile;
+                break;
+            }
+            if(e->state==1)
+            {
+                if(e->timer==0 || --e->timer==0){e->active=0;break;}
+                anim_set(&e->av,SS_ANIM_SHOT_END);e->tile=anim_tick(&e->av);break;
+            }
+            if((u8)(e->x-g_game.cameraX)>=0xF0){e->active=0;break;}
+            integrate(&e->x,&e->xSub,e->vx);
+            anim_set(&e->av,SS_ANIM_ESHOT_FLY);e->tile=anim_tick(&e->av);
+            if((u16)(e->x-e->launchY+0x60)>=0xC0)
+            {e->state=1;e->timer=5;anim_restart(&e->av,SS_ANIM_SHOT_END);}
             break;
         }
 
@@ -1561,13 +1801,11 @@ static void entity_update_one(Entity *e, const Player *p)
             break;
         }
 
-        /* ----- LARGE (obj16x16 $D57F/$D58B/$D5F3): tough patroller -------------
-         * RE: $D58B inits HP $8,x=#$07 + a 16px box; the move handler $D5F3 counts
-         * a timer $D,x down and on expiry reloads a velocity vector from the $DB4B
-         * table -- a periodic-velocity march. We re-express: a brisk lane patroller
-         * that FLIPS its march direction every LARGE_TURN frames (the periodic
-         * velocity reload), lane-homing onto the player like the heavy walkers.
-         * Takes 3 hits (collision pass decrements hp). Death (state 1) = burst. */
+        /* ----- LARGE: legacy motion pending full D54B replacement ----------
+         * Seven-hit durability is verified against D58B/EE8E. The lane patrol,
+         * direction reversal and death animation below are still approximations.
+         * Source $D,X=16 is an entry countdown, not a collision-box dimension;
+         * D5F3 selects an entry vector once, then D612 advances to pursuit. */
         case ET_LARGE:
         {
             if (e->state == 1)                 /* dying */
@@ -1748,47 +1986,308 @@ static u8 lethal_contact(Player *p, const Entity *en)
     return 1;
 }
 
+/* E2BF/E373: main pool precedes all other ordinary shot families. */
+static void main_shot_collisions(void)
+{
+    if(!arcade_main_contact_presence)return;
+    u8 k,owner=wave_clock&1;
+    for(k=0;k<2;k++)
+    {
+        Entity *s=&g_entities[16+owner*2+k];
+        ArcadePlayerShot shot;ArcadeMainHit hit;u8 slot;
+        if(s->active!=1)continue;
+        slot=arcade_main_shot_target(arcade_main.actors,(u16)s->x,(u8)(239-s->y),s->active);
+        if(slot==255)continue;
+        shot.active=s->active;shot.state=s->phase;shot.phase=s->fireTimer;
+        arcade_main_hit(&arcade_main.actors[slot],&shot,owner,g_arcadeCombatDifficulty,&hit);
+        s->active=shot.active;s->phase=shot.state;s->fireTimer=shot.phase;s->state=1;
+        game_score_add(&g_game.players[owner],hit.points);g_arcadeCombatDifficulty=hit.combat;
+        snd_command(hit.sound_hit);if(hit.sound_kill)snd_command(hit.sound_kill);
+    }
+}
+
+static void c_shot_collisions(void)
+{
+    if(!arcade_c_contact_presence)return;
+    u8 k,owner=wave_clock&1;
+    for(k=0;k<2;k++)
+    {
+        Entity *s=&g_entities[16+owner*2+k];
+        ArcadePlayerShot shot;ArcadeCHit hit;u8 slot;
+        if(s->active!=1)continue;
+        slot=arcade_c_shot_target(arcade_c.actors,(u16)s->x,(u8)(239-s->y),s->active);
+        if(slot==255)continue;
+        shot.active=s->active;shot.state=s->phase;shot.phase=s->fireTimer;
+        arcade_c_hit(&arcade_c.actors[slot],&shot,owner,&arcade_c.wave.reservation,g_arcadeCombatDifficulty,&hit);
+        s->active=shot.active;s->phase=shot.state;s->fireTimer=shot.phase;s->state=1;
+        game_score_add(&g_game.players[owner],hit.points+hit.bonus_points);g_arcadeCombatDifficulty=hit.combat;
+        snd_command(hit.sound);if(hit.bonus_sound)snd_command(hit.bonus_sound);
+    }
+}
+
+static void d_shot_collisions(void)
+{
+    if(!arcade_d_contact_presence)return;
+    u8 k,owner=wave_clock&1;
+    for(k=0;k<2;k++)
+    {
+        Entity *s=&g_entities[16+owner*2+k];
+        ArcadePlayerShot shot;ArcadeDHit hit;u8 slot;
+        if(s->active!=1)continue;
+        slot=arcade_d_shot_target(arcade_d.actors,(u16)s->x,(u8)(239-s->y),s->active);
+        if(slot==255)continue;
+        shot.active=s->active;shot.state=s->phase;shot.phase=s->fireTimer;
+        arcade_d_hit(&arcade_d.actors[slot],&shot,owner,&arcade_d.wave.reservation,g_arcadeCombatDifficulty,&hit);
+        s->active=shot.active;s->phase=shot.state;s->fireTimer=shot.phase;s->state=1;
+        game_score_add(&g_game.players[owner],hit.points+hit.bonus_points);g_arcadeCombatDifficulty=hit.combat;
+        snd_command(hit.sound);if(hit.bonus_sound)snd_command(hit.bonus_sound);
+    }
+}
+
+static void e_shot_collisions(void)
+{
+    if(!arcade_e_contact_presence)return;
+    u8 k,owner=wave_clock&1;
+    for(k=0;k<2;k++)
+    {
+        Entity *s=&g_entities[16+owner*2+k];
+        ArcadePlayerShot shot;u8 mask,slot;
+        if(s->active!=1)continue;
+        mask=arcade_e_shot_targets(arcade_e.actors,(u16)s->x,(u8)(239-s->y),s->active);
+        if(!mask)continue;
+        shot.active=s->active;shot.state=s->phase;shot.phase=s->fireTimer;
+        for(slot=0;slot<2;slot++)if(mask&(1u<<slot))
+        {
+            ArcadeEHit hit;
+            arcade_e_hit(&arcade_e.actors[slot],&shot,owner,g_arcadeCombatDifficulty,&hit);
+            game_score_add(&g_game.players[owner],hit.points);g_arcadeCombatDifficulty=hit.combat;
+            snd_command(hit.sound);
+        }
+        s->active=shot.active;s->phase=shot.state;s->fireTimer=shot.phase;s->state=1;
+    }
+}
+
+static void f_shot_collisions(void)
+{
+    if(!arcade_f_contact_presence)return;
+    u8 k,owner=wave_clock&1;
+    for(k=0;k<2;k++)
+    {
+        Entity *s=&g_entities[16+owner*2+k];
+        ArcadePlayerShot shot;ArcadeFHit hit;u8 slot;
+        if(s->active!=1)continue;
+        slot=arcade_f_shot_target(arcade_f.actors,(u16)s->x,(u8)(239-s->y),s->active);
+        if(slot==255)continue;
+        shot.active=s->active;shot.state=s->phase;shot.phase=s->fireTimer;
+        arcade_f_hit(&arcade_f.actors[slot],&shot,owner,&arcade_f.wave.reservation,g_arcadeCombatDifficulty,&hit);
+        s->active=shot.active;s->phase=shot.state;s->fireTimer=shot.phase;s->state=1;
+        game_score_add(&g_game.players[owner],hit.points+hit.bonus_points);g_arcadeCombatDifficulty=hit.combat;
+        snd_command(hit.sound);if(hit.bonus_sound)snd_command(hit.bonus_sound);
+    }
+}
+
+/* H then G, and stable shot 0 then 1 within each family, as E2B3. */
+static void gh_shot_collisions(void)
+{
+    Entity *shots[2]={0,0};
+    u16 i;
+    u8 pass,k,owner=wave_clock&1;
+    /* AD10 owns exactly two slots per player in ordinary mode. Preserve
+     * slot order and eligibility without searching unrelated actor records. */
+    for(k=0;k<2;k++)
+    {
+        Entity *s=&g_entities[16+owner*2+k];
+        if(s->active==1 && s->type==ET_SHOT && s->owner==owner)
+            shots[s->fruit&1]=s;
+    }
+    /* E2D1 scans I before H and G, with shot 0 before shot 1. */
+    for(k=0;k<2;k++)
+    {
+        Entity *s=shots[k];u8 slot;ArcadeGHKill hit;ArcadeIActor *a;Entity *e;
+        if(!s || s->active!=1)continue;
+        slot=arcade_i_shot_target(arcade_i_actors,(u16)s->x,(u8)(239-s->y));
+        if(slot==255)continue;
+        a=&arcade_i_actors[slot];e=&g_entities[20+slot];
+        arcade_i_kill(&hit,g_arcadeCombatDifficulty,arcade_i_reservation,owner);
+        arcade_i_reservation=hit.remaining;g_arcadeCombatDifficulty=hit.combat;
+        a->body.active=e->active=2;a->body.state=4;a->body.phase=hit.phase;a->hit_style=owner;
+        e->state=2;game_score_add(&g_game.players[owner],hit.points);
+        snd_command(0x0c);if(hit.bonus)snd_command(0x0e);
+        s->active=2;s->state=1;s->phase=2;s->fireTimer=0;
+    }
+    for(pass=0;pass<2;pass++)for(k=0;k<2;k++)
+    {
+        u8 family=(u8)(1-pass),slot;
+        Entity *s=shots[k],*e;
+        ArcadeFoe *a;
+        ArcadeGHKill hit;
+        if(!s || s->active!=1)continue;
+        slot=arcade_gh_shot_target(arcade_foes,family,(u16)s->x,(u8)(239-s->y));
+        if(slot==255)continue;
+        i=(u16)(family?6:0)+slot;e=&g_entities[i];a=&arcade_foes[i];
+        arcade_gh_kill(&hit,g_arcadeCombatDifficulty,formation_reservation[family],family,owner);
+        formation_reservation[family]=hit.remaining;g_arcadeCombatDifficulty=hit.combat;
+        a->body.active=e->active=2;a->body.state=6;a->body.phase=hit.phase;a->hit_style=owner;
+        e->state=1;e->timer=ENEMY_DEATH_FRAMES;e->vx=0;
+        game_score_add(&g_game.players[owner],hit.points);
+        snd_command(0x0d);if(hit.bonus)snd_command(0x0e);
+        s->active=2;s->state=1;s->phase=2;s->fireTimer=0;
+    }
+}
+
+/* Dedicated source K/large scans after ordinary shot families. */
+static u8 shared_k_target(u16 x,u8 y,u8 shot)
+{
+    u8 k;
+    for(k=0;k<4;k++)
+    {
+        const ArcadeFoeWeapon *w=&arcade_weapons[k];
+        const ArcadeKProjectile *a=&arcade_k_actors[k];
+        u8 active=w->active?w->active:a->active;
+        u16 px;
+        u8 py;
+        if(!active || (shot?active!=1:(active&2)))continue;
+        if(shot && ((w->active?w->state:a->state)&128))continue;
+        px=w->active?w->x:a->x;
+        py=w->active?w->y:a->y;
+        if(shot)
+        {
+            if((u8)(y-py+7)<=14 &&
+               (u16)(x-px+9)<=18)return k;
+        }
+        else if((u8)(y-py+6)<=12 &&
+                (u16)(x-px+6)<=12)return k;
+    }
+    return 255;
+}
+static void large_shot_collisions(void)
+{
+    u8 pass,k,owner=wave_clock&1;
+    for(pass=0;pass<2;pass++)for(k=0;k<2;k++)
+    {
+        Entity *s=&g_entities[16+owner*2+k];ArcadePlayerShot shot;u8 slot;
+        if(s->active!=1)continue;
+        shot.active=s->active;shot.state=s->phase;shot.phase=s->fireTimer;
+        if(!pass)
+        {
+            slot=shared_k_target((u16)s->x,(u8)(239-s->y),1);
+            if(slot==255)continue;
+            if(arcade_weapons[slot].active)
+            {
+                ArcadeFoeWeapon *a=&arcade_weapons[slot];
+                a->active=2;a->state=3;a->phase=0;
+                g_entities[12+slot].active=2;
+                shot.active=2;shot.state=2;shot.phase=0;
+            }
+            else arcade_k_cancel(&arcade_k_actors[slot],&shot,owner);
+            /* Source event0430: four-byte BCD value00000030 at4EAA. */
+            game_score_add(&g_game.players[owner],30);
+        }
+        else
+        {
+            ArcadeLargeHit hit;
+            slot=arcade_large_shot_target(arcade_large_actors,(u16)s->x,(u8)(239-s->y),s->active);
+            if(slot==255)continue;
+            arcade_large_hit(&arcade_large_actors[slot],&shot,owner,g_arcadeCombatDifficulty,&hit);
+            g_arcadeCombatDifficulty=hit.combat;game_score_add(&g_game.players[owner],hit.points);snd_command(hit.sound);
+        }
+        s->active=shot.active;s->phase=shot.state;s->fireTimer=shot.phase;s->state=1;
+    }
+}
+
 /* Collision pass: SHOT<->ENEMY (defeat + score) and PLAYER<->ENEMY/ITEM. Runs
  * after motion so positions are current this frame. O(N*M) over a 24-slot pool
  * = trivial on the 68000. */
-static void collision_pass(void)
+static inline __attribute__((always_inline)) void collision_mode(const u8 survival)
 {
     u16 i, j;
-    u8  pk;
+    const u16 shot_first=survival?0:(u16)(16+(wave_clock&1)*2);
+    const u16 shot_end=survival?ENTITY_MAX:(u16)(shot_first+2);
+    u8 pk,pass;
+    /* E2BF..E2CB: source pools0828,0A28,0AE8,0B68,0BA8.
+     * Each family scans both shots before advancing to the next family.
+     * Legacy/direct-spawn types retain a fallback pass after I/H/G. */
+    u8 heads[6]={ENTITY_MAX,ENTITY_MAX,ENTITY_MAX,ENTITY_MAX,ENTITY_MAX,ENTITY_MAX};
+    u8 next[ENTITY_MAX-24];
+    static const u8 family_rank[ET_POPUP+1]={
+        5,5,5,5,4,0,5,5,1,3,5,5,2,5,5
+    };
+    /* Every ordinary shot handler requires active==1. Skip only their
+     * side-effect-free empty scans; player contact still runs below. */
+    if(!survival && g_entities[shot_first].active!=1 &&
+       g_entities[shot_first+1].active!=1)goto player_contacts;
+    if(!survival)
+    {
+        main_shot_collisions();
+        c_shot_collisions();
+        d_shot_collisions();
+        e_shot_collisions();
+        f_shot_collisions();
+        /* Prepend in reverse slot order: stable family lists in one pool walk.
+         * This avoids six full rescans for each of the player's shots. */
+        for(i=legacy_pool_used?ENTITY_MAX:24;i>24;)
+        {
+            const Entity *en=&g_entities[--i];u8 rank;
+            if(en->active!=1 || en->owner==128)continue;
+            rank=en->type<=ET_POPUP?family_rank[en->type]:5;
+            next[i-24]=heads[rank];heads[rank]=(u8)i;
+        }
+    }
+    /* Native actors were handled above and in the shared G/H/I scan.
+     * If no legacy slot has ever been allocated, there is no family-list work.
+     * Native combat does not allocate the legacy pool during this interval. */
+    if(!survival && !legacy_pool_used)gh_shot_collisions();
+    else {
+    for(pass=0;pass<(survival?1:6);pass++)
+    {
+    if(!survival && pass==5)gh_shot_collisions();
 
     /* SHOT vs ENEMY: a hit defeats the enemy and consumes the shot, awarding
      * score (arcade: a shot poking an enemy triggers its death sequence
      * sub_DD78). One loop handles every killable archetype -- the ground walker,
      * the flyer, and the thrower -- each with its own death-state index + score.
      * (The flyer/thrower use state 2 = dying; the walker uses state 1.) */
-    for (i = 0; i < ENTITY_MAX; i++)
+    for (i = shot_first; i < shot_end; i++)
     {
         Entity *s = &g_entities[i];
-        if (!s->active || s->type != ET_SHOT) continue;
+        if (s->type != ET_SHOT)continue;
+        if(survival?(!s->active || s->state):(s->active!=1))continue;
+        /* Original $E2B3 selects P1 on even phases, P2 on odd phases. */
+        if(!survival && s->owner!=(wave_clock&1))continue;
 
-        for (j = 0; j < ENTITY_MAX; j++)
+        /* Slots 0..11 were handled above; 12..15 are enemy weapons, not targets. */
+        for (j=survival?0:heads[pass]; j<ENTITY_MAX;
+             j=survival?j+1:next[j-24])
         {
             Entity *en = &g_entities[j];
             u8  deathState;
             u32 award;
+            /* Reject empty/reserved slots before decoding an enemy type. This
+             * scan repeats per player shot; the type tests have no side effects. */
+            if(en->active!=1 || en->owner==128)continue;
 
-            /* select the killable archetypes + their death-state / score.
-             * (walker/creatureC/compositeE/creatureG/large/emitter/orb use state
-             * 1 = dying; the flyer/thrower/hopper use state 2 -- their state-
-             * machine layouts.) */
-            if      (en->type == ET_ENEMY_A)     { deathState = 1; award = SCORE_ENEMY;       }
-            else if (en->type == ET_FLYER)       { deathState = 2; award = SCORE_FLYER;       }
-            else if (en->type == ET_THROWER)     { deathState = 2; award = SCORE_THROWER;     }
-            else if (en->type == ET_CREATURE_G)  { deathState = 1; award = SCORE_CREATURE_G;  }
-            else if (en->type == ET_CREATURE_C)  { deathState = 1; award = SCORE_CREATURE_C;  }
-            else if (en->type == ET_COMPOSITE_E) { deathState = 1; award = SCORE_COMPOSITE_E; }
-            else if (en->type == ET_HOPPER)      { deathState = 2; award = SCORE_HOPPER;      }
-            else if (en->type == ET_LARGE)       { deathState = 1; award = SCORE_LARGE;       }
-            else if (en->type == ET_EMITTER)     { deathState = 1; award = SCORE_EMITTER;     }
-            else if (en->type == ET_ORB)         { deathState = 1; award = SCORE_ORB;         }
-            else continue;
+            /* Same type metadata and scan order as the former comparison chain. */
+            {
+                static const u8 death_states[ET_POPUP+1]={
+                    [ET_ENEMY_A]=1,[ET_FLYER]=2,[ET_THROWER]=2,[ET_CREATURE_G]=1,
+                    [ET_CREATURE_C]=1,[ET_COMPOSITE_E]=1,[ET_HOPPER]=2,
+                    [ET_LARGE]=1,[ET_EMITTER]=1,[ET_ORB]=1
+                };
+                static const u16 awards[ET_POPUP+1]={
+                    [ET_ENEMY_A]=SCORE_ENEMY,[ET_FLYER]=SCORE_FLYER,
+                    [ET_THROWER]=SCORE_THROWER,[ET_CREATURE_G]=SCORE_CREATURE_G,
+                    [ET_CREATURE_C]=SCORE_CREATURE_C,[ET_COMPOSITE_E]=SCORE_COMPOSITE_E,
+                    [ET_HOPPER]=SCORE_HOPPER,[ET_LARGE]=SCORE_LARGE,
+                    [ET_EMITTER]=SCORE_EMITTER,[ET_ORB]=SCORE_ORB
+                };
+                u16 type=en->type;
+                if(type>ET_POPUP)continue;
+                deathState=death_states[type];
+                if(!deathState)continue;
+                award=awards[type];
+            }
 
-            if (!en->active || en->state == deathState) continue;   /* dead/dying */
+            if (en->state == deathState) continue;   /* dead/dying */
 
             if (aabb(s->x, s->y, SHOT_HALF_W * 2, SHOT_HALF_H * 2,
                      en->x, en->y, BODY_W, BODY_H))
@@ -1800,25 +2299,32 @@ static void collision_pass(void)
                 }
                 else
                 {
+                    if (en->type == ET_LARGE) en->hp = 0; /* $EEBE: 1 -> 0 */
                     en->state = deathState;        /* enter death sequence      */
                     en->timer = ENEMY_DEATH_FRAMES;
                     en->vx    = 0;
                     /* credit the player whose shot scored the kill (co-op). */
-                    g_game.players[s->owner & 1].score += award;
+                    game_score_add(&g_game.players[s->owner & 1],award);
                     /* NOTE: the arcade shows a score child on enemy kills too
                      * (classK $0ED8), but we DON'T pop a "+N" per kill here -- in a
                      * busy fire-fight that would spawn many concurrent popup-glyph
                      * sprites and shave the frame budget. The iconic SonSon popup is
                      * the FRUIT one (low-frequency), which we DO show (see ET_ITEM
                      * collect below). Enemy kills still score + play the defeat SFX. */
-                    snd_sfx_enemy();               /* enemy-defeat SFX (verified) */
+                    snd_sfx_enemy();
                 }
-                s->active = 0;                      /* shot is consumed          */
+                if(!survival){s->active=2;s->phase=2;s->fireTimer=0;}
+                s->state=1;s->timer=5; /* Impact retains its slot through the end puff. */
+                if(survival)anim_restart(&s->av,SS_ANIM_SHOT_END);
                 break;
             }
         }
     }
 
+    } /* source shot-family order */
+    }
+
+player_contacts:
     /* PLAYER vs ENEMY/PROJECTILE (contact-hurt, arcade DCAC) + PLAYER vs ITEM
      * (collect), for EACH active co-op player. Every hostile body -- walker, flyer,
      * thrower, AND the lobbed projectile -- costs that player a life on overlap; the
@@ -1829,11 +2335,186 @@ static void collision_pass(void)
     {
         Player *p = &g_game.players[pk];
         if (p->flow == FLOW_GAME_OVER) continue;   /* out player: no contact/collect */
+        if(!survival && pk!=(wave_clock&1))continue;
+        if(!survival)game_arcade_food_contact(pk); /* E2E0/E334. */
+        if(!survival)
+        {
+            u8 k;
+            /* E2E3/E337: both stable shot slots scan the shared background pool. */
+            for(k=0;k<2;k++)
+            {
+                Entity *s=&g_entities[16+pk*2+k];ArcadePlayerShot shot;
+                if(s->active!=1 || s->type!=ET_SHOT || s->owner!=pk)continue;
+                shot.x=(u16)s->x;shot.y=(u8)(239-s->y);shot.active=s->active;
+                shot.state=s->phase;shot.phase=s->fireTimer;
+                game_score_add(p,arcade_food_world_shot(&shot));
+                s->active=shot.active;s->phase=shot.state;s->fireTimer=shot.phase;
+                if(shot.active!=1)s->state=1;
+            }
+            large_shot_collisions();
+        }
+        /* Food/background displacement is complete. These five families only
+         * mutate actor/award state and deadReq/hurt, not player lifecycle.
+         * Keep death requests live between families; snapshot eligibility once. */
+        if(!survival && p->flow==FLOW_ALIVE && !p->invuln && !p->deadReq)
+        {
+            const u8 contact_active=(u8)(game_player_target_flags(pk)>>8);
+            /* ECB7: main pool contacts precede K and the formation families. */
+            if(!p->deadReq && arcade_main_contact_presence)
+            {
+                u8 slot=arcade_main_contact_target(arcade_main.actors,(u16)p->x,
+                    (u8)(239-p->y),contact_active);
+                if(slot!=255)
+                {
+                    ArcadeMainActor *a=&arcade_main.actors[slot];
+                    if(a->active&64)
+                    {
+                        ArcadeBonusAward award;
+                        if(arcade_main_bonus_collect(a,pk,g_arcadeCombatDifficulty,&award))
+                        {game_score_add(p,award.points);g_arcadeCombatDifficulty=award.combat;snd_command(award.sound);}
+                    }
+                    else {p->deadReq=1;if(!p->hurt)p->hurt=HURT_FRAMES;}
+                }
+            }
+            if(!p->deadReq && arcade_c_contact_presence)
+            {
+                u8 slot=arcade_c_contact_target(arcade_c.actors,(u16)p->x,
+                    (u8)(239-p->y),contact_active);
+                if(slot!=255)
+                {
+                    ArcadeCActor *a=&arcade_c.actors[slot];
+                    if(a->active&64)
+                    {
+                        ArcadeBonusAward award;
+                        if(arcade_c_bonus_collect(a,pk,g_arcadeCombatDifficulty,&award))
+                        {game_score_add(p,award.points);g_arcadeCombatDifficulty=award.combat;snd_command(award.sound);}
+                    }
+                    else {p->deadReq=1;if(!p->hurt)p->hurt=HURT_FRAMES;}
+                }
+            }
+            if(!p->deadReq && arcade_d_contact_presence)
+            {
+                u8 slot=arcade_d_contact_target(arcade_d.actors,(u16)p->x,
+                    (u8)(239-p->y),contact_active);
+                if(slot!=255)
+                {
+                    ArcadeDActor *a=&arcade_d.actors[slot];
+                    if(a->active&64)
+                    {
+                        ArcadeBonusAward award;
+                        if(arcade_d_bonus_collect(a,pk,g_arcadeCombatDifficulty,&award))
+                        {game_score_add(p,award.points);g_arcadeCombatDifficulty=award.combat;snd_command(award.sound);}
+                    }
+                    else {p->deadReq=1;if(!p->hurt)p->hurt=HURT_FRAMES;}
+                }
+            }
+            if(!p->deadReq && arcade_e_contact_presence)
+            {
+                u8 slot=arcade_e_contact_target(arcade_e.actors,(u16)p->x,
+                    (u8)(239-p->y),contact_active);
+                if(slot!=255)
+                {
+                    ArcadeEActor *a=&arcade_e.actors[slot];
+                    if(a->active&64)
+                    {
+                        ArcadeBonusAward award;
+                        if(arcade_e_bonus_collect(a,pk,g_arcadeCombatDifficulty,&award))
+                        {game_score_add(p,award.points);g_arcadeCombatDifficulty=award.combat;snd_command(award.sound);}
+                    }
+                    else {p->deadReq=1;if(!p->hurt)p->hurt=HURT_FRAMES;}
+                }
+            }
+            if(!p->deadReq && arcade_f_contact_presence)
+            {
+                u8 slot=arcade_f_contact_target(arcade_f.actors,(u16)p->x,
+                    (u8)(239-p->y),contact_active);
+                if(slot!=255)
+                {
+                    ArcadeFActor *a=&arcade_f.actors[slot];
+                    if(a->active&64)
+                    {
+                        ArcadeBonusAward award;
+                        if(arcade_f_bonus_collect(a,pk,g_arcadeCombatDifficulty,&award))
+                        {game_score_add(p,award.points);g_arcadeCombatDifficulty=award.combat;snd_command(award.sound);}
+                    }
+                    else {p->deadReq=1;if(!p->hurt)p->hurt=HURT_FRAMES;}
+                }
+            }
+        }
+        /* E2F8 precedes E2FE/E301/E304: consume a touching K projectile
+         * before an overlapping H/G/I body can raise the death request. */
+        if(!survival && p->flow==FLOW_ALIVE && !p->invuln && !p->deadReq)
+        {
+            u8 slot=shared_k_target((u16)p->x,(u8)(239-p->y),0);
+            if(slot!=255)
+            {
+                if(arcade_weapons[slot].active)
+                {arcade_weapons[slot].state=3;arcade_weapons[slot].phase=2;}
+                else
+                {arcade_k_actors[slot].state=3;arcade_k_actors[slot].phase=2;}
+                p->deadReq=1;
+                if(!p->hurt)p->hurt=HURT_FRAMES;
+            }
+        }
+        if(!survival)game_arcade_special_contact(pk); /* E2FB/E34F, after K. */
+        if(!survival && p->flow==FLOW_ALIVE && !p->invuln && !p->deadReq)
+        {
+            /* E2FE/E301/E304 visit H6..11, G0..5, then I20..23. */
+            static const u8 contact_order[16]={6,7,8,9,10,11,0,1,2,3,4,5,20,21,22,23};
+            const u16 px=(u16)p->x;const u8 py=(u8)(239-p->y);
+            u8 k;
+            /* E2FE/E301/E304: H, G, I. Ordinary contact does not test AI state. */
+            for(k=0;k<16;k++)
+            {
+                u16 index=contact_order[k];
+                Entity *en=&g_entities[index];
+                const ArcadeFormationActor *body;
+                if(!en->active || (en->active&2))continue;
+                body=index<12?&arcade_foes[index].body:&arcade_i_actors[index-20].body;
+                if(en->active&64)
+                {
+                    if(index<12 && arcade_body_contact(px,py,
+                        body->x,body->y,1,1))
+                    {
+                        ArcadeBonusAward award;
+                        if(arcade_gh_bonus_collect(&arcade_foes[index],pk,g_arcadeCombatDifficulty,&award))
+                        {
+                            en->active=2;game_score_add(p,award.points);
+                            g_arcadeCombatDifficulty=award.combat;snd_command(award.sound);
+                            /* ECE9 returns after one hit, then the dispatcher
+                             * advances to the next family, not the next slot. */
+                            k=k<6?5:11;
+                        }
+                    }
+                    continue;
+                }
+                if(arcade_body_contact(px,py,
+                     body->x,body->y,1,en->active))
+                {
+                    p->deadReq=1;
+                    if(!p->hurt)p->hurt=HURT_FRAMES;
+                    break;
+                }
+            }
+        }
 
-    for (j = 0; j < ENTITY_MAX; j++)
+        if(!survival && p->flow==FLOW_ALIVE && !p->invuln && !p->deadReq)
+        {
+            if(arcade_large_contact_target(arcade_large_actors,(u16)p->x,(u8)(239-p->y),1)!=255)p->deadReq=1;
+            if(p->deadReq && !p->hurt)p->hurt=HURT_FRAMES;
+        }
+
+    /* Native slots16..19 contain only player shots (no fallback contact case),
+     * and20..23 are excluded below. No fallback allocation means no possible
+     * side effects in this traversal. Recheck once per contacted player; the
+     * monotonic latch remains set after any direct allocation until reset. */
+    if(survival || legacy_pool_used)
+    /* Ordinary slots0..15 were unconditionally excluded below. */
+    for (j = survival?0:16; j < ENTITY_MAX; j++)
     {
         Entity *en = &g_entities[j];
-        if (!en->active) continue;
+        if(!survival && (j<16 || (j>=20 && j<24)))continue;
+        if (en->active != 1 || en->owner==128) continue;
 
         switch (en->type)
         {
@@ -1861,7 +2542,12 @@ static void collision_pass(void)
                 if (aabb(p->x, p->y, PLAYER_W, PLAYER_H,
                          en->x, en->y, ESHOT_HALF_W * 2, ESHOT_HALF_H * 2))
                 {
-                    if (lethal_contact(p, en)) en->active = 0;  /* spent on a hit */
+                    if (lethal_contact(p, en))
+                    {
+                        en->active=0;
+                        if(!survival && j>=12 && j<16)
+                            arcade_weapons[j-12].active=0;
+                    }  /* spent on a hit */
                 }
                 break;
 
@@ -1875,7 +2561,7 @@ static void collision_pass(void)
                 {
                     u16 val = k_fruit_score[en->fruit < FRUIT_TYPE_COUNT
                                             ? en->fruit : 0];
-                    p->score += val;                 /* credit the collector (co-op) */
+                    game_score_add(p,val);                 /* credit the collector (co-op) */
                     spawn_popup((s16)(en->x), (s16)(en->y), val);
                     /* Two arcade pickup tiers (latch-verified): 0x02 fires on the
                      * small +10 pickup, 0x0C on the high +500 pickup (a distinct,
@@ -1896,7 +2582,7 @@ static void collision_pass(void)
 }
 
 /* ------------------------------------------------------------------------- */
-void entity_update_all(void)
+static inline __attribute__((always_inline)) void entity_update_mode(const u8 survival)
 {
     u16 i;
     u8  pk;
@@ -1905,9 +2591,47 @@ void entity_update_all(void)
     for (pk = 0; pk < g_game.numPlayers; pk++)
         if (g_game.players[pk].hurt) g_game.players[pk].hurt--;
 
-    /* Faithful per-level wave scheduler: spawn the next scheduled enemies as the
-     * camera advances, capped at the arcade on-screen count (no recycle pile-up). */
-    entity_schedule_tick();
+    if(!survival)
+    {
+        /* Native pool updates below cannot mutate player lifecycle flags. */
+        const u16 target_flags[2]={game_player_target_flags(0),game_player_target_flags(1)};
+        arcade_world.camera=(u16)g_game.cameraX;arcade_world.clock=wave_clock;
+        arcade_world.stage=(u8)(g_arcadeCombatDifficulty>>8);arcade_world.tracking=g_game.numPlayers>1;
+        arcade_world.scroll_stopped=game_arcade_stopped();arcade_world.purge=arcade_food_conversion_pulse;
+        arcade_world.shot_budget=arcade_shot_budget;
+        arcade_main_pool_update(&arcade_main,arcade_world.camera,wave_clock,
+            arcade_world.scroll_stopped,arcade_world.purge,&arcade_bonus_next,arcade_bonus_limit);
+        arcade_c_pool_update(&arcade_c,arcade_world.camera,arcade_world.scroll_stopped,
+            arcade_world.purge,&arcade_bonus_next,arcade_bonus_limit);
+        {
+            u8 target=arcade_tracking_player(g_game.numPlayers>1,
+                (u16)g_game.players[0].x,target_flags[0],
+                (u16)g_game.players[1].x,target_flags[1]);
+            const Player *p=&g_game.players[target];
+            arcade_d_pool_update(&arcade_d,arcade_world.camera,wave_clock,
+                (u8)(g_arcadeCombatDifficulty>>8),arcade_world.scroll_stopped,arcade_world.purge,
+                (u16)p->x,(u8)(239-p->y),target,&arcade_bonus_next,arcade_bonus_limit);
+            {
+                u16 flags=target_flags[target];
+                u8 eligible=(u8)(((flags>>8)&~flags)&1);
+                arcade_e_pool_update(&arcade_e,arcade_world.camera,wave_clock,
+                    arcade_world.scroll_stopped,arcade_world.purge,(u16)p->x,(u8)(239-p->y),
+                    target,eligible,&arcade_main_ready,&arcade_bonus_next,arcade_bonus_limit);
+                arcade_shot_budget=(u8)(arcade_main_ready!=0);
+                arcade_world.shot_budget=arcade_shot_budget;
+            }
+        }
+        arcade_f_pool_update(&arcade_f,arcade_world.camera,arcade_world.scroll_stopped,
+            arcade_world.purge,&arcade_bonus_next,arcade_bonus_limit);
+        for(pk=0;pk<2;pk++)
+        {
+            const Player *p=&g_game.players[pk];
+            ArcadeFoePlayer *q=&arcade_world.players[pk];
+            u16 flags=target_flags[pk];
+            q->x=(u16)p->x;q->y=(u8)(239-p->y);
+            q->active=(u8)(flags>>8);q->kind=(u8)flags;
+        }
+    }
 
     /* Enemy AI tracks a LIVE player: P1 normally, P2 if P1 is out (co-op). (The
      * arcade tracks the player(s); nearest-of-two targeting is a later refinement.) */
@@ -1916,14 +2640,85 @@ void entity_update_all(void)
         if (g_game.numPlayers > 1 && g_game.players[0].flow == FLOW_GAME_OVER)
             track = &g_game.players[1];
 
-        for (i = 0; i < ENTITY_MAX; i++)
+        if(!survival)
         {
-            Entity *e = &g_entities[i];
-            if (e->active) entity_update_one(e, track);
+            /* Preserve source slot order while removing family dispatch from
+             * every occupied slot. Allocations into later slots remain visible. */
+            for(i=0;i<12;i++)if(g_entities[i].active)
+                native_foe_update(&g_entities[i],i);
+            for(i=12;i<16;i++)
+            {
+                Entity *e=&g_entities[i];
+                ArcadeFoeWeapon *a=&arcade_weapons[i-12];
+                const ArcadeFoeFrame *pose;
+                if(!a->active){e->active=0;continue;}
+                if(a->active && !e->active)
+                    e=entity_spawn_range(ET_ENEMY_SHOT,(s16)a->x,(s16)(239-a->y),i,i+1);
+                arcade_foe_weapon_step(a,&arcade_world,arcade_foes);
+                arcade_k_actors[i-12].xf=a->xf;arcade_k_actors[i-12].yf=a->yf;
+                if(e)
+                {
+                    e->active=a->active;e->x=(s16)a->x;e->xSub=a->xf;
+                    e->y=(s16)(u8)(239-a->y);if(e->y>=240)e->y-=256;
+                    e->ySub=a->yf;e->state=a->state==3?1:0;
+                    pose=&arcade_foe_frames[a->pose];e->tile=pose->tile;
+                    e->facing=(u8)((pose->attr&64)!=0);
+                }
+            }
+            for(i=16;i<20;i++)if(g_entities[i].active)
+                entity_update_one(&g_entities[i],track,0);
+            {
+                u8 k;for(k=0;k<4;k++)
+                {
+                    ArcadeKProjectile *a=&arcade_k_actors[k];
+                    if(!a->active)continue;
+                    arcade_k_projectile_step(a,arcade_world.camera,
+                        arcade_world.scroll_stopped,arcade_world.purge);
+                    /* Shared source bytes7/9 survive cleanup and kind changes. */
+                    arcade_weapons[k].xf=a->xf;arcade_weapons[k].yf=a->yf;
+                }
+            }
+            for(i=20;i<24;i++)if(g_entities[i].active)
+                native_i_update(&g_entities[i],i);
+            /* Native updates above can allocate this tail during the tick. */
+            if(legacy_pool_used)
+                for(i=24;i<ENTITY_MAX;i++)if(g_entities[i].active)
+                    entity_update_one(&g_entities[i],track,0);
         }
+        else
+        {
+            for(i=0;i<ENTITY_MAX;i++)if(g_entities[i].active)
+                entity_update_one(&g_entities[i],track,1);
+        }
+
     }
 
-    collision_pass();
+    __asm__ volatile(".globl profile_large_update_begin_%=\nprofile_large_update_begin_%=:" ::: "memory");
+    if(!survival)
+    {
+        u8 k,j;
+        for(k=0;k<3;k++)
+        {
+            u8 occupied[4];ArcadeLargeShotBirth birth;
+            if(!arcade_large_actors[k].body.active)continue;
+            for(j=0;j<4;j++)occupied[j]=(u8)(arcade_k_actors[j].active || arcade_weapons[j].active);
+            if(arcade_large_step(&arcade_large_actors[k],&arcade_world,
+                (u8)(g_arcadeCombatDifficulty>>8),&arcade_rng.seed,&arcade_rng.last,occupied,&birth))
+            {
+                ArcadeKProjectile *a=&arcade_k_actors[birth.slot];
+                a->active=1;a->state=a->phase=0;a->x=birth.x;a->y=birth.y;a->facing=birth.facing;
+            }
+        }
+    }
+    __asm__ volatile(".globl profile_collision_begin_%=\nprofile_collision_begin_%=:" ::: "memory");
+    if(!survival)
+    {
+        arcade_food_carrier_step((u16)g_game.cameraX); /* A61C */
+        arcade_food_conversion_pulse=0; /* A61F before E2B3 contacts. */
+    }
+    collision_mode(survival);
+    __asm__ volatile(".globl profile_schedule_begin_%=\nprofile_schedule_begin_%=:" ::: "memory");
+    entity_schedule_tick();
 }
 
 /* ------------------------------------------------------------------------- */
@@ -1950,12 +2745,36 @@ void entity_update_all(void)
  * SAT buffer in game.c can be sized to match.) */
 #define POPUP_GLYPH_MAX     ENTITY_POPUP_GLYPH_MAX
 
-u16 entity_render_all(u16 *sat, u16 firstSlot)
+static inline __attribute__((always_inline)) u16 entity_render_mode(u16 *sat, u16 firstSlot, const u8 survival)
 {
     u16 count  = 0;            /* entity BODY sprites (capped at ENTITY_SAT_MAX) */
     u16 glyphs = 0;            /* popup glyph sprites (capped at POPUP_GLYPH_MAX)*/
     u16 slot   = firstSlot;
-    u16 i;
+    u16 i,visit;u8 players_written=0;
+    if(!survival)
+    {
+        entity_sprite_admission();
+        slot+=arcade_food_bonus_sat((u16)g_game.cameraX,sat,slot,
+            MAX_PLAYERS+ENTITY_SAT_MAX+ENTITY_POPUP_GLYPH_MAX);
+        count=(u16)(slot-firstSlot); /* Wrapped cells share the body budget. */
+        /* Hidden/inactive actors cannot request dynamic art. Empty requests
+         * leave both upload residency and ready-cell identities unchanged. */
+        if((arcade_e.actors[0].active && arcade_e.actors[0].active<128) ||
+           (arcade_e.actors[1].active && arcade_e.actors[1].active<128))
+        {
+            u16 cells[2]={65535,65535};u8 k;
+            for(k=0;k<arcade_admission.count;k++)
+            {
+                u8 id=arcade_admission.order[k];
+                if(id>=74 && id<76)cells[id-74]=arcade_e_render_request(&arcade_e.actors[id-74]);
+            }
+            if(arcade_e_upload(cells,704,2))
+            {
+                for(k=0;k<2;k++)if(cells[k]!=65535)arcade_e_ready[k]=cells[k];
+            }
+            else arcade_e_ready[0]=arcade_e_ready[1]=65535;
+        }
+    }
 
     /* ONE pass over the pool: entity bodies (16x16) AND floating "+N" score-popup
      * glyphs (1x1 font-tile sprites), built into one linked SAT chain.
@@ -1967,14 +2786,80 @@ u16 entity_render_all(u16 *sat, u16 firstSlot)
      *     the popups cost no active-display VRAM writes (the arcade's classK
      *     $0ED8 score-child, sub_CBC8 anim, re-expressed cheaply).
      * A single loop avoids a second 48-slot scan. */
-    for (i = 0; i < ENTITY_MAX; i++)
+    for (visit=0;visit<(survival?ENTITY_MAX:arcade_admission.count);visit++)
     {
-        Entity *e = &g_entities[i];
-        s16 sx, sy;
-        if (!e->active) continue;
+        Entity *e;
+        s16 sx, sy;u16 body_tile;u8 body_facing;
+        i=survival?visit:arcade_admission.order[visit];
+        if(!survival && !players_written && (i<16 || i>=20))
+        {
+            slot+=game_render_players(sat,slot,MAX_PLAYERS+ENTITY_SAT_MAX+ENTITY_POPUP_GLYPH_MAX);
+            players_written=1;
+        }
+        if(!survival && i>=12 && i<16)continue; /* Shared K follows large. */
+        if(!survival && i>=76)
+        {
+            u16 n=arcade_f_render_actor(&arcade_f.actors[i-76],
+                (u16)g_game.cameraX,sat,slot,firstSlot+ENTITY_SAT_MAX);
+            slot+=n;count+=n;continue;
+        }
+        if(!survival && i>=74)
+        {
+            u16 n=arcade_e_render_actor(&arcade_e.actors[i-74],(u8)(i-74),arcade_e_ready[i-74],
+                (u16)g_game.cameraX,sat,slot,firstSlot+ENTITY_SAT_MAX);
+            slot+=n;count+=n;continue;
+        }
+        if(!survival && i>=70)
+        {
+            u16 n=arcade_d_render_actor(&arcade_d.actors[i-70],
+                (u16)g_game.cameraX,sat,slot,firstSlot+ENTITY_SAT_MAX);
+            slot+=n;count+=n;continue;
+        }
+        if(!survival && i>=64)
+        {
+            u16 n=arcade_c_render_actor(&arcade_c.actors[i-64],
+                (u16)g_game.cameraX,sat,slot,firstSlot+ENTITY_SAT_MAX);
+            slot+=n;count+=n;continue;
+        }
+        if(!survival && i>=48)
+        {
+            u16 n=arcade_main_render_actor(&arcade_main.actors[i-48],
+                (u16)g_game.cameraX,sat,slot,firstSlot+ENTITY_SAT_MAX);
+            slot+=n;count+=n;continue;
+        }
+        e=&g_entities[i];
+        /* Source active=2 remains visible throughout the hit/death sequence. */
+        if(!e->active)continue;
+        if(e->active>2 && (survival || i>=12 ||
+           !(arcade_foes[i].pose&ARCADE_BONUS_POSE) || (e->active&128)))continue;
 
-        sx = (s16)(e->x - g_game.cameraX);
-        sy = e->y;
+        /* Native actors own position and pose. Materialize the view only when
+         * a sprite is actually drawn, not after every simulation update. */
+        if(!survival && i<12) {
+            const ArcadeFoe *a=&arcade_foes[i];const ArcadeFoeFrame *pose;
+            sx=(s16)(a->body.x-g_game.cameraX);
+            sy=(u8)(239-a->body.y);if(sy>=240)sy-=256;
+        if(a->pose&ARCADE_BONUS_POSE)
+        {
+            const ArcadeBonusFrame *bonus=&arcade_bonus_frames[a->pose&0x3fff];
+            u8 alternate=(u8)((a->pose&ARCADE_BONUS_OWNER2)!=0);
+            body_tile=alternate?bonus->owner2_tile:bonus->tile;
+            body_facing=(u8)(((alternate?0xc3:bonus->attr)&64)!=0);
+        }
+        else
+        {
+            pose=&arcade_foe_frames[a->pose];body_tile=pose->tile;
+            body_facing=(u8)((pose->attr&64)!=0);
+        }
+        } else if(!survival && i>=20 && i<24) {
+            const ArcadeIActor *a=&arcade_i_actors[i-20];
+            sx=(s16)(a->body.x-g_game.cameraX);
+            sy=(u8)(239-a->body.y);if(sy>=240)sy-=256;
+            body_tile=arcade_i_tile(a->code,a->attr);body_facing=(a->attr&64)!=0;
+        } else {
+            sx=(s16)(e->x-g_game.cameraX);sy=e->y;
+            body_tile=e->tile;body_facing=e->facing;
+        }
 
         if (e->type == ET_POPUP)
         {
@@ -2015,11 +2900,64 @@ u16 entity_render_all(u16 *sat, u16 firstSlot)
          * faced AWAY from the player, and throwers visually faced/"shot" backward
          * toward other enemies. Inverting the flip here makes every enemy face the
          * player, matching the arcade (white skulls face the hero, tools/arcdemo). */
-        sat[slot * 4 + 2] = (u16)TILE_ATTR_FULL(PAL1, 0, 0, (u8)(!e->facing), e->tile);
+        sat[slot * 4 + 2] = (u16)TILE_ATTR_FULL(PAL1, 0, 0, (u8)((!survival && e->type==ET_SHOT)?0:!body_facing), body_tile);
         sat[slot * 4 + 3] = (u16)((0x80 + sx) & 0x1FF);
 
         slot++;
         count++;
+    }
+
+    if(!survival)
+    {
+        ArcadeLargeCell cells[16];u16 visible=0,n,k,j;
+        u16 resident_tiles[4]={65535,65535,65535,65535};
+        u8 remaining,resident_mask=0;
+        if(!players_written)slot+=game_render_players(sat,slot,
+            MAX_PLAYERS+ENTITY_SAT_MAX+ENTITY_POPUP_GLYPH_MAX);
+        /* Existing world-to-screen convention maps source Y to Y-1.
+         * Whole-game viewport parity remains a separate integration concern. */
+        static const ArcadeSpriteView view={0,1,256,224};
+        for(k=0;k<3;k++)if(arcade_admission.large&(1u<<k))
+        {
+            remaining=4;
+            if(arcade_large_cells(&arcade_large_actors[k],(u16)g_game.cameraX,
+                &remaining,cells+k*4))visible|=(u16)(15u<<(k*4));
+        }
+        for(k=0;k<4;k++)
+        {
+            const ArcadeKProjectile *a=&arcade_k_actors[k];
+            if(arcade_admission.children&(1u<<k))
+            {
+                ArcadeLargeCell *c=&cells[12+k];
+                const ArcadeFoeWeapon *w=&arcade_weapons[k];
+                if(w->active)
+                {
+                    const ArcadeFoeFrame *f=&arcade_foe_frames[w->pose];
+                    c->x=(u8)(w->x-g_game.cameraX);c->y=(u8)(-w->y-16);
+                    c->code=f->code;c->attr=f->attr;
+                    resident_tiles[k]=f->tile;resident_mask|=(u8)(1u<<k);
+                }
+                else
+                {c->x=(u8)(a->x-g_game.cameraX);c->y=(u8)(-a->y-16);c->code=a->code;c->attr=a->attr;}
+                visible|=(u16)(1u<<(12+k));
+            }
+        }
+        n=arcade_large_present_mixed(cells,visible,resident_tiles,&view,sat,slot,
+            MAX_PLAYERS+ENTITY_SAT_MAX+ENTITY_POPUP_GLYPH_MAX,512,1);
+        if(n==65535)
+        {
+            n=(visible==large_last_visible && resident_mask==large_last_resident)?large_last_count:0;
+            if(slot+n>MAX_PLAYERS+ENTITY_SAT_MAX+ENTITY_POPUP_GLYPH_MAX)n=0;
+            memcpy(sat+slot*4,large_last_sat,(u16)(n*8));
+        }
+        else
+        {
+            large_last_count=n;large_last_visible=visible;large_last_resident=resident_mask;
+            memcpy(large_last_sat,sat+slot*4,(u16)(n*8));
+        }
+        if(n && slot>firstSlot)sat[(slot-1)*4+1]=(u16)((sat[(slot-1)*4+1]&0xff00)|slot);
+        for(k=0;k<n;k++)sat[(slot+k)*4+1]=(u16)(0x500|(slot+k+1));
+        slot+=n;
     }
 
     /* terminate the chain: the last appended sprite links to 0 */
@@ -2027,4 +2965,16 @@ u16 entity_render_all(u16 *sat, u16 firstSlot)
         (u16)((sat[(slot - 1) * 4 + 1] & 0xFF00) | 0);
 
     return (u16)(slot - firstSlot);   /* total sprites appended (bodies + glyphs) */
+}
+
+/* Select once so the compiler removes the other mode's per-actor branches. */
+u16 entity_render_all(u16 *sat,u16 firstSlot)
+{
+    if(g_survivalRun)return entity_render_mode(sat,firstSlot,1);
+    return entity_render_mode(sat,firstSlot,0);
+}
+
+void entity_update_all(void){
+    if(g_survivalRun)entity_update_mode(1);
+    else entity_update_mode(0);
 }

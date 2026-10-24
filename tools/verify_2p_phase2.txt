@@ -1,0 +1,12 @@
+P1-RIGHT  fr=1080 cam=87  P1sx=8  P2sx=32
+P1-RIGHT  fr=1110 cam=103  P1sx=31  P2sx=43
+P1-RIGHT  fr=1140 cam=120  P1sx=44  P2sx=56
+P1-RIGHT  fr=1170 cam=136  P1sx=58  P2sx=70
+P2-RIGHT  fr=1230 cam=169  P1sx=35  P2sx=47
+P2-RIGHT  fr=1260 cam=186  P1sx=34  P2sx=106
+P2-RIGHT  fr=1290 cam=202  P1sx=35  P2sx=167
+P2-RIGHT  fr=1320 cam=219  P1sx=34  P2sx=208
+P1-LEFT   fr=1380 cam=252  P1sx=34  P2sx=207
+P1-LEFT   fr=1410 cam=268  P1sx=35  P2sx=208
+P1-LEFT   fr=1440 cam=285  P1sx=157  P2sx=207
+P1-LEFT   fr=1470 cam=301  P1sx=97  P2sx=207
