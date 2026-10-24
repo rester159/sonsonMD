@@ -380,20 +380,17 @@ static void magic_select(void)
         }
 }
 
-/* until src/ss2_shots.c (bank 9 $D03D) is merged */
-__attribute__((weak)) void ss2_shots_update(void) { }
-
 /* $FEAE: the selected magic's preview while paused (bank 9 shot code) */
 static void magic_preview(void)
 {
     if (R(0x22C0) == 4)
     {
         if (R(0x22E9)) ss2_shots_update();          /* $D03D */
-        else ss2_unported(0xD622);
+        else ss2_shield_start();                    /* $D622 */
         return;
     }
     if (!R(0x22E9)) return;
-    ss2_unported(0xD702);
+    ss2_shield_end();                               /* $D702 */
     ss2_shots_update();                             /* $D03D */
 }
 
@@ -420,6 +417,50 @@ static void pause_check(void)
     ZP(0x14) = 0x88;
 }
 
+/* bank 4 $B9F0-$BA4B: VDC control register shadow $2201 (bit 7 background,
+ * bit 6 sprites); the renderer follows it */
+static void cr_set(u8 v)
+{
+    ZP(0x8B) = 0x05;                        /* $BA4C: CR selected */
+    R(0x2201) = v;
+}
+static void bg_on(void)   { cr_set((u8)(R(0x2201) | 0x80)); }      /* $BA1E */
+static void bg_off(void)  { cr_set((u8)(R(0x2201) & 0x7F)); }      /* $BA35 */
+static void spr_on(void)  { cr_set((u8)(R(0x2201) | 0x40)); }      /* $B9F0 */
+static void spr_off(void) { cr_set((u8)(R(0x2201) & 0xBF)); }      /* $BA07 */
+
+/* $EDB7: freeze-magic flash: while $71 >= $C8, every 4 frames the picture
+ * goes white (background and sprites off, colour $100 white) and back */
+static void flash(void)
+{
+    if (!ZP(0x71) || ZP(0x71) < 0xC8) return;
+    if (ZP(0x71) & 4)
+    {
+        ss2_vce[0x100] = 0x1FF;
+        bg_off();
+        spr_off();
+    }
+    else
+    {
+        ss2_vce[0x100] = 0;
+        bg_on();
+        spr_on();
+    }
+    ss2_vce_dirty = 1;
+}
+
+/* $ED9A-$EDAF: after the frame's wait: weapon box, flash, $74 BG switch */
+static void main_tail(void)
+{
+    ss2_weapon_box();                       /* $FE5A */
+    flash();                                /* $EDB7 */
+    if (ZP(0x74))                           /* $EDA0: sweep magic hides the BG */
+    {
+        if (ZP(0x74) & 0x40) bg_off();
+        else bg_on();
+    }
+}
+
 /* slot 0, $EC3B: the main game loop */
 static void main_task(void)
 {
@@ -431,8 +472,7 @@ static void main_task(void)
         {
             if (ZP(0x6A)) ss2_wait(ZP(0x6A));
             ss2_wait(1);
-            ss2_weapon_box();               /* $FE5A */
-            /* $EDB7 palette flash and $74 display switch: presentation */
+            main_tail();
         }
         ZP(0x14) = 0x88;                    /* $EDB0 */
     }
@@ -494,5 +534,6 @@ void ss2_game_tick(void)
 {
     main_body();
     score_task();
+    main_tail();
     build_sat();
 }

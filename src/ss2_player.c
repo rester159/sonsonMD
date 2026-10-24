@@ -9,7 +9,6 @@
 
 #define B9(a)  (ss2_bank9[(u16)(a) - 0xC000])
 
-extern u16 ss2_text_request;                /* ss2_objfix.c: $BADE text */
 
 static void move(void);
 static void main_body(void);
@@ -236,10 +235,9 @@ static void mode_other(void)
     if (P_MODE == 0x20) { hurt_mode(); return; }
     if (P_FLAGSC1 & 0x02)
     {
-        /* $C4B8: message $4E8F (bank 4 $BADE: BAT text, presentation),
-         * then hurt with half the maximum life */
-        ss2_text_request = 0x4E8F;
-        ZP(0x8B) = 0x02;
+        /* $C4B8: clear the item box ($BADE $4E8F), then hurt with half
+         * the maximum life */
+        ss2_hud_text(0x4E8F);
         P_MODE = 0x20;
         P_LIFE = (u8)(R(0x22B9) >> 1);
         P_FLAGSC1 &= (u8)~0x02;

@@ -526,16 +526,6 @@ void ss2_magic_cast(void)
     ss2_unported(0xD1EE);
 }
 
-/* $FE5A: weapon/magic box redraw, ported in src/ss2_game.c. This weak
- * stub (its RAM effects: $BA4C leaves $8B = 2; the box is presentation)
- * only lets this file link on its own. */
-void ss2_weapon_box(void);
-__attribute__((weak)) void ss2_weapon_box(void)
-{
-    ss2_hud_dirty |= 4;
-    ZP(0x8B) = 2;
-}
-
 /* ---- slot loop ------------------------------------------------------- */
 
 /* $D091: JMP ($2026) through the slot's handler */
