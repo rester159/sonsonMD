@@ -242,11 +242,13 @@ def build_sprites_and_hud(m, s, hud_m, use):
     bat_words, bat_line = [], []
     for w in BAT_KEYS:
         key = ('hud', w >> 12)
-        li = assign.get(key, assign[('hud', 0)])
-        if key not in assign:
-            print('  BAT palette %d not in the HUD fit: using palette 0 line' % (w >> 12))
+        pal = bg[w >> 12]                       # the tile's own colours, always
         px = render.tile_pixels(hud_m.vram, w & 0xFFF)
-        pal = bg[w >> 12] if key in assign else bg[0]
+        cols = {pal[c] if c else bg[0][0] for r in px for c in r}
+        if key in assign:
+            li = assign[key]
+        else:                                   # best line for these colours
+            li = min(range(len(lines)), key=lambda l: sum(cdist(lines[l].colours[near(l, c)], c) for c in cols))
         for r in px:
             v = 0
             for c in r:

@@ -74,7 +74,8 @@ SonSon via the game chooser (`src/game_select.c`).
   tables `$4E07`-`$4EB3`) are resident after the sprite tiles.
 * **Plane B** shares plane A's map (`$E000`) and scroll, so it sits
   invisibly behind it; its table area `$C000-$CFFF`, `$D800-$DFFF` (under
-  the H40 window) and `$F600-$FFFF` hold the run-time sprite cache. On exit
+  the H40 window) and `$F600-$FFFF` hold the glyph cache (tiles 1504-1567),
+  resident icons (1568-1663) and the run-time sprite cache. On exit
   plane B returns to `$C000` (SGDK reloads its font there for SonSon) and
   `$D800-$DFFF` is cleared.
 * **Run-time sprite cells.** Static tables cover the cells the stage's own
@@ -83,8 +84,8 @@ SonSon via the game chooser (`src/game_select.c`).
   after a door loads an interior palette (`ss2_pal13_variant`), are
   converted on demand from the HuCard pattern through per-stage colour
   maps (`spr_cmap`, `spr_cmap13`; nearest colours where a palette is not in
-  the stage fit) into 8-tile blocks (34, LRU, at most 4 conversions per
-  frame).
+  the stage fit) into 8-tile blocks (18 at `$D800`/`$F600`, LRU, at most 4
+  conversions per frame).
 
 ## Tasks (bank 0 $E1A5 scheduler) -- src/ss2_task.c
 
@@ -132,9 +133,9 @@ runs after each link; keep load and store separate (empty asm barrier).
 
 | Subsystem | State |
 | --- | --- |
-| Level decode/render/stream | all 7 stages (VRAM 747-1335 of 1424 tiles) |
+| Level decode/render/stream | all 7 stages, verified on target (VRAM 764-1410 of 1488 static tiles) |
 | Player `$C000` | exact (cloud, magic, push, $C4B8, $C4D7 pending) |
-| Shots/magic `$D03D` (7 slots `$22E5`) | **not native** (main body and doors skip it) |
+| Shots/magic `$D03D` (7 slots `$22E5`), cloud, revive/trap paths | exact on all shot traces (research/shots); renderer does not draw shots/cloud/sweep yet |
 | Object engine, spawner, items, containers, score task, HUD bars | exact on traces |
 | Enemies banks 5/7/9/$0F/$17/$1F + fixed 3/4 | exact on agent traces (see research/); boss calls `$6984` (message), `$6F40/$6F73` (defeat/drops), `$E1E2` task, `$F617` stage clear pending |
 | Task scheduler | exact (per-frame, continuous, VBlank-bracketed) |
@@ -142,7 +143,7 @@ runs after each link; keep load and store separate (empty asm barrier).
 | Doors `$7DB5` | stage-1 round trip 289/299 exact (rest: redraw in-progress bytes); on target: fade out, redraw, fade in. Locked-door message `$BADE` pending |
 | Fades `$71BA..$7297` | exact in door traces; target scales the Genesis palette by level |
 | Sound | driver PSG-exact; YM via Z80 list |
-| Dialogue window `$6984`/`$69EE` (boss speech) | exact on stage 2/3 boss traces |
+| Dialogue window `$6984`/`$69EE` (boss speech) | exact on stage 2/3 boss traces; renders on target |
 | HUD item icons `$BADE`, key items (kinds 10-14, 17, 26-28), stand-on items (kind 2) | ported |
 | Townspeople, fortune teller, shops (item kind 29, bank 3 `$997F`-`$9E7A`, shop `$9E7B`-bank 4 `$A665`) | 31 tracer conversations exact (all 7 stages, every choice continuation, items given, money paid/lost); 7 shop visits (all 14 goods kinds, price rises, short money, owned goods) exact up to the exit, where `$7882`+`$EBE1` end at a VBlank boundary (source 8 or 9 VBlanks, native 3+5), replay then a frame behind; shop picture is presentation only (`ss2_shop_screen` for a renderer) |
 | Item kind 11 (`$81A6`) | wired to the shots system's `$D86A` |
