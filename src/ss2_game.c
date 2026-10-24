@@ -153,9 +153,24 @@ static void sat_composite(u8 x)
     }
 }
 
+/* $8732's RAM side inside the main body ($ED5E): $89D2 maps the bank of
+ * each drawable composite object (front ones, then rear ones), so $8E ends
+ * on the last. build_sat() runs at the frame end on the target and keeps
+ * $8E, so a main task suspended in a sequence (message, shop, door) is not
+ * disturbed. */
+static void sat_banks(void)
+{
+    u8 x, pass;
+    for (pass = 0; pass < 2; pass++)
+        for (x = 0; x < 0x20; x++)
+            if (O(0x245A, x) && !O(0x287A, x) == !pass && (O(0x269A, x) & 0x20)
+                && !(O(0x245A, x) != 0x40 && !O(0x26BA, x) && ZP(0x71) && ZP(0x71) < 0x28 && !(ZP(0x71) & 4)))
+                ss2_map6(O(0x275A, x));
+}
+
 static void build_sat(void)
 {
-    u8 x;
+    u8 x, bank = ZP(0x8E);
     /* entry 0: staff spark */
     sat_i = 0;
     if (R(0x2455))
@@ -207,6 +222,7 @@ static void build_sat(void)
         for (; n; n--) sat_put(0, 0, 0, 0);
     }
     ZP(0x39) = ZP(0x38);
+    ss2_map6(bank);                         /* see sat_banks() */
 }
 
 /* bank 2 $7649/$7688: life and magic bars. The shown value creeps up to
@@ -221,7 +237,7 @@ static u8 bar_step(u8 shown, u8 real)
     return shown;
 }
 
-static void hud_bars(void)
+void ss2_hud_bars(void)
 {
     if (P_LIFE < 5 && P_MODE != 0x40 && !(Z_FRAME & 0x1F)) ss2_sfx(0x18);
     ss2_hud_life[0] = R(0x22BA);
@@ -331,11 +347,12 @@ static void main_body(void)
     ZP(0x73) = 0;                           /* $ED20 (set by the sweep $D845) */
     trail();
     spark();
+    sat_banks();                            /* $ED5E: $8732 bank mapping */
     if (ZP(0x74)) { ss2_map6(9); ss2_magic_sweep(); }   /* $ED61 */
     if (!(Z_FRAME & 0x0F))
         for (i = 0x20; i < 0xBF; i++)
             if (R(0x2C1A + i) && R(0x2C1A + i) != 0xFF) R(0x2C1A + i)--;
-    hud_bars();
+    ss2_hud_bars();
 }
 
 /* $FE5A: the weapon/magic box: frame (lit when the selected magic costs
