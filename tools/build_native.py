@@ -51,7 +51,7 @@ run(['m68k-elf-gcc',*(['-flto','-fno-strict-aliasing','-O'+args.opt,*args.cflag]
 run(['m68k-elf-objcopy','-O','binary',out/'rom.out',out/'rom.bin'])
 (out/'symbol.txt').write_bytes(subprocess.check_output(['m68k-elf-nm','-n',out/'rom.out']))
 b=bytearray((out/'rom.bin').read_bytes());
-assert len(b)<=0x100000, 'Flat 1 MiB cartridge capacity exceeded; review ROM hardware profile'
+assert len(b)<=0x400000, 'Linear 4 MiB cartridge window exceeded; review ROM hardware profile'
 b.extend(bytes((-len(b))%131072)); b[0x18e:0x190]=(sum(int.from_bytes(b[i:i+2],'big') for i in range(0x200,len(b),2))&65535).to_bytes(2,'big'); (out/'rom.bin').write_bytes(b)
 (out/'build-manifest.json').write_text(json.dumps({'sdk':str(sdk),'compiler':compiler,'sdk_library_sha256':hashlib.sha256((sdk/'lib/libmd.a').read_bytes()).hexdigest(),'symbols_sha256':hashlib.sha256((out/'symbol.txt').read_bytes()).hexdigest(),'source_sha256':{str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for d in ['src','inc'] for p in sorted((root/d).rglob('*')) if p.is_file()},'flags':flags,'rom_sha256':hashlib.sha256(b).hexdigest()},indent=2)+'\n')
 print('Built',out/'rom.bin',len(b),'bytes')

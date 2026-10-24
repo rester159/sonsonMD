@@ -13,10 +13,13 @@
 #include <genesis.h>
 #include "ss2.h"
 #include "ss2_data.h"
+#include "ss2_ram.h"
+#include "ss2_logic.h"
 
 #define BG_TILE      TILE_USER_INDEX
 #define HUD_TILE     (BG_TILE + SS2_S0_NTILES)
 #define PLAYER_TILE  (HUD_TILE + SS2_HUD_NTILES)
+#define SPR_TILE     (PLAYER_TILE + 16)
 
 #define HUD_ROWS     6
 #define VIEW_TOP     (HUD_ROWS * 8)
@@ -29,20 +32,18 @@
  * (line 48). The game's camera ($45:$46, $48:$49) relates as
  * camx = cam_x, camy = cam_y + 61: the first PCE playfield line (57) shows
  * cam_y + 62 (BYR latch after the raster split) and Genesis line g shows
- * PCE line g + 8. Stage 1 opens at cam (0, $700). */
-#define START_X      0
-#define START_Y      (0x700 + 61)
-
+ * PCE line g + 8. */
 static s16 camx, camy;
 static s16 drawn_tx, drawn_ty;
 static u16 linebuf[64];
 
+/* the stage map lives in work RAM at $3000 (copied from ROM at stage load) */
 static u16 world_tile(u16 tx, u16 ty)
 {
     u8 m;
     tx &= 255;
     ty &= 255;
-    m = ss2_s0_map[(((ty >> 5) << 3) | (tx >> 5)) * 64 + ((ty >> 2) & 7) * 8 + ((tx >> 2) & 7)];
+    m = R(0x3000 + (((ty >> 5) << 3) | (tx >> 5)) * 64 + ((ty >> 2) & 7) * 8 + ((tx >> 2) & 7));
     return (u16)(ss2_s0_meta[m * 16 + (ty & 3) * 4 + (tx & 3)] + BG_TILE);
 }
 
@@ -116,6 +117,7 @@ static void video_init(void)
     PAL_setColors(0, ss2_s0_palette, 64, CPU);
     VDP_loadTileData(ss2_s0_tiles, BG_TILE, SS2_S0_NTILES, CPU);
     VDP_loadTileData(ss2_hud_tiles, HUD_TILE, SS2_HUD_NTILES, CPU);
+    VDP_loadTileData(ss2_spr_tiles, SPR_TILE, SS2_SPR_NTILES, CPU);
     VDP_setTileMapDataRectEx(WINDOW, ss2_hud_map, HUD_TILE, 0, 0, 32, HUD_ROWS, 32, CPU);
     VDP_setWindowOnTop(HUD_ROWS);
     VDP_setEnable(TRUE);
@@ -135,31 +137,109 @@ static void video_shutdown(void)
     VDP_setEnable(TRUE);
 }
 
-/* Player stand-in until the bank-9 player logic is rebuilt: the camera follows
- * the pad and Goku's walk cycle (anim set 0) plays while moving. */
-static u8 shown_frame = 0xFF;
+/* ---- sprites: PCE SATB entries (ss2_sat) -> VDP sprites ---------------- */
 
-static void show_player(s16 x, s16 y, u8 frame, u8 attr)
+static u8 shown_frame = 0xFF;
+static u8 nspr;
+u16 ss2_sprite_misses;
+
+static void put_sprite(s16 x, s16 y, u8 size, u16 attr)
 {
-    if (frame != shown_frame)
+    if (nspr >= 64) return;
+    VDP_setSpriteFull(nspr, x, y, size, attr, (u8)(nspr + 1));
+    nspr++;
+}
+
+/* The player's cells (0x100-0x103) are streamed per frame on the PCE; here
+ * the current frame's 16 tiles go to PLAYER_TILE when it changes. */
+static void player_sprite(s16 x, s16 y, u16 attr)
+{
+    u16 ptr = (u16)((P_FRAMEH << 8) | P_FRAMEL);
+    u8 frame = (u8)((u16)(ptr - 0xC000) / 0x180);
+    if (frame < SS2_PLAYER_FRAMES && frame != shown_frame)
     {
         VDP_loadTileData(ss2_player_tiles + (u16)frame * 128, PLAYER_TILE, 16, DMA_QUEUE);
         shown_frame = frame;
     }
-    VDP_setSpriteFull(0, x, y, SPRITE_SIZE(4, 4),
-                      TILE_ATTR_FULL(SS2_PLAYER_PAL, 1, 0, (attr & 0x08) ? 1 : 0, PLAYER_TILE), 0);
-    VDP_updateSprites(1, DMA_QUEUE);
+    put_sprite(x, y, SPRITE_SIZE(4, 4), TILE_ATTR_FULL(SS2_PLAYER_PAL, 1, 0, (attr & 0x0800) ? 1 : 0, PLAYER_TILE));
+}
+
+static void draw_sprites(void)
+{
+    u8 i, r;
+    nspr = 0;
+    for (i = 0; i < 64; i++)
+    {
+        const u16 *e = &ss2_sat[i * 4];
+        s16 sx, sy;
+        u16 attr = e[3], cell = (u16)((e[2] >> 1) & 0x3FF);
+        u8 cw, ch, pal, line;
+        if (!(e[0] & 0x3FF)) continue;
+        sx = (s16)((e[1] & 0x3FF) - 32);
+        sy = (s16)((e[0] & 0x3FF) - 64 - 8);
+        cw = (attr & 0x0100) ? 2 : 1;
+        ch = (u8)(((attr >> 12) & 3) == 0 ? 1 : (((attr >> 12) & 3) == 1 ? 2 : 4));
+        if (sx <= -32 || sx >= 256 || sy <= -64 || sy >= 224) continue;
+        if (cw == 2) cell &= (u16)~1;
+        if (ch == 2) cell &= (u16)~2;
+        if (ch == 4) cell &= (u16)~6;
+        if (cell >= 0x100 && cell < 0x104)
+        {
+            player_sprite(sx, sy, attr);
+            continue;
+        }
+        pal = (u8)(attr & 15);
+        line = ss2_spr_line[pal];
+        for (r = 0; r < ch; r++)
+        {
+            u16 c = (u16)(cell + r * 2), t = ss2_spr_lut[pal * 256 + (c >> 1)];
+            s16 y;
+            if (!t || line > 3) { ss2_sprite_misses++; continue; }
+            t = (u16)(SPR_TILE + t - 1);
+            y = (s16)(sy + ((attr & 0x8000) ? (ch - 1 - r) : r) * 16);
+            if (cw == 2)
+                put_sprite(sx, y, SPRITE_SIZE(4, 2), TILE_ATTR_FULL(line, 1, (attr & 0x8000) ? 1 : 0, (attr & 0x0800) ? 1 : 0, t));
+            else
+                put_sprite(sx, y, SPRITE_SIZE(2, 2), TILE_ATTR_FULL(line, 1, (attr & 0x8000) ? 1 : 0, (attr & 0x0800) ? 1 : 0, (u16)(t + (c & 1) * 4)));
+        }
+    }
+    if (!nspr) put_sprite(-128, -128, SPRITE_SIZE(1, 1), 0);
+    VDP_setSpriteLink((u16)(nspr - 1), 0);
+    VDP_updateSprites(nspr, DMA_QUEUE);
+}
+
+/* Genesis pad -> PCE $16 layout (L D R U Run Sel II I):
+ * C = I (jump), B = II (attack), A = SELECT, START = RUN */
+static u8 pce_pad(u16 p)
+{
+    u8 v = 0;
+    if (p & BUTTON_LEFT) v |= 0x80;
+    if (p & BUTTON_DOWN) v |= 0x40;
+    if (p & BUTTON_RIGHT) v |= 0x20;
+    if (p & BUTTON_UP) v |= 0x10;
+    if (p & BUTTON_START) v |= 0x08;
+    if (p & BUTTON_A) v |= 0x04;
+    if (p & BUTTON_B) v |= 0x02;
+    if (p & BUTTON_C) v |= 0x01;
+    return v;
+}
+
+static void camera_from_state(void)
+{
+    camx = (s16)((((Z_CAMX_HI & 7) << 8) | Z_CAMX_LO));
+    camy = (s16)(((((Z_CAMY_HI & 7) << 8) | Z_CAMY_LO) + 61) & 2047);
 }
 
 void ss2_run(void)
 {
-    u16 pad, step = 0;
-    u8 state = 2, frame, attr;
-    const u8 *a;
+    u16 pad;
+    u16 i;
 
+    for (i = 0; i < 0x2000; i++) ss2_ram[i] = ss2_s0_ram[i];
+    ss2_mpr6 = 9;
+    shown_frame = 0xFF;
     video_init();
-    camx = START_X;
-    camy = START_Y;
+    camera_from_state();
     redraw_view();
     apply_scroll();
 
@@ -167,23 +247,14 @@ void ss2_run(void)
     {
         SYS_doVBlankProcess();
         pad = JOY_readJoypad(JOY_1);
-        if ((pad & (BUTTON_START | BUTTON_A | BUTTON_C)) == (BUTTON_START | BUTTON_A | BUTTON_C))
-            break;
-        if (pad & BUTTON_RIGHT) { camx += 2; state = 4; }
-        else if (pad & BUTTON_LEFT) { camx -= 2; state = 0; }
-        else state = (state == 0) ? 1 : (state == 4 ? 2 : state);
-        if (pad & BUTTON_UP) camy -= 2;
-        if (pad & BUTTON_DOWN) camy += 2;
-        camx &= 2047;
-        camy &= 2047;
+        if ((pad & (BUTTON_START | BUTTON_A)) == (BUTTON_START | BUTTON_A))
+            break;                              /* RUN+SELECT: the PCE reset combo */
+        ss2_game_vblank(pce_pad(pad));
+        ss2_game_tick();
+        camera_from_state();
         stream_view();
         apply_scroll();
-        step++;
-        a = &ss2_player_anim[((0 * 6 + state) * 4 + ((step >> 3) & 3)) * 2];
-        frame = a[0];
-        attr = a[1];
-        if (frame != 0xFF)
-            show_player(112, VIEW_TOP + 104, frame, attr);
+        draw_sprites();
     }
     video_shutdown();
 }

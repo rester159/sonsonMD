@@ -7,7 +7,7 @@
 #define SS2_S0_NMETA      256
 #define SS2_HUD_NTILES    50
 #define SS2_PLAYER_FRAMES 21
-#define SS2_PLAYER_PAL    3
+#define SS2_PLAYER_PAL    2
 
 extern const u16 ss2_s0_palette[64];
 extern const u32 ss2_s0_tiles[SS2_S0_NTILES * 8];
@@ -18,5 +18,10 @@ extern const u32 ss2_hud_tiles[SS2_HUD_NTILES * 8];
 extern const u16 ss2_hud_map[32 * 6];
 extern const u32 ss2_player_tiles[SS2_PLAYER_FRAMES * 16 * 8];
 extern const u8  ss2_player_anim[7 * 6 * 4 * 2];   /* set,state,step -> frame,attr */
+#define SS2_SPR_NTILES    408
+extern const u32 ss2_spr_tiles[SS2_SPR_NTILES * 8];
+extern const u16 ss2_spr_lut[16 * 256];   /* [pce palette][cell>>1] -> tile+1 (0 none) */
+extern const u8  ss2_spr_line[16];        /* pce sprite palette -> CRAM line */
+extern const u8  ss2_s0_ram[0x2000];      /* stage-1 start state (bootstrap) */
 
 #endif
