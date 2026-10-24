@@ -234,6 +234,8 @@ def build_sprites_and_hud(m, s, hud_m, use):
     spr_words, lut, nt = [], {}, 0
     pairs = sorted({(cell >> 1, p) for (cell, p) in use})
     for (pc, p) in pairs:
+        if ('sp', p) not in assign:
+            continue    # palette seen only on cells still blank at the snapshot
         li = assign[('sp', p)]
         for cell in (pc * 2, pc * 2 + 1):
             px = render.cell_pixels(m.vram, cell)
@@ -279,7 +281,7 @@ def c_array(name, ctype, vals, per=16, fmt='0x%04X'):
     return 'const %s %s[%d] = {\n%s\n};\n' % (ctype, name, len(vals), '\n'.join(lines))
 
 
-TILE_BUDGET = 1300      # VRAM tiles available after SGDK tables, font and system tiles
+TILE_BUDGET = 1424      # tiles 16..1439: SGDK system tiles below, maps at $C000 and the font (1440) above
 NSTAGES = 7
 
 

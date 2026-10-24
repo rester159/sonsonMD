@@ -3,25 +3,33 @@
 #define SS2_DATA_H
 #include <genesis.h>
 
-#define SS2_S0_NTILES     463
-#define SS2_S0_NMETA      256
-#define SS2_HUD_NTILES    50
+#define SS2_NSTAGES       7
 #define SS2_PLAYER_FRAMES 21
-#define SS2_PLAYER_PAL    2
 
-extern const u16 ss2_s0_palette[64];
-extern const u32 ss2_s0_tiles[SS2_S0_NTILES * 8];
-extern const u16 ss2_s0_meta[SS2_S0_NMETA * 16];   /* 4x4 tile words per metatile */
-extern const u16 ss2_s0_attr[SS2_S0_NMETA];        /* 4 block attribute nibbles (TL,TR,BL,BR) */
-extern const u8  ss2_s0_map[4096];                 /* 8x8 screens of 8x8 metatiles */
-extern const u32 ss2_hud_tiles[SS2_HUD_NTILES * 8];
-extern const u16 ss2_hud_map[32 * 6];
-extern const u32 ss2_player_tiles[SS2_PLAYER_FRAMES * 16 * 8];
-extern const u8  ss2_player_anim[7 * 6 * 4 * 2];   /* set,state,step -> frame,attr */
-#define SS2_SPR_NTILES    408
-extern const u32 ss2_spr_tiles[SS2_SPR_NTILES * 8];
-extern const u16 ss2_spr_lut[16 * 256];   /* [pce palette][cell>>1] -> tile+1 (0 none) */
-extern const u8  ss2_spr_line[16];        /* pce sprite palette -> CRAM line */
-extern const u8  ss2_s0_ram[0x2000];      /* stage-1 start state (bootstrap) */
+/* per-stage presentation data (palette lines 0-1 stage BG, 2-3 sprites+HUD) */
+typedef struct
+{
+    const u16 *palette;         /* 64 CRAM words                              */
+    const u32 *bg_tiles;
+    u16 bg_ntiles;
+    const u16 *meta;            /* 4x4 tile words per metatile                */
+    const u16 *attr;            /* block attribute nibbles (TL,TR,BL,BR)      */
+    u16 nmeta;
+    const u32 *hud_tiles;
+    u16 hud_ntiles;
+    const u16 *hud_map;         /* 32x6 window words                          */
+    const u16 *hud_digit;       /* PCE tile $1B0+d                            */
+    const u16 *hud_bar;         /* PCE tile $180+t (palette 2), by t          */
+    const u32 *player_tiles;    /* 21 frames x 16 tiles, column-major 4x4      */
+    u16 player_pal;
+    const u32 *spr_tiles;
+    u16 spr_ntiles;
+    const u16 *spr_lut;         /* [pce palette][cell>>1] -> tile+1 (0 none)  */
+    const u8 *spr_line;         /* pce sprite palette -> CRAM line            */
+    const u8 *ram;              /* stage start work RAM (bootstrap)           */
+} Ss2StageGfx;
+
+extern const Ss2StageGfx ss2_stage_gfx[SS2_NSTAGES];
+extern const u8 ss2_player_anim[7 * 6 * 4 * 2];   /* set,state,step -> frame,attr */
 
 #endif
