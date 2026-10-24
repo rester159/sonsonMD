@@ -18,6 +18,9 @@ SonSon via the game chooser (`src/game_select.c`).
 | `hosttest/run.sh PAIRS [ROUTINE]` | Replays pairs through native C on the host (ASan/UBSan) and diffs all 8 KiB (zp $26-$3F scratch and stack page masked). |
 | `gen_ss2.py` | Converter → `src/ss2_data.c`, `src/ss2_rom.c`, `inc/ss2_data.h`. |
 | `shot.py FRAMES SCRIPT SHOTS` | Headless Genesis Plus GX (libretro core via dlopen) captures of `out/rom.bin`. Keys `U D L R S a b c`. |
+| `capture_vbl.py OUT K FRAMES SCRIPT [WX WY]` | VBlank-to-VBlank pairs (multi-frame sequences such as doors); replay with `SS2_CONTINUOUS=1 hosttest/run.sh PAIRS ss2_frame_vbl`. WX WY teleports the player first. |
+| `capture_sprset.py` | Pairs around the sprite-set loaders `$774F/$77A5/$77D0`. |
+| `research/bank05,09,17/` | The enemy agents' spawn lists, injected captures and replays. |
 
 ## Architecture decisions
 
@@ -72,7 +75,12 @@ coroutines (68000 register swap / host ucontext); `ss2_wait(n)` = $E1FE,
 `ss2_task_restart(fn)` = the source's "LDX #$xx / TXS" restarts (e.g. a
 door ends with PLA x4 / JMP $EDB0). Host replay modes: per-frame
 (`ss2_frame_tick_then_vblank`) and continuous through the real scheduler
-(`SS2_CONTINUOUS=1 ... ss2_frame_coro`).
+(`SS2_CONTINUOUS=1 ... ss2_frame_coro`), and VBlank-bracketed
+(`ss2_frame_vbl`). `ss2_busy(n)` models source work that holds the CPU
+across n VBlanks without yielding (the `$EBE1` redraw crosses 5): VBlanks
+count, no other task runs. A restart records the new entry and the
+scheduler rebuilds the slot's context from its own stack (building it on
+the stack still in use corrupted the return path).
 
 ## Frame structure (bank 0)
 
@@ -101,12 +109,16 @@ runs after each link; keep load and store separate (empty asm barrier).
 
 | Subsystem | State |
 | --- | --- |
-| Level decode/render/stream | done for stage 1 (all 7 stages being converted) |
+| Level decode/render/stream | all 7 stages (VRAM 747-1335 of 1424 tiles) |
 | Player `$C000` | exact (cloud, magic, push, $C4B8, $C4D7 pending) |
-| Object engine, spawner, stage-1 walkers, items, containers, score task, HUD bars | exact on traces |
-| Task scheduler | exact (continuous replay) |
-| Sound | driver PSG-exact; YM via Z80 list; sequencer being optimized |
-| Banks 5/7/9/$0F/$17/$1F enemies | agents in progress |
-| Doors/interiors/fades, messages, shops, pause magic select | next (bank 2) |
-| Stage init/clear, title, intro, death/continue, ending | pending |
-| Genesis frame budget | over budget in busy scenes before sequencer optimization |
+| Shots/magic `$D03D` (7 slots `$22E5`) | **not native** (main body and doors skip it) |
+| Object engine, spawner, items, containers, score task, HUD bars | exact on traces |
+| Enemies banks 5/7/9/$0F/$17/$1F + fixed 3/4 | exact on agent traces (see research/); boss calls `$6984` (message), `$6F40/$6F73` (defeat/drops), `$E1E2` task, `$F617` stage clear pending |
+| Task scheduler | exact (per-frame, continuous, VBlank-bracketed) |
+| Sprite sets `$774F/$77A5/$77D0`, staff art `$79F7` | RAM side exact (all 7 stage loads); cell sources recorded for a runtime sprite cache (renderer still uses the static census LUT) |
+| Doors `$7DB5` | stage-1 round trip 289/299 exact (rest: redraw in-progress bytes); on target: fade out, redraw, fade in. Locked-door message `$BADE` pending |
+| Fades `$71BA..$7297` | exact in door traces; target scales the Genesis palette by level |
+| Sound | driver PSG-exact; YM via Z80 list |
+| Message windows `$BADE`, shops, pause magic select `$FE0C` | pending |
+| Stage init/clear, title, intro, death/continue, ending | pending (SS2 starts from per-stage RAM bootstrap) |
+| Cartridge | SELECT GAME -> SS2 -> START+A -> SELECT GAME -> SonSon ARCADE/HOME verified headless |
