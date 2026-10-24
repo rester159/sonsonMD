@@ -273,13 +273,6 @@ static void shot_hit(u8 x)
 
 /* ---- shared helpers ---------------------------------------------------- */
 
-/* X register an object handler leaves for the $ED0D slot loop (which
- * continues with INX from it). Multi-slot objects (bank 7 boss, fixed-4
- * striker) return with X on their last slot, so the loop skips the slots
- * they drive. $FF = unchanged. The engine loop has to honour this (see
- * the report; ss2_objects_update is shared code). */
-u8 ss2_obj_xout = 0xFF;
-
 static void set_x16(u8 x, u16 v) { O(0x247A, x) = (u8)(v >> 8); O(0x249A, x) = (u8)v; }
 static void set_y16(u8 x, u16 v) { O(0x24DA, x) = (u8)(v >> 8); O(0x24FA, x) = (u8)v; }
 static void set_handler(u8 x, u16 h) { O(0x28DA, x) = (u8)h; O(0x28BA, x) = (u8)(h >> 8); }

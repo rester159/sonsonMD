@@ -19,7 +19,6 @@
 u8   ss2_o17_aim(u8 x);
 void ss2_o17_dir_velocity(u8 x);
 void ss2_o17_boss_death(u8 x, u16 rle);
-extern u8 ss2_obj_xout;
 
 static void set_vx(u8 x, u16 v) { O(0x25BA, x) = (u8)(v >> 8); O(0x25DA, x) = (u8)v; }
 static void set_vy(u8 x, u16 v) { O(0x25FA, x) = (u8)(v >> 8); O(0x261A, x) = (u8)v; }
@@ -97,7 +96,7 @@ static void move(u8 x)
     O(0x24FB, x) = (u8)t;
     O(0x24DB, x) = (u8)(O(0x24DA, x) + (t >> 8));
     ss2_obj_common((u8)(x + 1));
-    ss2_obj_xout = (u8)(x + 1);              /* INX; JMP $EE67 */
+    ss2_obj_next = (u8)(x + 1);              /* INX; JMP $EE67 */
 }
 
 /* $DB66 */

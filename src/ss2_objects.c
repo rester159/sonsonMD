@@ -585,8 +585,11 @@ u8 ss2_objfix4_handler(u16 addr, u8 x); u8 ss2_spawnfix4_handler(u16 addr);
  * object's own bank (MPR6). */
 u8 ss2_item_handler(u16 addr, u8 x);
 
+void ss2_o17_boss_sparks(u8 x);             /* bank 2 $6F6D (ss2_obj17.c) */
+
 u8 ss2_obj_handler(u8 bank, u16 addr, u8 x)
 {
+    if (addr == 0x6F6D) { ss2_o17_boss_sparks(x); return 1; }   /* boss death hit */
     if (addr >= 0xA000 && addr < 0xC000) return ss2_objfix4_handler(addr, x);
     if (addr < 0xA000) return ss2_item_handler(addr, x) || ss2_objfix_handler(addr, x);
     if (addr < 0xE000)
