@@ -6,6 +6,14 @@ tools/ss2/hosttest) and OUT.cov (pickle {(bank, pc): count} restricted to
 bank 5 at $C000-$DFFF and bank 3 at $8000-$9FFF) plus the set of object
 handlers seen in slots ($28BA/$28DA, $28FA/$291A with $275A bank).
 
+Options (diagnostic state injection, labelled as such in reports):
+  --at=BANK:ADDR[:N[:SIDE]]  teleport next to the N-th spawn record using
+        routine BANK:ADDR on this stage: camera so the spawn point sits
+        $B0 px to the SIDE (r/l, default r) of a player at screen ($80, y),
+        player at the spawn's height; live objects are cleared.
+  --poke=ZZ=VV[,..]  set zero-page/work-RAM bytes (hex, $2000-relative
+        if >= $100) after the teleport.
+
 BOT: 'script:<capture_pairs script>' or 'explore:<seed>' (census-like bot:
 walks one way for a while, turns back, attacks and jumps on a cycle; the
 seed varies the phases), or 'right', 'left'.
@@ -20,6 +28,43 @@ from run import parse_script
 k, frames, bot, out = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3], sys.argv[4]
 nopairs = '--nopairs' in sys.argv
 m = snapshot.stage_start(k)
+opts = dict(a.split('=', 1) for a in sys.argv[5:] if a.startswith('--') and '=' in a)
+
+
+ROM = open(snapshot.ROM, 'rb').read()
+if '--at' in opts:
+    f = opts['--at'].split(':')
+    want_bank, want = int(f[0], 16), int(f[1], 16)
+    nth = int(f[2]) if len(f) > 2 else 0
+    side = f[3] if len(f) > 3 else 'r'
+    b = lambda bank, a: ROM[bank * 0x2000 + (a & 0x1FFF)]
+    lst = b(4, 0xBD08 + 2 * k) | b(4, 0xBD09 + 2 * k) << 8
+    found = []
+    for scr in range(64):
+        rec = b(8, lst + 2 * scr) | b(8, lst + 2 * scr + 1) << 8
+        while b(8, rec) != 0xFF:
+            r = [b(8, rec + i) for i in range(6)]
+            if r[3] == want_bank and (r[5] << 8 | r[4]) == want:
+                found.append(((scr & 7) * 256 + r[0], (scr >> 3) * 256 + r[1]))
+            rec += 6
+    wx, wy = found[nth]
+    off = 0xB0 if side == 'r' else -0xB0
+    camx = (wx - 0x80 - off) & 0x7FF
+    camy = (wy - 0x80) & 0x7FF
+    ram = m.ram
+    for z, v in ((0x45, camx >> 8), (0x46, camx & 0xFF), (0x47, 0), (0x48, camy >> 8), (0x49, camy & 0xFF), (0x4A, 0)):
+        ram[z] = v
+    ram[0x298], ram[0x299], ram[0x29A] = 0, 0x80, 0
+    ram[0x29B], ram[0x29C], ram[0x29D] = 0, 0x70, 0
+    for x in range(32):
+        ram[0x45A + x] = 0
+    for s_ in range(0xC0):
+        ram[0xB5A + s_] = 0
+    print('teleport to %d,%d (cam %03X,%03X)' % (wx, wy, camx, camy))
+if '--poke' in opts:
+    for kv in opts['--poke'].split(','):
+        a, v = kv.split('=')
+        m.ram[int(a, 16)] = int(v, 16)
 
 if bot.startswith('script:'):
     ev = parse_script(bot[7:].split())
