@@ -49,6 +49,12 @@ void ss2_jump_air(void);                     /* $CA30                      */
 void ss2_touch_down(void);                   /* $CBB7                      */
 void ss2_grab_vine(void);                    /* $CBFA                      */
 
+/* frame (src/ss2_game.c) */
+extern u16 ss2_sat[64 * 4];                  /* PCE SATB layout            */
+extern u8 ss2_hud_dirty;                     /* bit0 score, bit1 money     */
+void ss2_game_vblank(u8 pad);                /* pad in PCE $16 layout      */
+void ss2_game_tick(void);
+
 /* objects (src/ss2_objects.c) */
 void ss2_objects_update(void);               /* $ED0D loop over 32 slots   */
 void ss2_obj_update(u8 x);                   /* $EE01                      */
@@ -62,7 +68,7 @@ void ss2_obj_snap_y(u8 x);                   /* bank 3 $858B               */
 u8   ss2_spawn_visible(void);                /* bank 3 $85B1               */
 u8   ss2_probe_point(u16 sx, u16 sy);        /* bank 3 $8379               */
 void ss2_spawn_scan(void);                   /* bank 4 $BC10               */
-void ss2_random(void);                       /* $FDB4                      */
+u8   ss2_random(void);                       /* $FDB4 (returns carry)      */
 void ss2_score_award(u8 id);                 /* bank 4 $BB89               */
 void ss2_item_pickup(u8 x);                  /* bank 2 $7D65               */
 void ss2_obj_death(u8 x);                    /* bank 2 $6E47               */

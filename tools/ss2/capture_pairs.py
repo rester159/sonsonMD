@@ -25,6 +25,12 @@ def tr(c, pc, op):
     global pending
     if c.mpr[7] != 0:
         return
+    if entry == exit_ and pc == entry:
+        # whole-frame mode: consecutive visits of one address
+        if pending is not None:
+            pairs.append((m.frame, pending, bytes(m.ram)))
+        pending = bytes(m.ram)
+        return
     if pc == entry:
         pending = bytes(m.ram)
     elif pc == exit_ and pending is not None:

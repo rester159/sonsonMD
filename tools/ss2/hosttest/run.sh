@@ -5,5 +5,5 @@ ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 OUT="$ROOT/out/ss2/hosttest"; mkdir -p "$OUT"
 R="${2:-ss2_player_update}"
 cc -O1 -g -fsanitize=address,undefined -DROUTINE=$R -I"$ROOT/tools/ss2/hosttest/shim" -I"$ROOT/inc" \
-   "$ROOT/tools/ss2/hosttest/test_routine.c" "$ROOT"/src/ss2_player.c "$ROOT"/src/ss2_logic.c "$ROOT"/src/ss2_rom.c "$ROOT"/src/ss2_objects.c "$ROOT"/src/ss2_obj17.c -o "$OUT/test_$R"
+   "$ROOT/tools/ss2/hosttest/test_routine.c" "$ROOT"/src/ss2_player.c "$ROOT"/src/ss2_logic.c "$ROOT"/src/ss2_rom.c "$ROOT"/src/ss2_objects.c "$ROOT"/src/ss2_obj17.c "$ROOT"/src/ss2_items.c "$ROOT"/src/ss2_game.c "$ROOT"/tools/ss2/hosttest/frame_tick.c -o "$OUT/test_$R"
 SS2_IRQ_MASK="$ROOT/out/ss2/irq_mask.bin" "$OUT/test_$R" "$1" "${3:-8}"

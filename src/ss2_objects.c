@@ -40,15 +40,18 @@ static void kill_spawned(u8 x);
 static void set_ox16(u8 x, u16 v) { O(0x247A, x) = (u8)(v >> 8); O(0x249A, x) = (u8)v; }
 static void set_oy16(u8 x, u16 v) { O(0x24DA, x) = (u8)(v >> 8); O(0x24FA, x) = (u8)v; }
 
-/* $FDB4: seed = seed*3 with the high byte folded with the old low byte */
-void ss2_random(void)
+/* $FDB4: seed = seed*3 with the high byte folded with the old low byte.
+ * Returns the carry of that last addition, which the source leaves in C. */
+u8 ss2_random(void)
 {
     u16 s = (u16)((ZP(0x8D) << 8) | ZP(0x8C));
-    u16 t = (u16)(s * 3);
+    u16 t = (u16)(s * 3), h;
     ZP(0x26) = (u8)t;
     ZP(0x27) = (u8)(t >> 8);
-    ZP(0x8D) = (u8)(ZP(0x8C) + (t >> 8));
+    h = (u16)(ZP(0x8C) + (t >> 8));
+    ZP(0x8D) = (u8)h;
     ZP(0x8C) = (u8)t;
+    return (u8)(h >> 8);
 }
 
 /* bank 4 $BB89: queue a score award id */
@@ -562,8 +565,11 @@ u8 ss2_spawn17_handler(u16 addr);
 
 /* Handlers below $C000 live in the fixed banks; $C000-$DFFF is the
  * object's own bank (MPR6). */
+u8 ss2_item_handler(u16 addr, u8 x);
+
 u8 ss2_obj_handler(u8 bank, u16 addr, u8 x)
 {
+    if (addr < 0xC000) return ss2_item_handler(addr, x);
     if (addr >= 0xC000 && addr < 0xE000)
     {
         if (bank == 0x17) return ss2_obj17_handler(addr, x);
@@ -571,20 +577,16 @@ u8 ss2_obj_handler(u8 bank, u16 addr, u8 x)
     return 0;
 }
 
+u8 ss2_item_spawn_handler(u16 addr);
+
 u8 ss2_spawn_handler(u8 bank, u16 addr)
 {
+    if (addr < 0xC000) return ss2_item_spawn_handler(addr);
     if (addr >= 0xC000 && addr < 0xE000)
     {
         if (bank == 0x17) return ss2_spawn17_handler(addr);
     }
     return 0;
-}
-
-/* bank 2 $6E47: death transformation (explosion / item drop) */
-void ss2_obj_death(u8 x)
-{
-    (void)x;
-    ss2_unported(0x6E47);
 }
 
 /* bank 2 $7D65: item pickup by kind ($26BA) */

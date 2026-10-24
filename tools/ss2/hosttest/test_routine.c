@@ -10,6 +10,7 @@
 #define ROUTINE ss2_player_update
 #endif
 void ROUTINE(void);
+unsigned char ss2_expected_pad;
 
 /* bytes written from interrupt context (tools/ss2/irq_mask.py): an IRQ can
  * land inside any bracketed routine */
@@ -43,6 +44,7 @@ int main(int argc, char **argv)
         unsigned a, diffs = 0;
         if (fread(&fr, 2, 1, f) != 1 || fread(pre, 1, 0x2000, f) != 0x2000 || fread(post, 1, 0x2000, f) != 0x2000) return 3;
         memcpy(ss2_ram, pre, 0x2000);
+        ss2_expected_pad = post[0x16];
         ss2_unported_count = 0;
         ROUTINE();
         if (ss2_unported_count) { unported_frames++; if (unported_frames <= 4) printf("frame %u: unported $%04X\n", fr, ss2_unported_last); continue; }
