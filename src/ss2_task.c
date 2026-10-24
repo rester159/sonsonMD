@@ -43,6 +43,9 @@ __asm__(
 
 static ss2_task_fn entry[4];
 static s8 current = -1;
+static u8 fresh[4];                 /* restarted: rebuild before resuming */
+static s8 busy_slot = -1;           /* task holding the CPU across VBlanks */
+static u8 busy_left;
 
 #define T_STATE(n)  ZP(0x00 + 4 * (n))
 #define T_TIMER(n)  ZP(0x01 + 4 * (n))
@@ -72,6 +75,7 @@ static void prepare(u8 n)
 
 static void to_task(u8 n)
 {
+    if (fresh[n]) { fresh[n] = 0; prepare(n); }
     current = (s8)n;
 #ifdef SS2_HOST
     swapcontext(&sched_ctx, &task_ctx[n]);
@@ -109,6 +113,16 @@ void ss2_wait(u8 frames)
     to_sched();
 }
 
+/* Long source work that runs through `frames` VBlanks without yielding
+ * (e.g. the $EBE1 full redraw): VBlanks are counted, but no other task
+ * runs until the current one resumes after the last of them. */
+void ss2_busy(u8 frames)
+{
+    busy_slot = current;
+    busy_left = frames;
+    to_sched();
+}
+
 /* $E212: the current task ends; its slot is freed */
 void ss2_task_exit(void)
 {
@@ -124,8 +138,17 @@ void ss2_task_restart(ss2_task_fn fn)
     u8 n = (u8)current;
     entry[n] = fn;
     T_STATE(n) = 4;
-    prepare(n);
-    to_sched();
+    /* the fresh context is built by the scheduler (to_task), not on the
+     * stack still in use here; leave without saving this chain */
+    fresh[n] = 1;
+#ifdef SS2_HOST
+    setcontext(&sched_ctx);
+#else
+    {
+        static void *discard;
+        ss2_coro_switch(&discard, sched_sp);
+    }
+#endif
     for (;;) { }
 }
 
@@ -147,6 +170,14 @@ void ss2_sched_vblank(void)
 void ss2_sched_run(void)
 {
     u8 n;
+    if (busy_slot >= 0)
+    {
+        if (--busy_left) return;
+        n = (u8)busy_slot;
+        busy_slot = -1;
+        to_task(n);
+        if (busy_slot >= 0) return;
+    }
     ZP(0x13) = 0;
     for (n = 0; n < 4; )
     {
@@ -156,6 +187,7 @@ void ss2_sched_run(void)
             T_STATE(n) = 2;
             T_TIMER(n) = 0;
             to_task(n);
+            if (busy_slot >= 0) return;
             n = 0;                  /* restart the scan after every yield */
             continue;
         }

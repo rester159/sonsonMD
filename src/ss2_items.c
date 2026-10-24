@@ -327,6 +327,9 @@ u8 ss2_item_pickup(u8 x)
     u8 k = O(0x26BA, x);
     switch (k)
     {
+        case 1:                             /* $7DB5 */
+            ss2_door(x);
+            return 0;
         case 3: case 4: case 5: case 6: case 7: case 8: case 9:
             return money(x, money_award[k - 3]);
         case 15:                            /* $81BB: life vessel */
@@ -368,7 +371,7 @@ u8 ss2_item_pickup(u8 x)
             u8 t = ss2_rom_byte((u16)(0x4CAB + Z_STAGE));
             collected(x);
             if (t >= Z_STAFFPAL) Z_STAFFPAL = t;
-            ss2_unported(0x79F7);           /* staff art reload: presentation, pending */
+            ss2_staff_art();                /* $79F7 */
             return 0;
         }
         case 30:

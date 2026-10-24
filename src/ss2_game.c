@@ -366,6 +366,18 @@ static void main_task(void)
     }
 }
 
+/* $EDB0: re-enter the main loop with a fresh stack (end of a door) */
+static void main_task_edb0(void)
+{
+    ZP(0x14) = 0x88;
+    main_task();
+}
+
+void ss2_main_restart(void)
+{
+    ss2_task_restart(main_task_edb0);
+}
+
 /* slot 1, $E2A6: title RUN handler, idle during play */
 static void listener_task(void)
 {

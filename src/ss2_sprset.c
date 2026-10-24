@@ -86,3 +86,24 @@ void ss2_sprset_5548(void)
     R(0x2D9B) = 0;
     R(0x2D9A) = 2;
 }
+
+/* $79F7: the staff cell for staff level $72 (bank $11 pattern from the
+ * bank 9 table $DADF, at cell $104) and its animation base $22B4/$22B5 */
+void ss2_staff_art(void)
+{
+    u8 lv = ZP(0x72);
+    if (lv)
+    {
+        u16 t = (u16)(0xDADF + (u8)((lv - 1) << 1));
+        u16 src = (u16)(ss2_bank_byte(9, t) | (ss2_bank_byte(9, (u16)(t + 1)) << 8));
+        ZP(0x28) = (u8)src; ZP(0x29) = (u8)(src >> 8);
+        ZP(0x8B) = 0x02;
+        ss2_cell_bank[0x104] = 0x11;
+        ss2_cell_src[0x104] = src;
+        ss2_cells_dirty = 1;
+    }
+    R(0x22B4) = ss2_bank_byte(9, (u16)(0xDAD3 + (u8)(lv << 1)));
+    R(0x22B5) = ss2_bank_byte(9, (u16)(0xDAD3 + (u8)((lv << 1) + 1)));
+    ss2_page[6] = ss2_banks[ZP(0x8E) & 0x1F];
+    ss2_mpr6 = ZP(0x8E);
+}

@@ -21,3 +21,14 @@ void ss2_frame_coro(void)
     ss2_game_vblank(ss2_expected_pad);
     ss2_sched_vblank();
 }
+
+/* VBlank-bracketed pairs (capture_vbl.py): each pair starts at a VBlank,
+ * so the IRQ part comes first and the ready tasks then run to the next. */
+void ss2_frame_vbl(void)
+{
+    static int started;
+    if (!started) { ss2_game_start(); started = 1; }
+    ss2_game_vblank(ss2_expected_pad);
+    ss2_sched_vblank();
+    ss2_sched_run();
+}

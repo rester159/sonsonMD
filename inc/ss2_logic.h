@@ -69,6 +69,11 @@ void ss2_game_vblank(u8 pad);                /* pad in PCE $16 layout      */
 void ss2_game_start(void);                   /* create the gameplay tasks  */
 void ss2_game_frame(void);                   /* run tasks + sprite table   */
 void ss2_game_tick(void);                    /* host replay: one pass      */
+void ss2_main_restart(void);                 /* JMP $EDB0 from inside slot 0 */
+
+/* doors (src/ss2_door.c) */
+extern u8 ss2_redraw_request;                /* $EBE1 playfield redraw     */
+void ss2_door(u8 x);                         /* $7DB5 item kind 1          */
 
 /* palette fades (src/ss2_fade.c): RAM shadow $2EA0-$2F9F -> ss2_vce */
 extern u16 ss2_vce[512];                     /* PCE colour RAM mirror      */
@@ -89,6 +94,7 @@ extern u8 ss2_cells_dirty;
 void ss2_sprset_stage(void);                 /* $774F                      */
 void ss2_sprset_interior(void);              /* $77A5 (list in $28/$29)    */
 void ss2_sprset_5548(void);                  /* $77D0                      */
+void ss2_staff_art(void);                    /* $79F7                      */
 
 /* objects (src/ss2_objects.c) */
 void ss2_objects_update(void);               /* $ED0D loop over 32 slots   */
