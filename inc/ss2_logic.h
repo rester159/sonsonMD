@@ -70,8 +70,29 @@ void ss2_game_start(void);                   /* create the gameplay tasks  */
 void ss2_game_frame(void);                   /* run tasks + sprite table   */
 void ss2_game_tick(void);                    /* host replay: one pass      */
 
+/* palette fades (src/ss2_fade.c): RAM shadow $2EA0-$2F9F -> ss2_vce */
+extern u16 ss2_vce[512];                     /* PCE colour RAM mirror      */
+extern u8 ss2_vce_dirty;
+void ss2_vce_reset(void);
+void ss2_fade_in(void);                      /* $71BA                      */
+void ss2_fade_out(void);                     /* $71D7                      */
+void ss2_fade_in_all(void);                  /* $7274                      */
+void ss2_fade_out_all(void);                 /* $7297                      */
+void ss2_fade_in_alt(void);                  /* $71F4                      */
+void ss2_fade_out_alt(void);                 /* $7211                      */
+
+/* sprite pattern sets (src/ss2_sprset.c): which ROM cell each PCE sprite
+ * cell holds, plus the RAM animation bases the sets write */
+extern u8 ss2_cell_bank[0x200];
+extern u16 ss2_cell_src[0x200];
+extern u8 ss2_cells_dirty;
+void ss2_sprset_stage(void);                 /* $774F                      */
+void ss2_sprset_interior(void);              /* $77A5 (list in $28/$29)    */
+void ss2_sprset_5548(void);                  /* $77D0                      */
+
 /* objects (src/ss2_objects.c) */
 void ss2_objects_update(void);               /* $ED0D loop over 32 slots   */
+extern u8 ss2_obj_next;                      /* slot the loop resumes after */
 void ss2_obj_update(u8 x);                   /* $EE01                      */
 void ss2_obj_common(u8 x);                   /* $EE67 script/motion/hits   */
 void ss2_obj_die(u8 x);                      /* $F59F                      */
