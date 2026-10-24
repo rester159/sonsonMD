@@ -1056,9 +1056,7 @@ static void boss_enter(u8 x)
     if (!O(0x297A, x))
     {
         ZP(0x8F) = 0x06; ZP(0x91) = 0x0A; ZP(0x93) = 0x40; ZP(0x94) = 0x57;
-        /* bank 2 $6984: message window; runs for several frames inside the
-         * object task (task 2 waits on $B9B8) */
-        ss2_unported(0x6984);
+        ss2_message();                       /* bank 2 $6984 */
     }
     Z_HSCROLL = 1;
     Z_INLOCK1 = 0;

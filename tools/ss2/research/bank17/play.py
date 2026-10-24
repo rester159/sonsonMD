@@ -141,9 +141,9 @@ def tr(c, pc, op):
         key = (b, pc)
         cov[key] = cov.get(key, 0) + 1
     if pc == 0xEC42 and c.mpr[7] == 0:
-        if pending[0] is not None:
+        if pending[0] is not None and not VBL:
             pairs.append((m.frame, pending[0], bytes(m.ram)))
-        if warp and pending[0] is None:
+        if warp and pending[0] is None and not started[0]:
             do_warp(m.ram)
             if 'cloud' in opts:
                 m.ram[0x2C1] |= 0x08
@@ -165,7 +165,10 @@ def tr(c, pc, op):
         if life:
             m.ram[0x2B8] = m.ram[0x2B9]
             m.ram[0x2BA] = m.ram[0x2B9]
-        pending[0] = bytes(m.ram)
+        if not VBL:
+            pending[0] = bytes(m.ram)
+        else:
+            started[0] = True
         r = memoryview(m.ram)[0:0x2000]
         R = lambda a: r[a - 0x2000]
         for x in range(32):
@@ -174,6 +177,20 @@ def tr(c, pc, op):
                 objs[key] = objs.get(key, 0) + 1
 
 
+# VBL=1: VBlank-to-VBlank pairs (multi-frame sequences such as the message
+# window; replay with SS2_CONTINUOUS=1 ... ss2_frame_vbl), after the warp
+VBL = bool(os.environ.get('VBL'))
+started = [False]
+vbl_prev = [None]
+_ovbl = m.vblank
+def _vbl():
+    if VBL and started[0]:
+        snap = bytes(m.ram)
+        if vbl_prev[0] is not None:
+            pairs.append((m.frame, vbl_prev[0], snap))
+        vbl_prev[0] = snap
+    _ovbl()
+m.vblank = _vbl
 m.cpu.trace = tr
 for f in range(frames):
     m.pad = pad_for(f)

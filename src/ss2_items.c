@@ -320,6 +320,35 @@ static void trap(u8 x)
     Z_DEMOFX = 1;
 }
 
+/* $7F74: an item the player can stand on (kind 2): land on its top */
+static void stand_on(u8 x)
+{
+    u8 a;
+    if (R(0x22A4) & 0x80) return;
+    if (R(0x22B1) && R(0x22C6) < 8) return;
+    if (O(0x299A, x) == 0x88)
+    {
+        if (ss2_probe(0x14, 0x20)) return;
+        if (ss2_probe(0x0C, 0x20)) return;
+    }
+    a = (u8)(R(0x229C) + 0x20 - O(0x24FA, x));
+    if (a >= 8) return;
+    ZP(0x35) = a;
+    R(0x229C) = (u8)(R(0x229C) - a);
+    R(0x22B0) = 1;
+    R(0x22C5) = (u8)(x + 1);
+    O(0x251A, x) = ZP(0x4A);
+}
+
+/* $8104-$818D: key-type items: a $22C1 bit and their item-box icon ($819D) */
+static void key_item(u8 x, u8 bit, u16 icon)
+{
+    collected(x);
+    R(0x22C1) |= bit;
+    ss2_sfx(0x28);
+    ss2_hud_text(icon);
+}
+
 u8 ss2_item_pickup(u8 x)
 {
     static const u8 money_award[7] = { 0x20, 0x21, 0x22, 0x23, 0x24, 0x26, 0x28 };
@@ -330,6 +359,23 @@ u8 ss2_item_pickup(u8 x)
         case 1:                             /* $7DB5 */
             ss2_door(x);
             return 0;
+        case 2:                             /* $7F74 */
+            stand_on(x);
+            return 0;
+        case 10: key_item(x, 0x04, 0x4E47); return 0;   /* $8104 */
+        case 12: key_item(x, 0x02, 0x4E3E); return 0;   /* $8117 */
+        case 13: key_item(x, 0x08, 0x4E50); return 0;   /* $812A */
+        case 14: key_item(x, 0x01, 0x4E35); return 0;   /* $813D */
+        case 17:                                        /* $8150 */
+            collected(x);
+            R(0x22C1) |= 0x10;
+            ZP(0x76) = 5;
+            ss2_sfx(0x28);
+            ss2_hud_text(0x4E59);
+            return 0;
+        case 26: key_item(x, 0x20, 0x4E6B); return 0;   /* $8167 */
+        case 27: key_item(x, 0x40, 0x4E74); return 0;   /* $817A */
+        case 28: key_item(x, 0x80, 0x4E7D); return 0;   /* $818D */
         case 3: case 4: case 5: case 6: case 7: case 8: case 9:
             return money(x, money_award[k - 3]);
         case 15:                            /* $81BB: life vessel */

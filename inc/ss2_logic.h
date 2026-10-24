@@ -71,6 +71,21 @@ void ss2_game_frame(void);                   /* run tasks + sprite table   */
 void ss2_game_tick(void);                    /* host replay: one pass      */
 void ss2_main_restart(void);                 /* JMP $EDB0 from inside slot 0 */
 
+/* dialogue window and HUD icons (src/ss2_msgwin.c): map writes queued
+ * for the renderer */
+enum { SS2_BAT_PUT, SS2_BAT_RESTORE, SS2_BAT_HUD };
+typedef struct { u8 kind, x, y; u16 w; } Ss2BatOp;   /* RESTORE: w = width<<8|rows */
+#define SS2_BATQ 512
+extern Ss2BatOp ss2_bat_queue[SS2_BATQ];
+extern u16 ss2_bat_head, ss2_bat_tail;
+void ss2_message(void);                      /* bank 2 $6984              */
+void ss2_msg_open(void);                     /* $6997                     */
+void ss2_msg_text(void);                     /* $69EE                     */
+void ss2_msg_close(void);                    /* $6C1F                     */
+void ss2_msg_continue(u16 addr, u8 y);       /* $6C12: JMP ($28) after a choice */
+void ss2_hud_text(u16 ptr);                  /* bank 4 $BADE              */
+u8   ss2_npc_continue(u16 addr, u8 y);       /* src/ss2_npc.c (1 = handled) */
+
 /* doors (src/ss2_door.c) */
 extern u8 ss2_redraw_request;                /* $EBE1 playfield redraw     */
 void ss2_door(u8 x);                         /* $7DB5 item kind 1          */

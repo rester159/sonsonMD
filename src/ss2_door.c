@@ -46,8 +46,7 @@ static void enter(u8 x)
             /* $8732: extra SATB entries -- presentation */
         }
         if (O(0x297A, x) == 2) ZP(0x7F) = 1;     /* boss door: arm the boss */
-        ZP(0x26) = 0x86; ZP(0x27) = 0x4E;
-        ss2_unported(0xBADE);                /* message window */
+        ss2_hud_text(0x4E86);                /* $BADE: clear the key box */
         R(0x2C1A + O(0x281A, x)) = 0xFF;
         R(0x22C1) &= (u8)~1;
         ss2_wait(30);                        /* $B9D4 */

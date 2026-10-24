@@ -440,13 +440,12 @@ static void boss_enter(u8 x)
     ZP(0x91) = 0x0A;
     if (!(O(0x2A9A, x) & 2)) { ZP(0x93) = 0xD6; ZP(0x94) = 0x56; }
     else { ZP(0x93) = 0x8C; ZP(0x94) = 0x57; }
-    ss2_unported(0x6984);                   /* bank 2: room tiles */
+    ss2_message();                          /* bank 2 $6984 */
     if ((O(0x2A9A, x) & 2) && (P_FLAGSC1 & 0x08))
     {
         P_FLAGSC1 &= (u8)~0x08;
         P_CLOUDREQ = 0x08;
-        ZP(0x26) = 0xA1; ZP(0x27) = 0x4E;
-        ss2_unported(0xBADE);               /* bank 4: message */
+        ss2_hud_text(0x4EA1);               /* bank 4 $BADE */
         set_handler(x, 0xD521);
         boss_wait_cloud(x);
         return;

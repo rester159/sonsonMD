@@ -277,8 +277,7 @@ static void enter2(u8 x)
 {
     if (OX16(x) >= 0xD0) { move(x); return; }
     ZP(0x8F) = 0x06; ZP(0x91) = 0x0A; ZP(0x93) = 0x0F; ZP(0x94) = 0x57;
-    /* bank 2 $6984: message window, several frames inside the object task */
-    ss2_unported(0x6984);
+    ss2_message();                           /* bank 2 $6984 */
     if (!(P_FLAGSC1 & 0x08)) { boss_start(x); return; }
     P_FLAGSC1 &= (u8)~0x08;
     P_CLOUDREQ = 0x08;

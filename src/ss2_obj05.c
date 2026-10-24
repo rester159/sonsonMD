@@ -19,7 +19,6 @@
 #include "ss2_ram.h"
 #include "ss2_logic.h"
 
-extern u16 ss2_text_request;            /* ss2_objfix.c: $BADE text */
 
 #define OX16(x)     ((u16)((O(0x247A, x) << 8) | O(0x249A, x)))
 #define OY16(x)     ((u16)((O(0x24DA, x) << 8) | O(0x24FA, x)))
@@ -950,7 +949,7 @@ static void boss_enter(u8 x)
         ZP(0x91) = 0x0A;
         ZP(0x93) = 0xB9; ZP(0x94) = 0x57;
         if (O(0x297A, x) >= 2) { ZP(0x93) = 0xEE; ZP(0x94) = 0x57; }
-        ss2_unported(0x6984);           /* bank 2: arena walls (map + BAT) */
+        ss2_message();                  /* bank 2 $6984: boss speech */
     }
     Z_HSCROLL = 1;
     Z_INLOCK1 = 0;
@@ -959,7 +958,7 @@ static void boss_enter(u8 x)
         P_CLOUDREQ = 0x08;
         ZP(0x26) = 0xA1; ZP(0x27) = 0x4E;
         P_FLAGSC1 &= (u8)~0x08;
-        ss2_text_request = 0x4EA1;      /* $BADE: BAT text, presentation */
+        ss2_hud_text(0x4EA1);           /* $BADE */
         set_handler(x, 0xD052);
         if (!P_ONCLOUD) { ss2_obj_common(x); return; }
     }
@@ -1238,7 +1237,7 @@ static void boss2_enter(u8 x)
         ZP(0x8F) = 0x06;
         ZP(0x91) = 0x0A;
         ZP(0x93) = 0x2F; ZP(0x94) = 0x58;
-        ss2_unported(0x6984);           /* bank 2: arena walls (map + BAT) */
+        ss2_message();                  /* bank 2 $6984: boss speech */
     }
     Z_HSCROLL = 1;
     Z_INLOCK1 = 0;

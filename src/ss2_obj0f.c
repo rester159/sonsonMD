@@ -316,7 +316,7 @@ static void boss_enter(u8 x)
     ZP(0x91) = 0x0A;
     ZP(0x93) = 0x67;
     ZP(0x94) = 0x58;
-    ss2_unported(0x6984);                   /* bank 2: room tiles */
+    ss2_message();                          /* bank 2 $6984 */
     Z_INLOCK1 = 0;
     ZP(0x64) = 1;
     set_handler(x, 0xD09A);

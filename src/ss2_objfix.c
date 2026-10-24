@@ -11,7 +11,7 @@
  *
  * Presentation side effects (BAT writes of the broken block and of the
  * status texts through $BADE) are reported to the renderer through
- * ss2_map_cell_dirty / ss2_text_request instead of touching VRAM.
+ * ss2_map_cell_dirty (and ss2_hud_text) instead of touching VRAM.
  */
 #include "ss2_ram.h"
 #include "ss2_logic.h"
@@ -22,7 +22,6 @@
 /* presentation requests: map RAM offset ($3000+) of the last cell cleared
  * by a broken block (0xFFFF none) and the last $BADE text table pointer */
 u16 ss2_map_cell_dirty = 0xFFFF;
-u16 ss2_text_request;
 
 static void set_ox16(u8 x, u16 v) { O(0x247A, x) = (u8)(v >> 8); O(0x249A, x) = (u8)v; }
 static void set_oy16(u8 x, u16 v) { O(0x24DA, x) = (u8)(v >> 8); O(0x24FA, x) = (u8)v; }
@@ -319,14 +318,12 @@ static void block_hit(u8 x)
     /* $8E2A */
     if (!--ZP(0x76))
     {
-        ZP(0x26) = 0xAA; ZP(0x27) = 0x4E;
-        ss2_text_request = 0x4EAA;      /* $BADE: BAT text, presentation */
+        ss2_hud_text(0x4EAA);           /* $BADE */
         P_FLAGSC1 &= (u8)~0x10;
     }
     else if (ZP(0x76) == 1)
     {
-        ZP(0x26) = 0x62; ZP(0x27) = 0x4E;
-        ss2_text_request = 0x4E62;
+        ss2_hud_text(0x4E62);
     }
     /* $8E55 */
     O(0x267A, x) = 1;
