@@ -86,6 +86,13 @@ void ss2_msg_continue(u16 addr, u8 y);       /* $6C12: JMP ($28) after a choice 
 void ss2_hud_text(u16 ptr);                  /* bank 4 $BADE              */
 u8   ss2_npc_continue(u16 addr, u8 y);       /* src/ss2_npc.c (1 = handled) */
 
+/* townspeople and shops (src/ss2_npc.c) */
+extern u8 ss2_shop_screen;                   /* 1 while the shop interior is up */
+void ss2_npc(u8 x);                          /* bank 3 $997F item kind 29  */
+u8   ss2_drop_item(u8 p);                    /* bank 3 $9072/$9428 (ZP $35) */
+void ss2_money_sub(u16 a);                   /* bank 4 $BA52               */
+void ss2_hud_bars(void);                     /* bank 2 $7649 + $7688       */
+
 /* doors (src/ss2_door.c) */
 extern u8 ss2_redraw_request;                /* $EBE1 playfield redraw     */
 void ss2_door(u8 x);                         /* $7DB5 item kind 1          */

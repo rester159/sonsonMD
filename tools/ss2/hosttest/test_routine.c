@@ -16,10 +16,20 @@ unsigned char ss2_expected_pad;
  * land inside any bracketed routine */
 static unsigned char irq_mask[0x2000];
 
+/* SS2_MASK_SOUND: the sound driver's RAM ($2DF0-$2E7B, $20D6/$20D7),
+ * which the host build does not run (music changes show there), is not
+ * compared and is carried from the trace in continuous mode */
+static int sound_ram(unsigned a)
+{
+    static int on = -1;
+    if (on < 0) on = getenv("SS2_MASK_SOUND") != NULL;
+    return on && ((a >= 0xDF0 && a <= 0xE7B) || a == 0xD6 || a == 0xD7);
+}
+
 /* zero-page scratch ($26-$3F) is not persistent state */
 static int masked(unsigned a)
 {
-    if (irq_mask[a]) return 1;
+    if (irq_mask[a] || sound_ram(a)) return 1;
     /* coroutine mode: the task table's resume data and the current-slot
      * byte are scheduler internals with a native representation */
     if (getenv("SS2_CONTINUOUS") && (a < 0x10 || a == 0x15)) return 1;
@@ -70,7 +80,7 @@ int main(int argc, char **argv)
         if (diffs) bad_frames++;
         if (getenv("SS2_CONTINUOUS"))
             for (a = 0x10; a < 0x2000; a++)
-                if (irq_mask[a] || (a >= 0x100 && a <= 0x1FF)) ss2_ram[a] = post[a];
+                if (irq_mask[a] || sound_ram(a) || (a >= 0x100 && a <= 0x1FF)) ss2_ram[a] = post[a];
     }
     printf("%u pairs: %u exact, %u differ, %u reached unported code\n", n, n - bad_frames - unported_frames, bad_frames, unported_frames);
     return bad_frames ? 1 : 0;

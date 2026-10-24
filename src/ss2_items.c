@@ -48,7 +48,7 @@ static void item_kind(u8 x, u8 kind)
 
 /* $9072/$9428: drop item ZP($35) out of object p. Returns the new slot or
  * $20 when no slot was free (the source leaves X = $20). */
-static u8 drop_item(u8 p)
+u8 ss2_drop_item(u8 p)
 {
     u8 x = ss2_obj_alloc(), o;
     u8 kind = ZP(0x35);
@@ -111,7 +111,7 @@ void ss2_obj_death(u8 x)
             {
                 u8 n, s;
                 ZP(0x35) = kind;
-                n = drop_item(x);
+                n = ss2_drop_item(x);
                 if (n != 0x20) O(0x281A, n) = 0xBF;
                 s = O(0x281A, x);
                 t = (u8)(O(0x2CDA, s) & 0x0F);
@@ -176,7 +176,7 @@ static void container_hit(u8 x)
     a = R(0x2223 + s);
     if (a & 0x80) { ss2_unported(0x9907); return; }
     ZP(0x35) = (u8)(a | 0x80);
-    n = drop_item(x);
+    n = ss2_drop_item(x);
     if (n != 0x20) O(0x281A, n) = O(0x281A, x);
     ss2_obj_death(x);
 }
@@ -277,7 +277,7 @@ static u8 min_add(u8 v, u8 add, u8 cap)
 }
 
 /* bank 4 $BA52: 8-digit BCD subtract of the table at a from the money */
-static void money_sub(u16 a)
+void ss2_money_sub(u16 a)
 {
     s8 y;
     u8 c = 1;
@@ -400,7 +400,7 @@ u8 ss2_item_pickup(u8 x)
                 R(0x2211) = 0;
                 R(0x2212) = 0;
             }
-            else money_sub(0x4C0C);
+            else ss2_money_sub(0x4C0C);
             ss2_hud_dirty |= 2;
             return 0;
         case 19: case 20: case 21: case 22: /* $8237: food points */
@@ -420,6 +420,14 @@ u8 ss2_item_pickup(u8 x)
             ss2_staff_art();                /* $79F7 */
             return 0;
         }
+        case 11:                            /* $81A6: clears the screen */
+            collected(x);
+            ZP(0x35) = 0x18;
+            ss2_unported(0xD86A);           /* bank 9 magic damage loop (shots/magic system) */
+            return 0;
+        case 29:                            /* bank 3 $997F: townspeople, shops */
+            ss2_npc(x);
+            return 0;
         case 30:
             trap(x);
             return 0;

@@ -21,6 +21,7 @@ SonSon via the game chooser (`src/game_select.c`).
 | `capture_vbl.py OUT K FRAMES SCRIPT [WX WY]` | VBlank-to-VBlank pairs (multi-frame sequences such as doors); replay with `SS2_CONTINUOUS=1 hosttest/run.sh PAIRS ss2_frame_vbl`. WX WY teleports the player first. |
 | `capture_sprset.py` | Pairs around the sprite-set loaders `$774F/$77A5/$77D0`. |
 | `research/bank05,09,17/` | The enemy agents' spawn lists, injected captures and replays. |
+| `research/npc/` | Townsperson/shop captures (`cap.py`: townspeople spawn only off-screen, so a two-phase warp; `runs.sh` the 38 recorded conversations and shop visits with RAM pokes for money/flags; `rep.sh`, `difsum.py`). Replays use `SS2_MASK_SOUND=1` (the host build has no sound driver). |
 
 ## Architecture decisions
 
@@ -119,6 +120,8 @@ runs after each link; keep load and store separate (empty asm barrier).
 | Doors `$7DB5` | stage-1 round trip 289/299 exact (rest: redraw in-progress bytes); on target: fade out, redraw, fade in. Locked-door message `$BADE` pending |
 | Fades `$71BA..$7297` | exact in door traces; target scales the Genesis palette by level |
 | Sound | driver PSG-exact; YM via Z80 list |
-| Message windows `$BADE`, shops, pause magic select `$FE0C` | pending |
+| Townspeople, fortune teller, shops (item kind 29, bank 3 `$997F`-`$9E7A`, shop `$9E7B`-bank 4 `$A665`) | 31 tracer conversations exact (all 7 stages, every choice continuation, items given, money paid/lost); 7 shop visits (all 14 goods kinds, price rises, short money, owned goods) exact up to the exit, where `$7882`+`$EBE1` end at a VBlank boundary (source 8 or 9 VBlanks, native 3+5), replay then a frame behind; shop picture is presentation only (`ss2_shop_screen` for a renderer) |
+| Item kind 11 (`$81A6`) | wired; its damage loop bank 9 `$D86A` belongs to the shots/magic system (unported) |
+| Pause magic select `$FE0C` | pending |
 | Stage init/clear, title, intro, death/continue, ending | pending (SS2 starts from per-stage RAM bootstrap) |
 | Cartridge | SELECT GAME -> SS2 -> START+A -> SELECT GAME -> SonSon ARCADE/HOME verified headless |
