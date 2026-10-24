@@ -27,8 +27,14 @@ typedef struct
     const u16 *spr_lut;         /* [pce palette][cell>>1] -> tile+1 (0 none)  */
     const u8 *spr_line;         /* pce sprite palette -> CRAM line            */
     const u8 *ram;              /* stage start work RAM (bootstrap)           */
+    const u32 *bat_tiles;       /* tile per ss2_bat_keys entry                */
+    const u8 *bat_line;         /* its CRAM line                              */
+    const u8 *spr_cmap;         /* [pce sprite palette][colour 0-7]: line-2 << 7 | index */
+    const u8 *spr_cmap13;       /* [interior variant][colour]: palette 13 after a door */
 } Ss2StageGfx;
 
+#define SS2_BAT_NKEYS 280
+extern const u16 ss2_bat_keys[SS2_BAT_NKEYS];   /* $1180-$123F glyphs, then icons */
 extern const Ss2StageGfx ss2_stage_gfx[SS2_NSTAGES];
 extern const u8 ss2_player_anim[7 * 6 * 4 * 2];   /* set,state,step -> frame,attr */
 

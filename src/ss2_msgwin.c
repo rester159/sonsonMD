@@ -274,6 +274,12 @@ void ss2_message(void)
     ss2_map6(b);
 }
 
+/* a single HUD BAT word at absolute BAT address a (e.g. bank 0 $FE95) */
+void ss2_hud_put(u16 a, u16 w)
+{
+    bat_op(SS2_BAT_HUDPUT, (u8)(a & 63), (u8)(a >> 6), w);
+}
+
 /* $BADE: HUD text/icon table at ($26) (absolute BAT address, palette,
  * characters, '/' new row, '\\' end) */
 void ss2_hud_text(u16 ptr)

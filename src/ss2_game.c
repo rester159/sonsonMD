@@ -330,6 +330,65 @@ static void main_body(void)
     hud_bars();
 }
 
+/* $FE5A: the weapon/magic box: frame (lit when the selected magic costs
+ * more than the magic left), the selected magic's icon, and with no magic
+ * selected the staff level digit */
+void ss2_weapon_box(void)
+{
+    u8 x = R(0x22C0), cost = ss2_rom_byte((u16)(0x4CEA + x));
+    ss2_hud_text((cost && cost > R(0x22BB)) ? 0x4E1E : 0x4E07);
+    ss2_hud_text((u16)(ss2_rom_byte((u16)(0xFED2 + x * 2)) | (ss2_rom_byte((u16)(0xFED3 + x * 2)) << 8)));
+    if (!R(0x22C0))
+        ss2_hud_put(0x0156, (u16)(0x3200 | (u8)(ZP(0x72) + 0x1A)));
+}
+
+/* $FE47: select magic $30 if owned ($22BF bit from $FECC) */
+static u8 magic_try(void)
+{
+    u8 x = ZP(0x30);
+    if (!(ss2_rom_byte((u16)(0xFECC + x)) & R(0x22BF))) return 0;
+    R(0x22C0) = x;
+    ss2_weapon_box();
+    return 1;
+}
+
+/* $FE0C: while paused, Right/Left step to the next owned magic */
+static void magic_select(void)
+{
+    u8 y;
+    if (!R(0x22BB)) return;
+    ZP(0x30) = R(0x22C0);
+    if (Z_PRESS == 0x20)
+        for (y = 0; y < 6; y++)
+        {
+            if (++ZP(0x30) == 6) ZP(0x30) = 0;
+            if (magic_try()) return;
+        }
+    else if (Z_PRESS == 0x80)
+        for (y = 0; y < 6; y++)
+        {
+            if ((s8)--ZP(0x30) < 0) ZP(0x30) = 5;
+            if (magic_try()) return;
+        }
+}
+
+/* until src/ss2_shots.c (bank 9 $D03D) is merged */
+__attribute__((weak)) void ss2_shots_update(void) { }
+
+/* $FEAE: the selected magic's preview while paused (bank 9 shot code) */
+static void magic_preview(void)
+{
+    if (R(0x22C0) == 4)
+    {
+        if (R(0x22E9)) ss2_shots_update();          /* $D03D */
+        else ss2_unported(0xD622);
+        return;
+    }
+    if (!R(0x22E9)) return;
+    ss2_unported(0xD702);
+    ss2_shots_update();                             /* $D03D */
+}
+
 /* $FDD9: pause on RUN while a game is running ($6C) */
 static void pause_check(void)
 {
@@ -337,12 +396,17 @@ static void pause_check(void)
     {
         ZP(0x6B) = Z_PRESS & 0x08;
         ss2_sfx(0x1A);
+        ss2_page[6] = ss2_banks[9];                 /* TAM #$40 = 9 */
+        ss2_mpr6 = 9;
         do
         {
             ss2_wait(1);
-            ss2_unported(0xFE0C);           /* magic selection while paused */
+            magic_select();
+            magic_preview();
         } while (!(Z_PRESS & 0x08));
         ss2_sfx(0x1A);
+        ss2_page[6] = ss2_banks[ZP(0x8E) & 0x1F];
+        ss2_mpr6 = ZP(0x8E);
     }
     ZP(0x6B) = 0;
     ZP(0x14) = 0x88;
@@ -359,7 +423,7 @@ static void main_task(void)
         {
             if (ZP(0x6A)) ss2_wait(ZP(0x6A));
             ss2_wait(1);
-            ss2_hud_dirty |= 4;             /* $FE5A weapon/magic box (presentation) */
+            ss2_weapon_box();               /* $FE5A */
             /* $EDB7 palette flash and $74 display switch: presentation */
         }
         ZP(0x14) = 0x88;                    /* $EDB0 */

@@ -24,6 +24,20 @@ extern const u8 ss2_bank8[0x2000];
 extern const u8 ss2_bank17[0x2000];
 extern const u8 ss2_bankF[0x2000];
 extern const u8 ss2_bank1F[0x2000];
+extern const u8 ss2_bank10[0x2000];
+extern const u8 ss2_bank11[0x2000];
+extern const u8 ss2_bank12[0x2000];
+extern const u8 ss2_bank13[0x2000];
+extern const u8 ss2_bank14[0x2000];
+extern const u8 ss2_bank15[0x2000];
+extern const u8 ss2_bank16[0x2000];
+extern const u8 ss2_bank18[0x2000];
+extern const u8 ss2_bank19[0x2000];
+extern const u8 ss2_bank1A[0x2000];
+extern const u8 ss2_bank1B[0x2000];
+extern const u8 ss2_bank1C[0x2000];
+extern const u8 ss2_bank1D[0x2000];
+extern const u8 ss2_bank1E[0x2000];
 
 extern u8 ss2_mpr6;                          /* bank mapped at $C000       */
 void ss2_map6(u8 bank);                      /* $BB83 (also sets $8E)      */
@@ -73,7 +87,7 @@ void ss2_main_restart(void);                 /* JMP $EDB0 from inside slot 0 */
 
 /* dialogue window and HUD icons (src/ss2_msgwin.c): map writes queued
  * for the renderer */
-enum { SS2_BAT_PUT, SS2_BAT_RESTORE, SS2_BAT_HUD };
+enum { SS2_BAT_PUT, SS2_BAT_RESTORE, SS2_BAT_HUD, SS2_BAT_HUDPUT };
 typedef struct { u8 kind, x, y; u16 w; } Ss2BatOp;   /* RESTORE: w = width<<8|rows */
 #define SS2_BATQ 512
 extern Ss2BatOp ss2_bat_queue[SS2_BATQ];
@@ -84,6 +98,9 @@ void ss2_msg_text(void);                     /* $69EE                     */
 void ss2_msg_close(void);                    /* $6C1F                     */
 void ss2_msg_continue(u16 addr, u8 y);       /* $6C12: JMP ($28) after a choice */
 void ss2_hud_text(u16 ptr);                  /* bank 4 $BADE              */
+void ss2_hud_put(u16 a, u16 w);              /* one HUD BAT word          */
+void ss2_weapon_box(void);                   /* bank 0 $FE5A              */
+void ss2_shots_update(void);                 /* bank 9 $D03D (ss2_shots.c) */
 u8   ss2_npc_continue(u16 addr, u8 y);       /* src/ss2_npc.c (1 = handled) */
 
 /* doors (src/ss2_door.c) */
@@ -94,6 +111,7 @@ void ss2_door(u8 x);                         /* $7DB5 item kind 1          */
 extern u16 ss2_vce[512];                     /* PCE colour RAM mirror      */
 extern u8 ss2_vce_dirty;
 extern u8 ss2_fade_bg, ss2_fade_sp;          /* brightness 0-7 last uploaded */
+extern u8 ss2_pal13_variant;                 /* door palette 13 variant, $FF none */
 void ss2_vce_reset(void);
 void ss2_fade_in(void);                      /* $71BA                      */
 void ss2_fade_out(void);                     /* $71D7                      */

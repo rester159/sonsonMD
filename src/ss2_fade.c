@@ -13,6 +13,7 @@
 u16 ss2_vce[512];
 u8 ss2_vce_dirty;
 u8 ss2_fade_bg = 7, ss2_fade_sp = 7;         /* last uploaded levels (renderer) */
+u8 ss2_pal13_variant = 0xFF;                  /* interior palette 13 ($493C+), $FF none */
 
 /* $7396: count bytes of colours from src, faded to level, into dst */
 static void fade_block(u16 src, u16 dst, u8 count, u8 level)
@@ -61,8 +62,8 @@ static void upload(u16 vce_base, u8 first)
 
 static void up_bg(void)       { upload(0x000, 0); }    /* $73FC */
 static void up_bg_stage(void) { upload(0x000, 5); }    /* $7445 */
-static void up_sp(void)       { upload(0x100, 0); }    /* $74EB */
-static void up_sp_stage(void) { upload(0x100, 1); }    /* $74FA */
+static void up_sp(void)       { upload(0x100, 0); ss2_pal13_variant = 0xFF; }  /* $74EB */
+static void up_sp_stage(void) { upload(0x100, 1); ss2_pal13_variant = 0xFF; }  /* $74FA */
 
 /* $71BA / $71D7: stage palettes in (levels 1-7) / out (6-0) */
 static void fade_stage_step(u8 l)
@@ -157,5 +158,6 @@ void ss2_vce_reset(void)
         ss2_vce[i] = (u16)(ss2_rom_byte(a) | ((ss2_rom_byte((u16)(a + 1)) & 1) << 8));
     }
     ss2_fade_bg = ss2_fade_sp = 7;
+    ss2_pal13_variant = 0xFF;
     ss2_vce_dirty = 1;
 }

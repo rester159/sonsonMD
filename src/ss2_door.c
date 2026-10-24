@@ -123,6 +123,7 @@ static void enter(u8 x)
             ZP(0x28) = (u8)l; ZP(0x29) = (u8)(l >> 8);
             ZP(0x30) = 0x10;
             sprite_pal13(l);
+            ss2_pal13_variant = (u8)((code >> 4) - 1);
         }
     }
     if (mus)

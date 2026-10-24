@@ -63,6 +63,28 @@ SonSon via the game chooser (`src/game_select.c`).
   entries `(ptr lo, ptr hi, attr hi)`).
 * Pad: `$16` held / `$20` pressed; bits L D R U Run Sel II I. Run+Select = reset.
 
+## Display additions (renderer, src/ss2_main.c)
+
+* **Dialogue window / HUD icons.** Logic queues map writes in
+  `ss2_bat_queue` (PUT at a world tile, RESTORE a rectangle from the map,
+  HUD icon table). Window cells (PCE BG tiles `$180+ch`, palette 1) go into
+  the plane A ring; glyph tiles are uploaded on demand into tiles
+  1440-1535 (SGDK's font slots, unused in SS2). Item-box icons (`$BADE`
+  tables `$4E07`-`$4EB3`) are resident after the sprite tiles.
+* **Plane B** shares plane A's map (`$E000`) and scroll, so it sits
+  invisibly behind it; its table area `$C000-$CFFF`, `$D800-$DFFF` (under
+  the H40 window) and `$F600-$FFFF` hold the run-time sprite cache. On exit
+  plane B returns to `$C000` (SGDK reloads its font there for SonSon) and
+  `$D800-$DFFF` is cleared.
+* **Run-time sprite cells.** Static tables cover the cells the stage's own
+  sprite sets load. Cells whose source (`ss2_cell_bank/src`) differs from
+  that default (interiors `$77A5`, `$77D0`, staff `$79F7`), and palette 13
+  after a door loads an interior palette (`ss2_pal13_variant`), are
+  converted on demand from the HuCard pattern through per-stage colour
+  maps (`spr_cmap`, `spr_cmap13`; nearest colours where a palette is not in
+  the stage fit) into 8-tile blocks (34, LRU, at most 4 conversions per
+  frame).
+
 ## Tasks (bank 0 $E1A5 scheduler) -- src/ss2_task.c
 
 Four slots in zp $00+4n: state (0 free, 1 waiting, 2 running, 4 ready, 8
@@ -119,6 +141,9 @@ runs after each link; keep load and store separate (empty asm barrier).
 | Doors `$7DB5` | stage-1 round trip 289/299 exact (rest: redraw in-progress bytes); on target: fade out, redraw, fade in. Locked-door message `$BADE` pending |
 | Fades `$71BA..$7297` | exact in door traces; target scales the Genesis palette by level |
 | Sound | driver PSG-exact; YM via Z80 list |
-| Message windows `$BADE`, shops, pause magic select `$FE0C` | pending |
+| Dialogue window `$6984`/`$69EE` (boss speech) | exact on stage 2/3 boss traces |
+| HUD item icons `$BADE`, key items (kinds 10-14, 17, 26-28), stand-on items (kind 2) | ported |
+| NPCs / shops (kind 29, bank 3 `$997F`) | in progress (agent) |
+| Pause magic select `$FE0C` | pending |
 | Stage init/clear, title, intro, death/continue, ending | pending (SS2 starts from per-stage RAM bootstrap) |
 | Cartridge | SELECT GAME -> SS2 -> START+A -> SELECT GAME -> SonSon ARCADE/HOME verified headless |

@@ -22,6 +22,7 @@
 #define BG_TILE      TILE_USER_INDEX
 static u16 HUD_TILE, PLAYER_TILE, SPR_TILE;
 static const Ss2StageGfx *gfx;
+static void cache_reset(void);
 
 #define HUD_ROWS     6
 #define VIEW_TOP     (HUD_ROWS * 8)
@@ -98,10 +99,126 @@ static void stream_view(void)
     while (drawn_ty > ty) { drawn_ty--; draw_row(drawn_ty, drawn_tx); }
 }
 
+/* plane B shares plane A's map (its own table area becomes sprite cache)
+ * and scrolls with it, so it sits exactly behind plane A */
 static void apply_scroll(void)
 {
     VDP_setHorizontalScroll(BG_A, (s16)-camx);
     VDP_setVerticalScroll(BG_A, (s16)(camy - VIEW_TOP));
+    VDP_setHorizontalScroll(BG_B, (s16)-camx);
+    VDP_setVerticalScroll(BG_B, (s16)(camy - VIEW_TOP));
+}
+
+/* ---- dialogue window and HUD icons (ss2_bat_queue) ---------------------
+ * Window cells are PCE BG tiles $180+ch (palette 1) placed at world-tile
+ * positions: they go into the plane A ring at (tx & 63, ty & 31); the
+ * camera holds still while a window is up. Glyph tiles are uploaded on
+ * demand into SGDK's font tiles (unused by this game). HUD icon tables
+ * ($BADE) go to the window plane; their tiles stay resident after the
+ * sprite tiles (ICON_TILE). SonSon gets SGDK's font back when plane B returns to $C000
+ * (SGDK reloads it whenever the lowest table address moves). */
+#define GLYPH_TILE   1440           /* SGDK's font tiles with planes at $C000 */
+#define GLYPH_SLOTS  96
+#define NGLYPH       0xC0           /* ss2_bat_keys[0..$BF] = $1180-$123F */
+static u16 ICON_TILE;
+static u8 glyph_slot[NGLYPH];       /* slot + 1, 0 = not loaded */
+static u8 glyph_next;
+
+static void glyphs_reset(void)
+{
+    memset(glyph_slot, 0, sizeof glyph_slot);
+    glyph_next = 0;
+}
+
+static u16 bat_key(u16 w)
+{
+    u16 i;
+    for (i = NGLYPH; i < SS2_BAT_NKEYS; i++)
+        if (ss2_bat_keys[i] == w) return i;
+    return 0xFFFF;
+}
+
+/* Genesis map word for a PCE BAT word (palette 1 glyphs or HUD icons) */
+static u16 bat_word(u16 w)
+{
+    u16 k;
+    if (w >= 0x1180 && w < 0x1180 + NGLYPH)
+    {
+        k = (u16)(w - 0x1180);
+        if (!glyph_slot[k])
+        {
+            if (glyph_next >= GLYPH_SLOTS) glyph_next = 0;     /* full: reuse */
+            glyph_slot[k] = (u8)(glyph_next + 1);
+            VDP_loadTileData(gfx->bat_tiles + k * 8, (u16)(GLYPH_TILE + glyph_next), 1, DMA_QUEUE);
+            glyph_next++;
+        }
+        return TILE_ATTR_FULL(gfx->bat_line[k], 1, 0, 0, GLYPH_TILE + glyph_slot[k] - 1);
+    }
+    k = bat_key(w);
+    if (k == 0xFFFF) return 0;
+    return TILE_ATTR_FULL(gfx->bat_line[k], 1, 0, 0, ICON_TILE + k - NGLYPH);
+}
+
+/* $BADE table: absolute BAT address, palette, characters, '/' row, '\' end;
+ * the HUD shows PCE BAT rows 1-6 as window rows 0-5 */
+static void hud_text(u16 ptr)
+{
+    u16 a = (u16)(ss2_rom_byte(ptr) | (ss2_rom_byte((u16)(ptr + 1)) << 8));
+    u16 hi = (u16)(ss2_rom_byte((u16)(ptr + 2)) >> 4);
+    u16 col = (u16)(a & 63), row = (u16)(a >> 6);
+    u8 c;
+    ptr = (u16)(ptr + 3);
+    while ((c = ss2_rom_byte(ptr++)) != 0x5C)
+    {
+        if (c == 0x2F) { row++; col = (u16)(a & 63); continue; }
+        if (row >= 1 && row <= HUD_ROWS && col < 32)
+            VDP_setTileMapXY(WINDOW, bat_word((u16)((hi << 12) | (0x180 + c))), col, (u16)(row - 1));
+        col++;
+    }
+}
+
+static struct { u16 a, ptr; } hud_last[16];   /* table shown per BAT address */
+
+static void bat_drain(void)
+{
+    while (ss2_bat_tail != ss2_bat_head)
+    {
+        const Ss2BatOp *o = &ss2_bat_queue[ss2_bat_tail & (SS2_BATQ - 1)];
+        ss2_bat_tail++;
+        if (o->kind == SS2_BAT_PUT)
+            VDP_setTileMapXY(BG_A, bat_word(o->w), (u16)(o->x & 63), (u16)(o->y & 31));
+        else if (o->kind == SS2_BAT_RESTORE)
+        {
+            u8 w = (u8)(o->w >> 8), h = (u8)o->w, i, j;
+            for (j = 0; j < h; j++)
+                for (i = 0; i < w; i++)
+                {
+                    u8 tx = (u8)(o->x + i), ty = (u8)(o->y + j);
+                    VDP_setTileMapXY(BG_A, world_tile(tx, ty), (u16)(tx & 63), (u16)(ty & 31));
+                }
+            if (w <= 6) glyphs_reset();          /* last close step: window gone */
+        }
+        else if (o->kind == SS2_BAT_HUDPUT)
+        {
+            if (o->y >= 1 && o->y <= HUD_ROWS && o->x < 32)
+                VDP_setTileMapXY(WINDOW, bat_word(o->w), o->x, (u16)(o->y - 1));
+        }
+        else
+        {
+            /* the weapon box redraws every frame: skip a table already
+             * showing at its BAT address */
+            u16 a = (u16)(ss2_rom_byte(o->w) | (ss2_rom_byte((u16)(o->w + 1)) << 8));
+            u8 i;
+            for (i = 0; i < 16 && hud_last[i].a && hud_last[i].a != a; i++) { }
+            if (i == 16) i = 15;
+            if (hud_last[i].a != a || hud_last[i].ptr != o->w)
+            {
+                hud_last[i].a = a;
+                hud_last[i].ptr = o->w;
+                hud_text(o->w);
+            }
+        }
+    }
 }
 
 /* ---- palette fades ($71BA etc.): the stage palette scaled per component
@@ -166,6 +283,8 @@ static void video_init(void)
     VDP_clearPlane(BG_A, TRUE);
     VDP_clearPlane(BG_B, TRUE);
     VDP_clearPlane(WINDOW, TRUE);
+    VDP_setBGBAddress(0xE000);                  /* plane B = plane A's map */
+    cache_reset();
     VDP_setBackgroundColor(0);
     VDP_resetSprites();
     VDP_updateSprites(1, CPU);
@@ -179,6 +298,11 @@ static void video_init(void)
     VDP_loadTileData(gfx->bg_tiles, BG_TILE, gfx->bg_ntiles, CPU);
     VDP_loadTileData(gfx->hud_tiles, HUD_TILE, gfx->hud_ntiles, CPU);
     VDP_loadTileData(gfx->spr_tiles, SPR_TILE, gfx->spr_ntiles, CPU);
+    ICON_TILE = (u16)(SPR_TILE + gfx->spr_ntiles);
+    VDP_loadTileData(gfx->bat_tiles + NGLYPH * 8, ICON_TILE, SS2_BAT_NKEYS - NGLYPH, CPU);
+    glyphs_reset();
+    memset(hud_last, 0, sizeof hud_last);
+    ss2_bat_head = ss2_bat_tail = 0;
     VDP_setTileMapDataRectEx(WINDOW, gfx->hud_map, HUD_TILE, 0, 0, 32, HUD_ROWS, 32, CPU);
     VDP_setWindowOnTop(HUD_ROWS);
     VDP_setEnable(TRUE);
@@ -188,6 +312,9 @@ static void video_shutdown(void)
 {
     VDP_setEnable(FALSE);
     VDP_setWindowOff();
+    VDP_setBGBAddress(0xC000);                  /* SGDK reloads its font for SonSon */
+    VDP_clearPlane(BG_B, TRUE);
+    DMA_doVRamFill(0xD800, 0x800, 0, 1);        /* sprite cache blocks under the H40 window */
     VDP_clearPlane(BG_A, TRUE);
     VDP_clearPlane(WINDOW, TRUE);
     VDP_resetSprites();
@@ -225,16 +352,119 @@ static void player_sprite(s16 x, s16 y, u16 attr)
     put_sprite(x, y, SPRITE_SIZE(4, 4), TILE_ATTR_FULL(gfx->player_pal, 1, 0, (attr & 0x0800) ? 1 : 0, PLAYER_TILE));
 }
 
+/* ---- run-time sprite cells -------------------------------------------
+ * The static tables (gfx->spr_lut) hold the cells the stage's own sprite
+ * sets put in VRAM. Cells reloaded later (interiors $77A5, $77D0, the staff
+ * $79F7) and palette 13 after a door's interior palette are converted on
+ * demand from the HuCard pattern (ss2_cell_bank/src): a cell pair for one
+ * palette -> 8 tiles (two 16x16 cells, column-major like the static ones)
+ * in 8-tile blocks freed by plane B sharing plane A's map. */
+static u8 def_bank[0x200];
+static u16 def_src[0x200];
+
+typedef struct { u8 b0, b1, key; u8 used; u16 s0, s1, pair, tile, last; } CacheEnt;
+static const u16 cache_base[] = {
+    1536, 1544, 1552, 1560, 1568, 1576, 1584, 1592,          /* $C000-$CFFF */
+    1600, 1608, 1616, 1624, 1632, 1640, 1648, 1656,
+    1728, 1736, 1744, 1752, 1760, 1768, 1776, 1784,          /* $D800-$DFFF */
+    1968, 1976, 1984, 1992, 2000, 2008, 2016, 2024, 2032, 2040 };  /* $F600- */
+#define NCACHE (sizeof cache_base / sizeof cache_base[0])
+static CacheEnt cache[NCACHE];
+static u16 cache_clock;
+static u8 conv_n;
+static u32 conv_buf[4][64];
+
+static void cache_reset(void)
+{
+    memset(cache, 0, sizeof cache);
+}
+
+/* one 16x16 PCE cell (3 planes + zero plane, rows of 16 px) -> 4 Genesis
+ * tiles TL BL TR BR through colour map cm */
+static void conv_cell(u8 bank, u16 src, const u8 *cm, u32 *out)
+{
+    const u8 *p = ss2_banks[bank & 0x1F] + (src & 0x1FFF);
+    u8 r, x;
+    if ((src & 0x1FFF) > 0x2000 - 0x60) { memset(out, 0, 32 * 4); return; }
+    for (r = 0; r < 16; r++)
+    {
+        u16 w0 = (u16)(p[r * 2] | (p[r * 2 + 1] << 8));
+        u16 w1 = (u16)(p[32 + r * 2] | (p[33 + r * 2] << 8));
+        u16 w2 = (u16)(p[64 + r * 2] | (p[65 + r * 2] << 8));
+        u32 lo = 0, hi = 0;
+        for (x = 0; x < 16; x++)
+        {
+            u8 b = (u8)(15 - x);
+            u8 c = (u8)(((w0 >> b) & 1) | (((w1 >> b) & 1) << 1) | (((w2 >> b) & 1) << 2));
+            u32 v = c ? (u32)(cm[c] & 15) : 0;
+            if (x < 8) lo = (lo << 4) | v; else hi = (hi << 4) | v;
+        }
+        out[(r >> 3) * 8 + (r & 7)] = lo;           /* TL / BL */
+        out[16 + (r >> 3) * 8 + (r & 7)] = hi;      /* TR / BR */
+    }
+}
+
+/* tile of a dirty cell pair for palette key (0-15, 16+v = palette 13
+ * interior variant v), 0 when it cannot be made this frame */
+static u16 cache_tile(u16 c, u8 key, u8 *line)
+{
+    const u8 *cm = key >= 16 ? gfx->spr_cmap13 + (key - 16) * 8 : gfx->spr_cmap + key * 8;
+    u8 b0 = ss2_cell_bank[c], b1 = ss2_cell_bank[c + 1];
+    u16 s0 = ss2_cell_src[c], s1 = ss2_cell_src[c + 1];
+    u8 i, victim = 0xFF;
+    u16 age = 0;
+    *line = (u8)(2 + (cm[1] >> 7));
+    for (i = 0; i < NCACHE; i++)
+    {
+        CacheEnt *e = &cache[i];
+        if (!e->used)
+        {
+            if (victim == 0xFF || cache[victim].used) victim = i;   /* prefer a free block */
+            continue;
+        }
+        if (e->pair == c && e->key == key && e->b0 == b0 && e->b1 == b1 && e->s0 == s0 && e->s1 == s1)
+        {
+            e->last = cache_clock;
+            return e->tile;
+        }
+        if (e->last != cache_clock && (victim == 0xFF || (cache[victim].used && (u16)(cache_clock - e->last) > age)))
+        {
+            victim = i;
+            age = (u16)(cache_clock - e->last);
+        }
+    }
+    if (victim == 0xFF || conv_n >= 4) return 0;
+    conv_cell(b0, s0, cm, conv_buf[conv_n]);
+    conv_cell(b1, s1, cm, conv_buf[conv_n] + 32);
+    {
+        CacheEnt *e = &cache[victim];
+        e->used = 1; e->pair = c; e->key = key; e->b0 = b0; e->b1 = b1; e->s0 = s0; e->s1 = s1;
+        e->tile = cache_base[victim];
+        e->last = cache_clock;
+        VDP_loadTileData(conv_buf[conv_n], e->tile, 8, DMA_QUEUE);
+        conv_n++;
+        return e->tile;
+    }
+}
+
+static u8 cell_dirty(u16 c)
+{
+    return (u8)(ss2_cell_bank[c] != def_bank[c] || ss2_cell_src[c] != def_src[c]
+             || ss2_cell_bank[c + 1] != def_bank[c + 1] || ss2_cell_src[c + 1] != def_src[c + 1]);
+}
+
 static void draw_sprites(void)
 {
     u8 i, r;
     nspr = 0;
+    cache_clock++;
+    conv_n = 0;
     for (i = 0; i < 64; i++)
     {
         const u16 *e = &ss2_sat[i * 4];
         s16 sx, sy;
         u16 attr = e[3], cell = (u16)((e[2] >> 1) & 0x3FF);
-        u8 cw, ch, pal, line;
+        u8 cw, ch, pal, line, key;
         if (!(e[0] & 0x3FF)) continue;
         sx = (s16)((e[1] & 0x3FF) - 32);
         sy = (s16)((e[0] & 0x3FF) - 64 - 8);
@@ -250,13 +480,23 @@ static void draw_sprites(void)
             continue;
         }
         pal = (u8)(attr & 15);
-        line = gfx->spr_line[pal];
+        key = (pal == 13 && ss2_pal13_variant < 8) ? (u8)(16 + ss2_pal13_variant) : pal;
         for (r = 0; r < ch; r++)
         {
-            u16 c = (u16)(cell + r * 2), t = gfx->spr_lut[pal * 256 + (c >> 1)];
+            u16 c = (u16)(cell + r * 2), t;
             s16 y;
-            if (!t || line > 3) { ss2_sprite_misses++; continue; }
-            t = (u16)(SPR_TILE + t - 1);
+            if (key >= 16 || cell_dirty((u16)(c & 0x1FE)))
+            {
+                t = cache_tile((u16)(c & 0x1FE), key, &line);
+                if (!t) { ss2_sprite_misses++; continue; }
+            }
+            else
+            {
+                line = gfx->spr_line[pal];
+                t = gfx->spr_lut[pal * 256 + (c >> 1)];
+                if (!t || line > 3) { ss2_sprite_misses++; continue; }
+                t = (u16)(SPR_TILE + t - 1);
+            }
             y = (s16)(sy + ((attr & 0x8000) ? (ch - 1 - r) : r) * 16);
             if (cw == 2)
                 put_sprite(sx, y, SPRITE_SIZE(4, 2), TILE_ATTR_FULL(line, 1, (attr & 0x8000) ? 1 : 0, (attr & 0x0800) ? 1 : 0, t));
@@ -405,9 +645,32 @@ static void prof_end(u32 t0, u16 v0)
 }
 #endif
 
+/* GCC 16 compiles a plain copy loop (and the inlined LTO memcpy) into
+ * move.b (a0)+,(0,a0,d1.l), which stores one byte too high on the 68000
+ * (tools/check_autoinc_hazard.py). The empty asm keeps load and store as
+ * separate instructions. */
+static void load_bootstrap(void)
+{
+    const u32 *src = (const u32 *) gfx->ram;
+    u32 *dst = (u32 *) ss2_ram;
+    u16 i;
+    for (i = 0; i < 0x2000 / 4; i++)
+    {
+        u32 v = src[i];
+        __asm__ volatile ("" : "+d" (v));
+        dst[i] = v;
+    }
+    ss2_mpr6 = 9;
+    ss2_page[6] = ss2_banks[9];
+}
+
 void ss2_run(void)
 {
+#ifdef SS2_DBG_STAGE
+    ss2_run_stage(SS2_DBG_STAGE);           /* diagnostic builds */
+#else
     ss2_run_stage(0);
+#endif
 }
 
 /* Start stage k (0-6) from its bootstrap state */
@@ -415,23 +678,18 @@ void ss2_run_stage(u8 k)
 {
     u16 pad;
 
-    /* GCC 16 compiles a plain copy loop (and the inlined LTO memcpy) into
-     * move.b (a0)+,(0,a0,d1.l), which stores one byte too high on the 68000
-     * (tools/check_autoinc_hazard.py). The empty asm keeps load and store as
-     * separate instructions. */
-    {
-        const u32 *src;
-        gfx = &ss2_stage_gfx[k];
-        src = (const u32 *) gfx->ram;
-        u32 *dst = (u32 *) ss2_ram;
-        u16 i;
-        for (i = 0; i < 0x2000 / 4; i++)
-        {
-            u32 v = src[i];
-            __asm__ volatile ("" : "+d" (v));
-            dst[i] = v;
-        }
-    }
+    gfx = &ss2_stage_gfx[k];
+    load_bootstrap();
+    /* the stage's own sprite sets ($774F) and staff ($79F7) give the cells
+     * the static sprite tables were made from; replayed on a scratch copy
+     * of the bootstrap RAM, which is then reloaded */
+    memset(ss2_cell_bank, 0, sizeof ss2_cell_bank);
+    memset(ss2_cell_src, 0, sizeof ss2_cell_src);
+    ss2_sprset_stage();
+    ss2_staff_art();
+    memcpy(def_bank, ss2_cell_bank, sizeof def_bank);
+    memcpy(def_src, ss2_cell_src, sizeof def_src);
+    load_bootstrap();
 #ifdef SS2_DBG_WX
     /* diagnostic builds (-D SS2_DBG_WX=.. -D SS2_DBG_WY=..): start with the
      * player at a world position, objects cleared (capture_vbl.py's
@@ -449,6 +707,9 @@ void ss2_run_stage(u8 k)
         for (s = 0; s < 0x20; s++) O(0x245A, s) = 0;
         s = 0;
         do { if (R(0x2B5A + s) != 0xFF) R(0x2B5A + s) = 0; } while (++s);
+#ifdef SS2_DBG_LOCK7F
+        ZP(0x7F) = 1;                       /* boss-room lock (boss door) */
+#endif
     }
 #endif
     ss2_mpr6 = 9;
@@ -504,6 +765,7 @@ void ss2_run_stage(u8 k)
         camera_from_state();
         if (ss2_redraw_request) { ss2_redraw_request = 0; redraw_view(); }   /* $EBE1 */
         else stream_view();
+        bat_drain();
         apply_scroll();
         apply_fade();
         draw_sprites();
