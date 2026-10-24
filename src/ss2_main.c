@@ -379,6 +379,7 @@ void ss2_run_stage(u8 k)
     ss2_mpr6 = 9;
     ss2_page[6] = ss2_banks[9];
     shown_frame = 0xFF;
+    ss2_game_start();
     snd_shutdown();
     ss2_sound_init();
     ss2_sound_request(SS2_SND_MUS_STAGE(Z_STAGE));
@@ -424,7 +425,7 @@ void ss2_run_stage(u8 k)
         PROF(0);
         sound_irq();
         PROF(0);
-        ss2_game_tick();
+        ss2_game_frame();
         camera_from_state();
         stream_view();
         apply_scroll();

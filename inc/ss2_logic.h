@@ -66,7 +66,9 @@ extern u16 ss2_sat[64 * 4];                  /* PCE SATB layout            */
 extern u8 ss2_hud_dirty;                     /* bit0 score, bit1 money     */
 extern u8 ss2_hud_life[2], ss2_hud_magic[2]; /* bar shown/max this frame   */
 void ss2_game_vblank(u8 pad);                /* pad in PCE $16 layout      */
-void ss2_game_tick(void);
+void ss2_game_start(void);                   /* create the gameplay tasks  */
+void ss2_game_frame(void);                   /* run tasks + sprite table   */
+void ss2_game_tick(void);                    /* host replay: one pass      */
 
 /* objects (src/ss2_objects.c) */
 void ss2_objects_update(void);               /* $ED0D loop over 32 slots   */

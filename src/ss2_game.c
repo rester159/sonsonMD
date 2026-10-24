@@ -11,6 +11,7 @@
  */
 #include "ss2_ram.h"
 #include "ss2_logic.h"
+#include "ss2_task.h"
 
 
 /* sprite table in the PCE SATB word layout: y, x, pattern, attribute */
@@ -290,11 +291,12 @@ static void score_task(void)
     }
 }
 
-/* VBlank IRQ part */
+/* VBlank IRQ part ($E119-$E11E) */
 void ss2_game_vblank(u8 pad)
 {
     read_pad(pad);
     Z_FRAME++;
+    ZP(0x14) = 0;
 }
 
 #ifdef SS2_PROF
@@ -304,7 +306,8 @@ void ss2_prof_mark(u8 sec);
 #define PROF(n)
 #endif
 
-void ss2_game_tick(void)
+/* $EC42-$EDA2: one pass of the main loop body (player .. respawn/HUD) */
+static void main_body(void)
 {
     u8 i;
     /* task 1 */
@@ -325,7 +328,87 @@ void ss2_game_tick(void)
         for (i = 0x20; i < 0xBF; i++)
             if (R(0x2C1A + i) && R(0x2C1A + i) != 0xFF) R(0x2C1A + i)--;
     hud_bars();
-    /* task 3 */
+}
+
+/* $FDD9: pause on RUN while a game is running ($6C) */
+static void pause_check(void)
+{
+    if (ZP(0x6C) && (Z_PRESS & 0x08))
+    {
+        ZP(0x6B) = Z_PRESS & 0x08;
+        ss2_sfx(0x1A);
+        do
+        {
+            ss2_wait(1);
+            ss2_unported(0xFE0C);           /* magic selection while paused */
+        } while (!(Z_PRESS & 0x08));
+        ss2_sfx(0x1A);
+    }
+    ZP(0x6B) = 0;
+    ZP(0x14) = 0x88;
+}
+
+/* slot 0, $EC3B: the main game loop */
+static void main_task(void)
+{
+    for (;;)
+    {
+        pause_check();
+        main_body();
+        if (ZP(0x14))                       /* $ED8C: no VBlank yet this pass */
+        {
+            if (ZP(0x6A)) ss2_wait(ZP(0x6A));
+            ss2_wait(1);
+            ss2_hud_dirty |= 4;             /* $FE5A weapon/magic box (presentation) */
+            /* $EDB7 palette flash and $74 display switch: presentation */
+        }
+        ZP(0x14) = 0x88;                    /* $EDB0 */
+    }
+}
+
+/* slot 1, $E2A6: title RUN handler, idle during play */
+static void listener_task(void)
+{
+    for (;;)
+    {
+        if (ZP(0x6D) && (Z_PRESS & 0x03)) ss2_unported(0xE2B5);
+        ss2_wait(1);
+    }
+}
+
+/* slot 3, $FD05: score task */
+static void score_task_loop(void)
+{
+    for (;;)
+    {
+        score_task();
+        ss2_wait(1);
+    }
+}
+
+/* Start the gameplay tasks as they run during a stage. */
+void ss2_game_start(void)
+{
+    u8 i;
+    for (i = 0; i < 16; i++) ZP(i) = 0;
+    ss2_task_create(0, main_task);
+    ss2_task_create(1, listener_task);
+    ss2_task_create(3, score_task_loop);
+}
+
+/* One frame of game logic after the VBlank part: run the ready tasks. */
+void ss2_game_frame(void)
+{
+    ss2_sched_vblank();
+    ss2_sched_run();
+    build_sat();
+}
+
+/* Host replay: one main-loop pass plus the score task, as one frame does
+ * when nothing blocks (the frame-pair traces start at $EC42). */
+void ss2_game_tick(void)
+{
+    main_body();
     score_task();
     build_sat();
 }

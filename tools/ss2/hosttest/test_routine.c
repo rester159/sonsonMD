@@ -20,6 +20,9 @@ static unsigned char irq_mask[0x2000];
 static int masked(unsigned a)
 {
     if (irq_mask[a]) return 1;
+    /* coroutine mode: the task table's resume data and the current-slot
+     * byte are scheduler internals with a native representation */
+    if (getenv("SS2_CONTINUOUS") && (a < 0x10 || a == 0x15)) return 1;
     if (a >= 0x26 && a <= 0x3F) return 1;
     if (a >= 0x100 && a <= 0x1FF) return 1;   /* hardware stack page */
     return 0;
@@ -43,7 +46,10 @@ int main(int argc, char **argv)
         unsigned short fr;
         unsigned a, diffs = 0;
         if (fread(&fr, 2, 1, f) != 1 || fread(pre, 1, 0x2000, f) != 0x2000 || fread(post, 1, 0x2000, f) != 0x2000) return 3;
-        memcpy(ss2_ram, pre, 0x2000);
+        /* SS2_CONTINUOUS: load only the first frame, then carry native
+         * state; interrupt-owned bytes (except the task table) are synced
+         * from the trace after each comparison */
+        if (!getenv("SS2_CONTINUOUS") || i == 0) memcpy(ss2_ram, pre, 0x2000);
         ss2_expected_pad = post[0x16];
         ss2_unported_count = 0;
         ROUTINE();
@@ -62,6 +68,9 @@ int main(int argc, char **argv)
                 diffs++;
             }
         if (diffs) bad_frames++;
+        if (getenv("SS2_CONTINUOUS"))
+            for (a = 0x10; a < 0x2000; a++)
+                if (irq_mask[a] || (a >= 0x100 && a <= 0x1FF)) ss2_ram[a] = post[a];
     }
     printf("%u pairs: %u exact, %u differ, %u reached unported code\n", n, n - bad_frames - unported_frames, bad_frames, unported_frames);
     return bad_frames ? 1 : 0;
