@@ -8,22 +8,23 @@
  * ARCADE / HOME choice, the prompt, and the EXACT credit string), rendered with
  * SGDK's font on a text plane. No old-port engine state.
  *
- * Layout (H40 / 40-col text grid, owner-approved cover-art proposal):
+ * Layout (H40 / 40-col text grid, owner-approved logo layout):
  *   rows  1- 2   SONSON title banner
- *   rows  4-22   two cover images, IDENTICAL 16x19 tiles (128x152 px), on BG_B:
- *                ARCADE = arcade flyer at cols 3-18, HOME = PC Engine box at
- *                cols 21-36 (selector_art.c, baked by tools/gen_selector_art.py)
- *   row  24      ARCADE / HOME labels under each cover (selected = red + a red
- *                frame round its cover, else white)
+ *   rows  7-16   two logos, IDENTICAL 18x10 tiles (144x80 px), on BG_B:
+ *                ARCADE = the arcade flyer's SONSON logo at cols 1-18, HOME =
+ *                the PC Engine box's SON SON II logo at cols 21-38
+ *                (selector_art.c, baked by tools/gen_selector_art.py)
+ *   row  18      ARCADE / HOME labels under each logo (selected = red + a red
+ *                frame round its logo, else white)
  *   row  26      PRESS ANY BUTTON TO SELECT   (yellow)
  *   row  27      PORTED BY RESTER 159, 2026   (white)  <- exact shipped string
  *
- * Palettes: PAL0 = ARCADE cover, PAL1 = HOME cover (15 Genesis colours each,
+ * Palettes: PAL0 = ARCADE logo, PAL1 = HOME logo (15 Genesis colours each,
  * index 15 forced white so white text draws with PAL0), PAL2 = red text +
  * frame, PAL3 = yellow text.
  *
  * Behaviour (matches home.c::mode_selector): Up/Down (or Left/Right) moves the
- * highlight (wraps between the 2 covers), any button (A/B/C/Start) confirms; edge-triggered
+ * highlight (wraps between the 2 logos), any button (A/B/C/Start) confirms; edge-triggered
  * with the 3-read debounce + 20-frame settle that kill the SGDK 6-button
  * TH-detect phantom presses at power-on (both pads forced to 3-button mode).
  * Engine-off frame loop: wait a VBlank (vtimer ticks in SGDK's V-Int), update
@@ -37,7 +38,7 @@
 
 /* Text colours are picked by switching VDP_setTextPalette() before each draw.
  * Index 0 transparent (the black backdrop shows through); the font draws in
- * index 15. White shares the ARCADE cover's line (its index 15 is white). */
+ * index 15. White shares the ARCADE logo's line (its index 15 is white). */
 #define PAL_ARCADE  PAL0
 #define PAL_HOME    PAL1
 #define PAL_WHITE   PAL0
@@ -49,9 +50,9 @@
 #define CREDIT_STR  "PORTED BY RESTER 159, 2026"
 
 #define COLS        40   /* H40 text grid width */
-#define ROW_COVER   4    /* cover top row (19 rows tall)          */
-#define ROW_LABEL   24
-#define COL_ARCADE  3    /* cover left columns (16 cols wide)     */
+#define ROW_LOGO    7    /* logo top row (10 rows tall)           */
+#define ROW_LABEL   18
+#define COL_ARCADE  1    /* logo left columns (18 cols wide)      */
 #define COL_HOME    21
 
 /* VRAM: ARCADE tiles, then HOME tiles, then the 8 frame tiles. */
@@ -59,7 +60,7 @@
 #define VRAM_HOME   (VRAM_ARCADE + SELECTOR_ART_ARCADE_TILE_COUNT)
 #define VRAM_FRAME  (VRAM_HOME + SELECTOR_ART_HOME_TILE_COUNT)
 
-/* Selection frame: a 2px red line (colour 15) with a 1px gap round the cover,
+/* Selection frame: a 2px red line (colour 15) with a 1px gap round the logo,
  * drawn in the ring of cells just outside it. Order: TL T TR L R BL B BR. */
 #define FL 0x00000FF0   /* left line   (px 5-6) */
 #define FR 0x0FF00000   /* right line  (px 1-2) */
@@ -101,34 +102,34 @@ static void draw_center(u16 row, const char *s, u16 palLine)
     draw_at(row, COLS, s, palLine);
 }
 
-/* ---- one cover image on BG_B at (col, ROW_COVER). */
-static void draw_cover(const u16 *map, u16 vram, u16 pal, u16 col)
+/* ---- one logo image on BG_B at (col, ROW_LOGO). */
+static void draw_logo(const u16 *map, u16 vram, u16 pal, u16 col)
 {
     u16 x, y;
     for (y = 0; y < SELECTOR_ART_TH; y++)
         for (x = 0; x < SELECTOR_ART_TW; x++)
             VDP_setTileMapXY(BG_B,
                 TILE_ATTR_FULL(pal, 0, 0, 0, vram + map[y * SELECTOR_ART_TW + x]),
-                col + x, ROW_COVER + y);
+                col + x, ROW_LOGO + y);
 }
 
-/* ---- load + draw both covers (same size, side by side). */
-static void draw_covers(void)
+/* ---- load + draw both logos (same size, side by side). */
+static void draw_logos(void)
 {
     PAL_setColors(PAL_ARCADE * 16, selector_art_arcade_pal, 16, CPU);
     PAL_setColors(PAL_HOME   * 16, selector_art_home_pal,   16, CPU);
     VDP_loadTileData(selector_art_arcade_tiles, VRAM_ARCADE, SELECTOR_ART_ARCADE_TILE_COUNT, DMA);
     VDP_loadTileData(selector_art_home_tiles,   VRAM_HOME,   SELECTOR_ART_HOME_TILE_COUNT,   DMA);
     VDP_loadTileData(frame_tiles, VRAM_FRAME, 8, DMA);
-    draw_cover(selector_art_arcade_map, VRAM_ARCADE, PAL_ARCADE, COL_ARCADE);
-    draw_cover(selector_art_home_map,   VRAM_HOME,   PAL_HOME,   COL_HOME);
+    draw_logo(selector_art_arcade_map, VRAM_ARCADE, PAL_ARCADE, COL_ARCADE);
+    draw_logo(selector_art_home_map,   VRAM_HOME,   PAL_HOME,   COL_HOME);
 }
 
-/* ---- the red selection frame round the cover at col (or clear it). */
+/* ---- the red selection frame round the logo at col (or clear it). */
 static void draw_frame(u16 col, bool on)
 {
     const u16 x0 = col - 1, x1 = col + SELECTOR_ART_TW;
-    const u16 y0 = ROW_COVER - 1, y1 = ROW_COVER + SELECTOR_ART_TH;
+    const u16 y0 = ROW_LOGO - 1, y1 = ROW_LOGO + SELECTOR_ART_TH;
     u16 i;
 #define FT(n) (on ? TILE_ATTR_FULL(PAL_RED, 0, 0, 0, VRAM_FRAME + (n)) : 0)
     VDP_setTileMapXY(BG_A, FT(0), x0, y0);
@@ -140,7 +141,7 @@ static void draw_frame(u16 col, bool on)
         VDP_setTileMapXY(BG_A, FT(1), i, y0);
         VDP_setTileMapXY(BG_A, FT(6), i, y1);
     }
-    for (i = ROW_COVER; i < y1; i++)
+    for (i = ROW_LOGO; i < y1; i++)
     {
         VDP_setTileMapXY(BG_A, FT(3), x0, i);
         VDP_setTileMapXY(BG_A, FT(4), x1, i);
@@ -155,7 +156,7 @@ static void draw_frame(u16 col, bool on)
  * faithful-enough SGDK-font recreation the directive allows. */
 static void draw_title(void)
 {
-    /* white = the covers' index 15 (PAL0 is the ARCADE cover line) */
+    /* white = the logos' index 15 (PAL0 is the ARCADE logo line) */
     set_font_pal(PAL_RED,    0x000E);   /* red           */
     set_font_pal(PAL_YELLOW, 0x00EE);   /* yellow        */
 
@@ -226,7 +227,7 @@ u8 selector_run(void)
     VDP_setHorizontalScroll(BG_B, 0);
     VDP_setVerticalScroll(BG_B, 0);
 
-    draw_covers();
+    draw_logos();
     draw_title();
     draw_center(26, "PRESS ANY BUTTON TO SELECT", PAL_YELLOW);
     draw_center(27, CREDIT_STR, PAL_WHITE);
@@ -242,14 +243,14 @@ u8 selector_run(void)
 
         if (pressed & (BUTTON_UP | BUTTON_DOWN | BUTTON_LEFT | BUTTON_RIGHT))
         {
-            sel ^= 1;               /* two covers -> toggle (wraps)           */
+            sel ^= 1;               /* two logos -> toggle (wraps)            */
             draw_choices(sel);
         }
         if (pressed & (BUTTON_A | BUTTON_B | BUTTON_C | BUTTON_START))
             break;
     }
 
-    /* Clear our screen so game_init starts from black (the cover palettes
+    /* Clear our screen so game_init starts from black (the logo palettes
      * too -- the next screen sets its own lines). */
     VDP_clearPlane(BG_A, TRUE);
     VDP_clearPlane(BG_B, TRUE);
