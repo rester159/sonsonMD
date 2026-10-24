@@ -104,6 +104,59 @@ static void apply_scroll(void)
     VDP_setVerticalScroll(BG_A, (s16)(camy - VIEW_TOP));
 }
 
+/* ---- palette fades ($71BA etc.): the stage palette scaled per component
+ * through the game's level table $75FA. Lines 0-1 (stage BG) follow the
+ * BG level; lines 2-3 follow the sprite level except entries the HUD
+ * uses, which the PCE never fades (its HUD palettes are outside the
+ * faded ranges). */
+static u16 hud_keep[2];
+static u8 shown_bg, shown_sp;
+static u16 fade_pal[64];
+
+static void hud_mark(u16 w)
+{
+    const u32 *t = gfx->hud_tiles + (w & 0x7FF) * 8;
+    u8 line = (u8)((w >> 13) & 3), r, x;
+    if (line < 2) return;
+    for (r = 0; r < 8; r++)
+        for (x = 0; x < 8; x++)
+            hud_keep[line - 2] |= (u16)(1 << ((t[r] >> (x * 4)) & 15));
+}
+
+static void hud_colours(void)
+{
+    u16 i;
+    hud_keep[0] = hud_keep[1] = 0;
+    for (i = 0; i < 32 * HUD_ROWS; i++) hud_mark(gfx->hud_map[i]);
+    for (i = 0; i < 10; i++) hud_mark(gfx->hud_digit[i]);
+    for (i = 0; i < 64; i++) hud_mark(gfx->hud_bar[i]);
+}
+
+static u16 fade_colour(u16 w, u8 l)
+{
+    u8 b = (u8)((w >> 9) & 7), g = (u8)((w >> 5) & 7), r = (u8)((w >> 1) & 7);
+    b = ss2_rom_byte((u16)(0x75FA + (l << 3) + b));
+    g = ss2_rom_byte((u16)(0x75FA + (l << 3) + g));
+    r = ss2_rom_byte((u16)(0x75FA + (l << 3) + r));
+    return (u16)((b << 9) | (g << 5) | (r << 1));
+}
+
+static void apply_fade(void)
+{
+    u8 i;
+    if (ss2_fade_bg == shown_bg && ss2_fade_sp == shown_sp) return;
+    shown_bg = ss2_fade_bg;
+    shown_sp = ss2_fade_sp;
+    for (i = 0; i < 64; i++)
+    {
+        u16 w = gfx->palette[i];
+        if (i < 32) w = fade_colour(w, shown_bg);
+        else if (!(hud_keep[(i >> 4) - 2] & (1 << (i & 15)))) w = fade_colour(w, shown_sp);
+        fade_pal[i] = w;
+    }
+    PAL_setColors(0, fade_pal, 64, DMA_QUEUE);
+}
+
 static void video_init(void)
 {
     VDP_setEnable(FALSE);
@@ -120,6 +173,9 @@ static void video_init(void)
     PLAYER_TILE = (u16)(HUD_TILE + gfx->hud_ntiles);
     SPR_TILE = (u16)(PLAYER_TILE + 16);
     PAL_setColors(0, gfx->palette, 64, CPU);
+    hud_colours();
+    shown_bg = shown_sp = 7;
+    ss2_fade_bg = ss2_fade_sp = 7;
     VDP_loadTileData(gfx->bg_tiles, BG_TILE, gfx->bg_ntiles, CPU);
     VDP_loadTileData(gfx->hud_tiles, HUD_TILE, gfx->hud_ntiles, CPU);
     VDP_loadTileData(gfx->spr_tiles, SPR_TILE, gfx->spr_ntiles, CPU);
@@ -376,6 +432,25 @@ void ss2_run_stage(u8 k)
             dst[i] = v;
         }
     }
+#ifdef SS2_DBG_WX
+    /* diagnostic builds (-D SS2_DBG_WX=.. -D SS2_DBG_WY=..): start with the
+     * player at a world position, objects cleared (capture_vbl.py's
+     * research injection) */
+    {
+        u16 cx = (u16)((SS2_DBG_WX - 0x70) & 0x7FF), cy = (u16)((SS2_DBG_WY - 0x80) & 0x7FF);
+        u8 b, s;
+        for (b = 0x45; b <= 0x4B; b = (u8)(b + 6))
+        {
+            ZP(b) = (u8)(cx >> 8); ZP(b + 1) = (u8)cx; ZP(b + 2) = 0;
+            ZP(b + 3) = (u8)(cy >> 8); ZP(b + 4) = (u8)cy; ZP(b + 5) = 0;
+        }
+        R(0x2298) = 0; R(0x2299) = 0x70; R(0x229A) = 0;
+        R(0x229B) = 0; R(0x229C) = 0x80; R(0x229D) = 0;
+        for (s = 0; s < 0x20; s++) O(0x245A, s) = 0;
+        s = 0;
+        do { if (R(0x2B5A + s) != 0xFF) R(0x2B5A + s) = 0; } while (++s);
+    }
+#endif
     ss2_mpr6 = 9;
     ss2_page[6] = ss2_banks[9];
     shown_frame = 0xFF;
@@ -427,8 +502,10 @@ void ss2_run_stage(u8 k)
         PROF(0);
         ss2_game_frame();
         camera_from_state();
-        stream_view();
+        if (ss2_redraw_request) { ss2_redraw_request = 0; redraw_view(); }   /* $EBE1 */
+        else stream_view();
         apply_scroll();
+        apply_fade();
         draw_sprites();
         draw_hud(0);
         PROF(7);

@@ -12,6 +12,7 @@
 
 u16 ss2_vce[512];
 u8 ss2_vce_dirty;
+u8 ss2_fade_bg = 7, ss2_fade_sp = 7;         /* last uploaded levels (renderer) */
 
 /* $7396: count bytes of colours from src, faded to level, into dst */
 static void fade_block(u16 src, u16 dst, u8 count, u8 level)
@@ -69,10 +70,12 @@ static void fade_stage_step(u8 l)
     f7308(l);
     ss2_wait(2);
     up_bg_stage();
+    ss2_fade_bg = l;
     f7350(l);
     f7366(l);
     ss2_wait(1);
     up_sp_stage();
+    ss2_fade_sp = l;
 }
 
 void ss2_fade_in(void)
@@ -94,11 +97,13 @@ static void fade_all_step(u8 l)
     f7308(l);
     ss2_wait(2);
     up_bg();
+    ss2_fade_bg = l;
     f733A(l);
     f7350(l);
     f7366(l);
     ss2_wait(1);
     up_sp();
+    ss2_fade_sp = l;
 }
 
 void ss2_fade_in_all(void)
@@ -119,10 +124,12 @@ static void fade_alt_step(u8 l)
     f7324(l);
     ss2_wait(2);
     up_bg_stage();
+    ss2_fade_bg = l;
     f7350(l);
     f7366(l);
     ss2_wait(1);
     up_sp_stage();
+    ss2_fade_sp = l;
 }
 
 void ss2_fade_in_alt(void)
@@ -149,5 +156,6 @@ void ss2_vce_reset(void)
         else a = p < 8 ? (u16)(0x4050 + p * 16 + c * 2) : (u16)(sp + (p - 8) * 16 + c * 2);
         ss2_vce[i] = (u16)(ss2_rom_byte(a) | ((ss2_rom_byte((u16)(a + 1)) & 1) << 8));
     }
+    ss2_fade_bg = ss2_fade_sp = 7;
     ss2_vce_dirty = 1;
 }

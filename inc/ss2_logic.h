@@ -78,6 +78,7 @@ void ss2_door(u8 x);                         /* $7DB5 item kind 1          */
 /* palette fades (src/ss2_fade.c): RAM shadow $2EA0-$2F9F -> ss2_vce */
 extern u16 ss2_vce[512];                     /* PCE colour RAM mirror      */
 extern u8 ss2_vce_dirty;
+extern u8 ss2_fade_bg, ss2_fade_sp;          /* brightness 0-7 last uploaded */
 void ss2_vce_reset(void);
 void ss2_fade_in(void);                      /* $71BA                      */
 void ss2_fade_out(void);                     /* $71D7                      */
