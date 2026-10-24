@@ -15,6 +15,8 @@
 #include "ss2_data.h"
 #include "ss2_ram.h"
 #include "ss2_logic.h"
+#include "ss2_sound.h"
+#include "sound.h"
 
 #define BG_TILE      TILE_USER_INDEX
 #define HUD_TILE     (BG_TILE + SS2_S0_NTILES)
@@ -224,6 +226,26 @@ static u8 pce_pad(u16 p)
     return v;
 }
 
+/* VDC IRQ $E16D-$E191: pop one request from the ring at $2285 (read index
+ * $2295) and run the sound driver tick. During gameplay the raster-split
+ * IRQ ($E122) reaches this block every frame unconditionally; only the
+ * VBlank path ($E165) is gated by $6C|$6D|$C7, and $6C is nonzero while the
+ * split is active, so the gate never decides gameplay frames. */
+static void sound_irq(void)
+{
+    u8 x, id;
+    x = R(0x2295);
+    id = R(0x2285 + x);
+    R(0x2285 + x) = 0xFF;
+    if (id != 0xFF)
+    {
+        ss2_sound_request(id);
+        R(0x2295) = (u8)((x + 1) & 0x0F);
+    }
+    ss2_sound_set_hold(ZP(0x6B));
+    ss2_sound_tick();
+}
+
 static void camera_from_state(void)
 {
     camx = (s16)((((Z_CAMX_HI & 7) << 8) | Z_CAMX_LO));
@@ -238,6 +260,9 @@ void ss2_run(void)
     for (i = 0; i < 0x2000; i++) ss2_ram[i] = ss2_s0_ram[i];
     ss2_mpr6 = 9;
     shown_frame = 0xFF;
+    snd_shutdown();
+    ss2_sound_init();
+    ss2_sound_request(SS2_SND_MUS_STAGE(Z_STAGE));
     video_init();
     camera_from_state();
     redraw_view();
@@ -250,11 +275,13 @@ void ss2_run(void)
         if ((pad & (BUTTON_START | BUTTON_A)) == (BUTTON_START | BUTTON_A))
             break;                              /* RUN+SELECT: the PCE reset combo */
         ss2_game_vblank(pce_pad(pad));
+        sound_irq();
         ss2_game_tick();
         camera_from_state();
         stream_view();
         apply_scroll();
         draw_sprites();
     }
+    ss2_sound_shutdown();
     video_shutdown();
 }

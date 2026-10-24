@@ -55,8 +55,18 @@ static void video(const void *d, unsigned w, unsigned h, size_t pitch)
     fclose(f);
 }
 
-static void audio(int16_t l, int16_t r) { (void)l; (void)r; }
-static size_t batch(const int16_t *d, size_t n) { (void)d; return n; }
+/* optional raw audio dump (env SS2_PCM = path): interleaved s16 stereo */
+static FILE *pcm;
+static unsigned pcm_from;
+static void audio(int16_t l, int16_t r)
+{
+    if (pcm && frame >= pcm_from) { int16_t s[2] = { l, r }; fwrite(s, 2, 2, pcm); }
+}
+static size_t batch(const int16_t *d, size_t n)
+{
+    if (pcm && frame >= pcm_from) fwrite(d, 4, n, pcm);
+    return n;
+}
 static void poll(void) {}
 
 /* libretro joypad ids: B=0 Y=1 SELECT=2 START=3 UP=4 DOWN=5 LEFT=6 RIGHT=7 A=8 */
@@ -127,6 +137,7 @@ int main(int argc, char **argv)
     retro_set_input_poll(poll);
     retro_set_input_state(input);
     retro_init();
+    if (getenv("SS2_PCM")) { pcm = fopen(getenv("SS2_PCM"), "wb"); pcm_from = getenv("SS2_PCM_FROM") ? (unsigned)atoi(getenv("SS2_PCM_FROM")) : 0; }
     FILE *f = fopen(argv[2], "rb");
     if (!f) return 2;
     fseek(f, 0, SEEK_END);
@@ -138,6 +149,7 @@ int main(int argc, char **argv)
     struct Game g = { argv[2], data, (size_t)n, NULL };
     if (!retro_load_game(&g)) return 3;
     for (frame = 0; frame < frames; frame++) retro_run();
+    if (pcm) fclose(pcm);
     retro_unload_game();
     retro_deinit();
     free(data);
