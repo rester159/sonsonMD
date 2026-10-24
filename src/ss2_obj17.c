@@ -1021,12 +1021,9 @@ void ss2_o17_boss_spawn(u8 v)
     for (i = 0; i < 10; i++) O(0x245A, i) = 0;
     if (!v)
     {
-        /* $E1E2: task 3 becomes bank 2 $6E1A (wait for an empty object
+        /* $E1E2: task 2 becomes bank 2 $6E1A (wait for an empty object
          * table, then the stage clear) */
-        ZP(0x10) = 0x1A; ZP(0x11) = 0x6E;
-        /* task slot 2 as the scheduler leaves it at the frame end: started,
-         * first $B9B8 wait done (state 4, saved stack pointer $89) */
-        ZP(0x08) = 0x04; ZP(0x0A) = 0x89; ZP(0x0B) = 0x6E;
+        ss2_boss_watch_start();
     }
     ss2_obj_init(0, 0xC345);
     at_spawn(0);

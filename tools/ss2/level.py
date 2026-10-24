@@ -18,7 +18,9 @@ def stage_map(rom, s):
     return bank[(s & 1) * 0x1000:][:0x1000]
 
 
-def metatiles(rom, s, base=0xC000):
+def metatiles(rom, s, base=None):
+    if base is None:
+        base = 0xC000 + (s & 3) * 0x800      # zp $5D/$5E at stage start
     return rom_bank(rom, 6 | (s >> 2))[base - 0xC000:]
 
 

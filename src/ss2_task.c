@@ -18,7 +18,7 @@
 #include "ss2_logic.h"
 #include "ss2_task.h"
 
-#define STACK_BYTES 2048
+#define STACK_BYTES 4096
 
 #ifdef SS2_HOST
 #include <ucontext.h>

@@ -914,8 +914,7 @@ static void spawn_boss(u8 kind)
     if (x == 0xFF) return;
     if (ZP(0x35) == 2)
     {
-        ZP(0x10) = 0x1A; ZP(0x11) = 0x6E;
-        ss2_unported(0xE1E2);           /* start task 2 at bank 2 $6E1A */
+        ss2_boss_watch_start();         /* $E1E2: task 2 = bank 2 $6E1A */
     }
     ss2_obj_init(x, 0xD46C);
     place(x);
@@ -1203,8 +1202,7 @@ static void spawn_boss2(u8 kind)
     if (x == 0xFF) return;
     if (!ZP(0x35))
     {
-        ZP(0x10) = 0x1A; ZP(0x11) = 0x6E;
-        ss2_unported(0xE1E2);           /* start task 2 at bank 2 $6E1A */
+        ss2_boss_watch_start();         /* $E1E2: task 2 = bank 2 $6E1A */
     }
     ss2_obj_init(x, 0xDCAA);            /* $D8C3 */
     place(x);

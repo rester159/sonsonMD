@@ -91,6 +91,7 @@ void ss2_game_vblank(u8 pad);                /* pad in PCE $16 layout      */
 void ss2_game_start(void);                   /* create the gameplay tasks  */
 void ss2_game_frame(void);                   /* run tasks + sprite table   */
 void ss2_game_tick(void);                    /* host replay: one pass      */
+void ss2_boss_watch_start(void);             /* $E1E2 -> task 2 = bank 2 $6E1A (ss2_obj1f.c) */
 void ss2_main_restart(void);                 /* JMP $EDB0 from inside slot 0 */
 
 /* dialogue window and HUD icons (src/ss2_msgwin.c): map writes queued

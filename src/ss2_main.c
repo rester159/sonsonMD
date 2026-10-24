@@ -258,19 +258,35 @@ static u16 fade_colour(u16 w, u8 l)
     return (u16)((b << 9) | (g << 5) | (r << 1));
 }
 
+/* $2201 (VDC control shadow): bit 7 background, bit 6 sprites. With the
+ * background off the PCE shows colour $100 there; both off blanks the
+ * picture (HUD included) to it: the freeze flash and the sweep magic. */
+static u8 shown_cr = 0xC0;
+static u16 shown_c100;
+
+static u16 pce_colour(u16 c)
+{
+    return (u16)(((c & 7) << 9) | (((c >> 6) & 7) << 5) | (((c >> 3) & 7) << 1));
+}
+
 static void apply_fade(void)
 {
-    u8 i;
-    if (ss2_fade_bg == shown_bg && ss2_fade_sp == shown_sp) return;
+    u8 i, cr = (u8)(R(0x2201) & 0xC0);
+    u16 c100 = pce_colour(ss2_vce[0x100]);
+    if (ss2_fade_bg == shown_bg && ss2_fade_sp == shown_sp && cr == shown_cr && c100 == shown_c100) return;
+    if ((cr == 0) != (shown_cr == 0)) VDP_setEnable(cr != 0);
     shown_bg = ss2_fade_bg;
     shown_sp = ss2_fade_sp;
+    shown_cr = cr;
+    shown_c100 = c100;
     for (i = 0; i < 64; i++)
     {
         u16 w = gfx->palette[i];
-        if (i < 32) w = fade_colour(w, shown_bg);
+        if (i < 32) w = (cr & 0x80) ? fade_colour(w, shown_bg) : c100;
         else if (!(hud_keep[(i >> 4) - 2] & (1 << (i & 15)))) w = fade_colour(w, shown_sp);
         fade_pal[i] = w;
     }
+    if (!(cr & 0x80)) fade_pal[0] = c100;           /* backdrop */
     PAL_setColors(0, fade_pal, 64, DMA_QUEUE);
 }
 
@@ -294,6 +310,8 @@ static void video_init(void)
     PAL_setColors(0, gfx->palette, 64, CPU);
     hud_colours();
     shown_bg = shown_sp = 7;
+    shown_cr = 0xC0;
+    shown_c100 = 0;
     ss2_fade_bg = ss2_fade_sp = 7;
     VDP_loadTileData(gfx->bg_tiles, BG_TILE, gfx->bg_ntiles, CPU);
     VDP_loadTileData(gfx->hud_tiles, HUD_TILE, gfx->hud_ntiles, CPU);
@@ -312,6 +330,7 @@ static void video_shutdown(void)
 {
     VDP_setEnable(FALSE);
     VDP_setWindowOff();
+    VDP_setEnable(TRUE);
     VDP_setBGBAddress(0xC000);                  /* SGDK reloads its font for SonSon */
     VDP_clearPlane(BG_B, TRUE);
     DMA_doVRamFill(0xD800, 0x800, 0, 1);        /* sprite cache blocks under the H40 window */
@@ -457,6 +476,13 @@ static void draw_sprites(void)
 {
     u8 i, r;
     nspr = 0;
+    if (!(R(0x2201) & 0x40))                    /* $2201 bit 6: sprites off */
+    {
+        put_sprite(-128, -128, SPRITE_SIZE(1, 1), 0);
+        VDP_setSpriteLink(0, 0);
+        VDP_updateSprites(1, DMA_QUEUE);
+        return;
+    }
     cache_clock++;
     conv_n = 0;
     for (i = 0; i < 64; i++)
