@@ -10,7 +10,10 @@ y $80) stands at world (WX, WY), and every object slot is cleared. The
 stage map lives whole in work RAM ($3000-$3FFF), so collision and
 spawning are consistent after the move; only the VDC picture (not
 compared) is stale. LOCK7F=1 also sets the boss-room lock $7F that the
-boss door (bank 2 $7E08) sets, so boss spawns run outside their room. This is a documented state injection used to start
+boss door (bank 2 $7E08) sets, so boss spawns run outside their room. ISOLATE=1 blocks every spawner of the
+stage whose records use other code banks (live count $2B5A = $FF, which
+the spawn scan skips), so frames are not lost to objects not yet rebuilt;
+it applies with or without WX WY. This is a documented state injection used to start
 traces next to objects that the scripted bot does not reach.
 """
 import os, struct, sys
@@ -38,11 +41,35 @@ inj = (int(sys.argv[5]), int(sys.argv[6])) if len(sys.argv) > 6 else None
 m = snapshot.stage_start(k)
 pairs = []
 pending = [None]
-done = [inj is None]
+ISOLATE = bool(os.environ.get('ISOLATE'))
+done = [inj is None and not ISOLATE]
+
+
+def other_spawners():
+    # spawner ids of this stage's records whose code bank is not $09/$0F/$1F
+    rom = m.rom
+    def b(bank, a): return rom[bank * 0x2000 + (a & 0x1FFF)]
+    lst = b(4, 0xBD08 + 2 * k) | b(4, 0xBD09 + 2 * k) << 8
+    mine, other = set(), set()
+    for scr in range(64):
+        r = b(8, lst + 2 * scr) | b(8, lst + 2 * scr + 1) << 8
+        while b(8, r) != 0xFF:
+            (mine if b(8, r + 3) in (9, 0x0F, 0x1F) else other).add(b(8, r + 2))
+            r += 6
+    return other - mine
 
 
 def inject():
     r = m.ram
+    if ISOLATE:
+        # spawn scan skips spawners whose live count is $FF (bank 4 $BC10)
+        for sp in other_spawners():
+            r[0xB5A + sp] = 0xFF
+        for x in range(0x20):
+            if r[0x75A + x] not in (9, 0x0F, 0x1F):
+                r[0x45A + x] = 0
+    if inj is None:
+        return
     wx, wy = inj
     cx = (wx - 0x70) & 0x7FF
     cy = (wy - 0x80) & 0x7FF
