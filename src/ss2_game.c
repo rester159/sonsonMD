@@ -77,14 +77,18 @@ static void trail(void)
 static void spark(void)
 {
     u16 v, d;
-    if (!R(0x2455)) return;
-    R(0x2455)--;
-    d = (u16)(((ZP(0x4B) << 8) | ZP(0x4C)) - ((Z_CAMX_HI << 8) | Z_CAMX_LO));
-    v = (u16)(((R(0x2456) << 8) | R(0x2457)) + d);
-    R(0x2457) = (u8)v; R(0x2456) = (u8)(v >> 8);
-    d = (u16)(((ZP(0x4E) << 8) | ZP(0x4F)) - ((Z_CAMY_HI << 8) | Z_CAMY_LO));
-    v = (u16)(((R(0x2458) << 8) | R(0x2459)) + d);
-    R(0x2459) = (u8)v; R(0x2458) = (u8)(v >> 8);
+    if (R(0x2455))
+    {
+        R(0x2455)--;
+        d = (u16)(((ZP(0x4B) << 8) | ZP(0x4C)) - ((Z_CAMX_HI << 8) | Z_CAMX_LO));
+        v = (u16)(((R(0x2456) << 8) | R(0x2457)) + d);
+        R(0x2457) = (u8)v; R(0x2456) = (u8)(v >> 8);
+        d = (u16)(((ZP(0x4E) << 8) | ZP(0x4F)) - ((Z_CAMY_HI << 8) | Z_CAMY_LO));
+        v = (u16)(((R(0x2458) << 8) | R(0x2459)) + d);
+        R(0x2459) = (u8)v; R(0x2458) = (u8)(v >> 8);
+    }
+    /* $87BA: the Kinto'un cloud rides under the player */
+    if (R(0x23C5) && P_ONCLOUD) R(0x23CA) = (u8)(P_YL + 0x1C);
 }
 
 /* ---- sprite table (bank 3 $8732 entry 0, $8818 entries 2-6 and 16+) --- */
@@ -312,8 +316,10 @@ static void main_body(void)
     u8 i;
     /* task 1 */
     for (i = 0; i < 6; i++) ZP(0x4B + i) = ZP(0x45 + i);
+    if (ZP(0x71)) ZP(0x71)--;               /* $EC49: freeze/flash timer */
     ss2_map6(9);
     ss2_player_update();
+    ss2_shots_update();
     select_frame();
     play_clock();
     PROF(1);
@@ -322,8 +328,10 @@ static void main_body(void)
     /* task 2 */
     ss2_objects_update();
     PROF(3);
+    ZP(0x73) = 0;                           /* $ED20 (set by the sweep $D845) */
     trail();
     spark();
+    if (ZP(0x74)) { ss2_map6(9); ss2_magic_sweep(); }   /* $ED61 */
     if (!(Z_FRAME & 0x0F))
         for (i = 0x20; i < 0xBF; i++)
             if (R(0x2C1A + i) && R(0x2C1A + i) != 0xFF) R(0x2C1A + i)--;

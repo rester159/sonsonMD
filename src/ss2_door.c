@@ -78,8 +78,7 @@ static void enter(u8 x)
     R(0x2299) = R(0x22E3) = 0x70;
     R(0x229C) = R(0x22E4) = 0xA0;
     R(0x22E5) = R(0x22E6) = R(0x22E7) = R(0x22E8) = 0;
-    /* $D03D shots and player SATB: shots are not native yet (as in the
-     * main body); MPR6 ends on $8E */
+    ss2_shots_update();                      /* $D03D with bank 9 mapped; MPR6 back to $8E */
 
     ZP(0x88)++;
     for (Z_FRAME = 0; ; Z_FRAME++)

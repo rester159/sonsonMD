@@ -61,6 +61,14 @@ void ss2_jump_air(void);                     /* $CA30                      */
 void ss2_touch_down(void);                   /* $CBB7                      */
 void ss2_grab_vine(void);                    /* $CBFA                      */
 
+/* shots and magic (src/ss2_shots.c) */
+void ss2_shots_update(void);                 /* bank 9 $D03D               */
+void ss2_magic_cast(void);                   /* $D1E8 (then $CC35)         */
+void ss2_magic_sweep(void);                  /* $D7BC, main body while $74 */
+void ss2_magic_damage_all(u8 amount);        /* $D86A                      */
+void ss2_shield_start(void);                 /* $D622 (from $FEAE)         */
+void ss2_shield_end(void);                   /* $D702 (from $FEAE)         */
+
 /* frame (src/ss2_game.c) */
 extern u16 ss2_sat[64 * 4];                  /* PCE SATB layout            */
 extern u8 ss2_hud_dirty;                     /* bit0 score, bit1 money     */
