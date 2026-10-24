@@ -480,6 +480,8 @@ hit:
 }
 
 /* bank 0 $ED0D: update every live slot */
+u8 ss2_obj_next;
+
 void ss2_objects_update(void)
 {
     u8 x;
@@ -489,7 +491,14 @@ void ss2_objects_update(void)
     shots_live = 0;
     for (x = 0; x < 7; x++) if (R(0x22E5 + x) == 0x80) shots_live = 1;
     for (x = 0; x < 0x20; x++)
-        if (O(0x245A, x)) ss2_obj_update(x);
+        if (O(0x245A, x))
+        {
+            /* a handler that ends INX / JMP $EE67 moves the loop on (bank $1F
+             * boss body slot) */
+            ss2_obj_next = x;
+            ss2_obj_update(x);
+            x = ss2_obj_next;
+        }
 }
 
 /* ---- spawning (bank 4 $BC10) ------------------------------------------ */

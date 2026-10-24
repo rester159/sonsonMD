@@ -139,10 +139,7 @@ static void pose_crouch(u8 x) { pose(x, 0xDCFC, 0xDD39, 0xFFD8, 0x0028, 0x0008, 
 
 /* The source ends with INX / JMP $EE67, so the object loop ($ED18-$ED1B)
  * continues with X = x + 1 and never updates the body slot itself. The
- * engine's loop resumes after ss2_obj_next (shared change in
- * ss2_objects.c: set it to x before each ss2_obj_update and continue from
- * it afterwards). */
-u8 ss2_obj_next;
+ * engine's loop resumes after ss2_obj_next (ss2_objects_update). */
 
 static void tail(u8 x)
 {
