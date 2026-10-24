@@ -14,6 +14,8 @@
 #define OX16(x)     ((u16)((O(0x247A, x) << 8) | O(0x249A, x)))
 #define OY16(x)     ((u16)((O(0x24DA, x) << 8) | O(0x24FA, x)))
 
+extern u8 ss2_obj_xout;                     /* src/ss2_obj17.c */
+
 static void set_vx(u8 x, u16 v) { O(0x25BA, x) = (u8)(v >> 8); O(0x25DA, x) = (u8)v; }
 static void set_script(u8 x, u16 p) { O(0x295A, x) = (u8)p; O(0x293A, x) = (u8)(p >> 8); }
 static void set_handler(u8 x, u16 h) { O(0x28DA, x) = (u8)h; O(0x28BA, x) = (u8)(h >> 8); }
@@ -39,6 +41,7 @@ static void finish(u8 x)
     if (!O(0x245A, x))
     {
         for (i = 1; i < 4; i++) O(0x245A, x + i) = 0;
+        ss2_obj_xout = (u8)(x + 3);
         return;
     }
     if ((u8)(O(0x245B, x) | O(0x245C, x) | O(0x245D, x)) != 0x80)
@@ -90,6 +93,7 @@ static void finish(u8 x)
     ss2_obj_common((u8)(x + 1));
     ss2_obj_common((u8)(x + 2));
     ss2_obj_common((u8)(x + 3));
+    ss2_obj_xout = (u8)(x + 3);              /* returns with X on the last piece */
 }
 
 /* $AA96: walking: turn at ledges, stop at walls */

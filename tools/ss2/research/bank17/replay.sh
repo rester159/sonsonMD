@@ -7,10 +7,30 @@ OUT="$ROOT/out/ss2/b17"; mkdir -p "$OUT"
 BIN="$OUT/replay"
 if [ "$1" = "-b" ] || [ ! -x "$BIN" ]; then
     [ "$1" = "-b" ] && shift
-    SRCS=()
+    # recommended shared change, applied to a copy: the $ED0D slot loop
+    # continues from the X a handler leaves (ss2_obj_xout, ss2_obj17.c)
+    python3.14 - "$ROOT/src/ss2_objects.c" "$OUT/ss2_objects_xout.c" <<'PY'
+import sys
+s = open(sys.argv[1]).read()
+old = """    for (x = 0; x < 0x20; x++)
+        if (O(0x245A, x)) ss2_obj_update(x);
+}"""
+new = """    for (x = 0; x < 0x20; x++)
+        if (O(0x245A, x))
+        {
+            extern u8 ss2_obj_xout;
+            ss2_obj_xout = 0xFF;
+            ss2_obj_update(x);
+            if (ss2_obj_xout != 0xFF) x = ss2_obj_xout;
+        }
+}"""
+assert old in s
+open(sys.argv[2], 'w').write(s.replace(old, new))
+PY
+    SRCS=("$OUT/ss2_objects_xout.c")
     for f in "$ROOT"/src/ss2_*.c; do
         case "$(basename "$f")" in
-            ss2_main.c|ss2_sound*.c|ss2_data.c) ;;
+            ss2_main.c|ss2_sound*.c|ss2_data.c|ss2_objects.c) ;;
             *) SRCS+=("$f") ;;
         esac
     done
@@ -19,5 +39,5 @@ if [ "$1" = "-b" ] || [ ! -x "$BIN" ]; then
 fi
 for p in "$@"; do
     echo "== $p"
-    SS2_IRQ_MASK="$ROOT/out/ss2/irq_mask.bin" "$BIN" "$p" "${MAXREP:-6}" || true
+    SS2_KNOWN=${SS2_KNOWN-1} SS2_IRQ_MASK="$ROOT/out/ss2/irq_mask.bin" "$BIN" "$p" "${MAXREP:-6}" || true
 done
