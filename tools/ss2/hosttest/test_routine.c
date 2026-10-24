@@ -11,9 +11,14 @@
 #endif
 void ROUTINE(void);
 
+/* bytes written from interrupt context (tools/ss2/irq_mask.py): an IRQ can
+ * land inside any bracketed routine */
+static unsigned char irq_mask[0x2000];
+
 /* zero-page scratch ($26-$3F) is not persistent state */
 static int masked(unsigned a)
 {
+    if (irq_mask[a]) return 1;
     if (a >= 0x26 && a <= 0x3F) return 1;
     if (a >= 0x100 && a <= 0x1FF) return 1;   /* hardware stack page */
     return 0;
@@ -26,6 +31,12 @@ int main(int argc, char **argv)
     unsigned n, i, bad_frames = 0, unported_frames = 0, maxrep = argc > 2 ? atoi(argv[2]) : 8;
     static u8 pre[0x2000], post[0x2000];
     if (!f || fread(magic, 1, 4, f) != 4 || fread(&n, 4, 1, f) != 1) return 2;
+    {
+        const char *mp = getenv("SS2_IRQ_MASK");
+        FILE *m = fopen(mp ? mp : "../../out/ss2/irq_mask.bin", "rb");
+        if (!m || fread(irq_mask, 1, 0x2000, m) != 0x2000) { fprintf(stderr, "no IRQ mask (run tools/ss2/irq_mask.py)\n"); return 2; }
+        fclose(m);
+    }
     for (i = 0; i < n; i++)
     {
         unsigned short fr;

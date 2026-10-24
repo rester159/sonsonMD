@@ -60,33 +60,9 @@ static void staff_clear(void)
 /* bank 3 $8307: collision probe at player + ($22A6, $22A7) */
 u8 ss2_probe(u8 ox, u8 oy)
 {
-    u16 wx, wy, a;
-    u8 m, q, at;
     P_PROBEX = ox;
     P_PROBEY = oy;
-    wx = (u16)(((P_XH << 8) | P_XL) + ox);
-    wy = (u16)(((P_YH << 8) | P_YL) + oy);
-    Z_HIT_VINE = 0;
-    Z_HIT_3 = 0;
-    Z_HIT_HURT = 0;
-    wx = (u16)((wx + ((Z_CAMX_HI << 8) | Z_CAMX_LO)) & 0x07FF);
-    wy = (u16)((wy + ((Z_CAMY_HI << 8) | Z_CAMY_LO)) & 0x07FF);
-    /* temporaries left in zero page by the source */
-    ZP(0x28) = (u8)wx; ZP(0x29) = (u8)(wx >> 8);
-    ZP(0x2A) = (u8)wy; ZP(0x2B) = (u8)(wy >> 8);
-    a = (u16)(0x3000 | ((wy >> 8) << 9) | ((wx >> 8) << 6) | ((wy & 0xE0) >> 2) | ((wx & 0xE0) >> 5));
-    ZP(0x26) = (u8)a; ZP(0x27) = (u8)(a >> 8);
-    m = R(a);
-    q = (u8)(((wx & 0x10) >> 3) | ((wy & 0x10) >> 2));
-    ZP(0x30) = q;
-    a = (u16)(((Z_MT_HI << 8) | Z_MT_LO) + (u16)m * 8);
-    ZP(0x2C) = (u8)a; ZP(0x2D) = (u8)(a >> 8);
-    at = (u8)(ss2_metatile_byte(a, (u8)(q + 1)) & 0x0F);
-    if (!at) return 0;
-    if (at == 2) { Z_HIT_VINE = 1; return 0; }
-    if (at == 3) Z_HIT_3 = 1;
-    else if (at == 4) Z_HIT_HURT = 1;
-    return 1;
+    return ss2_probe_point((u16)(((P_XH << 8) | P_XL) + ox), (u16)(((P_YH << 8) | P_YL) + oy));
 }
 
 #define PROBE_RIGHT()   ss2_probe(0x18, 0x10)   /* $C6CC */
