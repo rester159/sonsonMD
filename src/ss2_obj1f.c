@@ -110,8 +110,7 @@ void ss2_boss_watch_start(void)
 {
     ZP(0x10) = 0x1A;
     ZP(0x11) = 0x6E;
-    ZP(0x0A) = 0x1A;                    /* $E1E2 stores the entry in $02,X */
-    ZP(0x0B) = 0x6E;
+    /* the slot's resume bytes ($0A/$0B) are native in ss2_task.c */
     ss2_task_create(2, boss_watch_task);
 }
 
@@ -138,9 +137,17 @@ static void pose_crouch(u8 x) { pose(x, 0xDCFC, 0xDD39, 0xFFD8, 0x0028, 0x0008, 
 
 /* ---- $D7BB: run both slots, the body box following the boss ------------ */
 
+/* The source ends with INX / JMP $EE67, so the object loop ($ED18-$ED1B)
+ * continues with X = x + 1 and never updates the body slot itself. The
+ * engine's loop resumes after ss2_obj_next (shared change in
+ * ss2_objects.c: set it to x before each ss2_obj_update and continue from
+ * it afterwards). */
+u8 ss2_obj_next;
+
 static void tail(u8 x)
 {
     u8 b = (u8)(x + 1);
+    ss2_obj_next = b;
     ss2_obj_common(x);
     O(0x245A, b) = O(0x245A, x);
     O(0x26DA, b) = 0xFF;
