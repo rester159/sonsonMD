@@ -469,9 +469,9 @@ def emit_c(rom, tracks, insts, waves, path):
     L.append('#include "ss2_sound_seq.h"')
     L.append('#include "ss2_sound_data.h"')
     L.append('')
-    L.append('const u8 ss2_snd_ftab[258] = {')
-    for i in range(0, 258, 16):
-        L.append('    ' + ','.join('0x%02X' % v for v in ftab[i:i + 16]) + ',')
+    L.append('const u16 ss2_snd_period[128] = {   /* $81C8 + 2k */')
+    for i in range(0, 128, 8):
+        L.append('    ' + ','.join('0x%04X' % (ftab[2 * k] | (ftab[2 * k + 1] << 8)) for k in range(i, i + 8)) + ',')
     L.append('};')
     L.append('')
     L.append('const u16 ss2_snd_bank_len = %d;' % len(blob))

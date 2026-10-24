@@ -162,6 +162,28 @@ events offline anyway and adds a Z80 driver; our music needs no PCM).
   N = 2·(NF^31); louder of the two noise users wins. SN tone channels unused.
 * Timing: one sequencer frame per 60 Hz frame; on PAL every 5th tick runs two.
 
+## 6b. Sequencer performance (68000)
+
+`src/ss2_sound_seq.c` keeps the source's arithmetic but not its memory
+layout: typed channel records (word periods, pointer-based stream fetch,
+instrument bytes +$20..+$24 cached at instrument change, `ss2_snd_period`
+as a word table), the $DA mask passed as a per-channel flag, closed-form
+envelope rate steps, and a per-channel output cache (`o_per`/`o_vol`,
+`recalc`) that recomputes a value only when one of its inputs changed.
+Every PSG write of the source is still emitted in source order. Two facts
+used: the LFO counter is dead state while both LFO deltas are 0 (only
+`$83B0` makes them nonzero and it restarts the counter), and instrument
+bytes are ROM constants.
+
+Target profile (`tools/ss2/profile.sh` workload, stage 1 music `$03`,
+built on commit f178d98 with only the sequencer files swapped; average
+shown in tenths of a line, max in lines):
+
+| Section | Before | After |
+| --- | --- | --- |
+| slot 5 `music_tick` | 46.7 / 76 | 15.3 / 33 |
+| slot 4 ring pop + `sfx_tick` | 4.4 / 18 | 3.6 / 13 |
+
 ## 7. Caller contract
 
 * `snd_shutdown()` (SonSon) before `ss2_sound_init()`; `ss2_sound_shutdown()` before
@@ -183,7 +205,7 @@ events offline anyway and adds a Z80 driver; our music needs no PCM).
 | Commands/events | decoder timeline vs original driver events (`$8321`/`$881E` traced) | all cases identical incl. frame (e.g. stage 1 `$03`: 1381/1381) |
 | Pitch semantics | decoder base period vs driver record +E/F at `$8398` | all pitched non-tied notes identical (e.g. `$03`: 1024/1024) |
 | Native sequencer | host `seqhost` vs original driver, every PSG write (frame, reg, channel, value) in order | **2,599,663 / 2,599,663 writes identical** over: 43 ids (music run to full code coverage + 1200 frames, 2400-4929 frames), F0/F1/F2, mixed music+sfx+priority+pause (direct and through the ring), and the in-game boot → title → intro → stage 1 play with a pause (3400 frames, 142,296 writes, 1,624 events, driven by the game's own ordered request/tick calls); 0 data faults |
-| Renderer | host `renderhost` (stub chips), all 43 ids × 3000 frames | FM key state equals PCE tone audibility on all 291,019 sounding channel-frames (0 mismatches); pitch error ≤ 1.64 cents; 0 YM writes without the bus held; ≤ 66 YM writes/frame |
+| Renderer (before the Z80 YM writer; `renderhost` no longer host-compiles and is skipped) | host `renderhost` (stub chips), all 43 ids × 3000 frames | FM key state equals PCE tone audibility on all 291,019 sounding channel-frames (0 mismatches); pitch error ≤ 1.64 cents; 0 YM writes without the bus held; ≤ 66 YM writes/frame |
 | Target build | `bash build.sh` | builds; files compile warning-free with `-Wall -Wextra` |
 
 **Not verified**: audible timbre/balance (no listening), real YM2612/SN76489
