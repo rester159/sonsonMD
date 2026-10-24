@@ -20,9 +20,12 @@ const u8 *const ss2_banks[0x20] = {
 const u8 *ss2_page[8] = {
     missing, ss2_ram, ss2_bank1, ss2_bank2, ss2_bank3, ss2_bank4, ss2_bank9, ss2_bank0 };
 
+u8 ss2_unported_bank;
+
 void ss2_unported(u16 source_addr)
 {
     ss2_unported_last = source_addr;
+    ss2_unported_bank = ss2_mpr6;
     ss2_unported_count++;
 }
 

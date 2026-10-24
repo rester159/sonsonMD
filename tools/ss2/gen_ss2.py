@@ -206,6 +206,16 @@ def build_sprites_and_hud(m, s):
             pxm = [[lines[li].index[maps[li][bg[e >> 12][c] if c else bg[0][0]]] for c in r] for r in px]
             idx, flags = bank.add(pxm)
             hud_map.append(((2 + li) << 13) | 0x8000 | flags | idx)
+    # HUD tiles drawn at run time (bank 4 $BB99/$BBC2 digits, bank 2 $76B3
+    # bars): PCE BAT words -> Genesis window words
+    hud_live = {}
+    for w in [0x0100 | (0xB0 + d) for d in range(10)] + \
+             [0x2100 | ((0x80 + t) & 0xFF) | (0x0100 if t + 0x80 > 0xFF else 0) for t in (0x0C, 0x0D, 0x0E, 0x0F, 0x3A, 0x3B, 0x3C)]:
+        key = ('hud', w >> 12); li = assign[key]
+        px = render.tile_pixels(m.vram, w & 0xFFF)
+        pxm = [[lines[li].index[maps[li][bg[w >> 12][c] if c else bg[0][0]]] for c in r] for r in px]
+        idx, flags = bank.add(pxm)
+        hud_live[w] = ((2 + li) << 13) | 0x8000 | flags | idx
     pli = assign[('sp', 0)]
     frames = []
     for n in range(PLAYER_FRAMES):
@@ -238,7 +248,7 @@ def build_sprites_and_hud(m, s):
         lut[(p, pc)] = nt
         nt += 8
     spr_line = [2 + assign[('sp', p)] if ('sp', p) in assign else 0xFF for p in range(16)]
-    return dict(lines=lines, hud_bank=bank, hud_map=hud_map, player_line=2 + pli,
+    return dict(lines=lines, hud_bank=bank, hud_map=hud_map, player_line=2 + pli, hud_live=hud_live,
                 player_frames=frames, assign=assign, spr_words=spr_words, spr_lut=lut,
                 spr_ntiles=nt, spr_line=spr_line)
 
@@ -286,6 +296,12 @@ def main():
     src.append(c_array('ss2_hud_map', 'u16', sh['hud_map']))
     src.append(c_array('ss2_player_tiles', 'u32', sh['player_frames'], 8, '0x%08X'))
     src.append(c_array('ss2_player_anim', 'u8', [v for f, a in anims for v in (f, a)], 24, '0x%02X'))
+    hl = sh['hud_live']
+    src.append(c_array('ss2_hud_digit', 'u16', [hl[0x01B0 + d] for d in range(10)]))
+    bar = [0] * 64
+    for t in (0x0C, 0x0D, 0x0E, 0x0F, 0x3A, 0x3B, 0x3C):
+        bar[t] = hl[0x2100 | ((0x80 + t) & 0xFF) | (0x0100 if t + 0x80 > 0xFF else 0)]
+    src.append(c_array('ss2_hud_bar', 'u16', bar))
     src.append(c_array('ss2_spr_tiles', 'u32', sh['spr_words'], 8, '0x%08X'))
     lut = [0] * (16 * 256)
     for (p, pc), t in sh['spr_lut'].items():
@@ -313,6 +329,8 @@ extern const u16 ss2_s0_attr[SS2_S0_NMETA];        /* 4 block attribute nibbles 
 extern const u8  ss2_s0_map[4096];                 /* 8x8 screens of 8x8 metatiles */
 extern const u32 ss2_hud_tiles[SS2_HUD_NTILES * 8];
 extern const u16 ss2_hud_map[32 * 6];
+extern const u16 ss2_hud_digit[10];        /* PCE tile $1B0+d (palette 0)        */
+extern const u16 ss2_hud_bar[64];          /* PCE tile $180+t (palette 2), by t  */
 extern const u32 ss2_player_tiles[SS2_PLAYER_FRAMES * 16 * 8];
 extern const u8  ss2_player_anim[7 * 6 * 4 * 2];   /* set,state,step -> frame,attr */
 #define SS2_SPR_NTILES    %d

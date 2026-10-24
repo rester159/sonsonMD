@@ -62,6 +62,7 @@ void ss2_grab_vine(void);                    /* $CBFA                      */
 /* frame (src/ss2_game.c) */
 extern u16 ss2_sat[64 * 4];                  /* PCE SATB layout            */
 extern u8 ss2_hud_dirty;                     /* bit0 score, bit1 money     */
+extern u8 ss2_hud_life[2], ss2_hud_magic[2]; /* bar shown/max this frame   */
 void ss2_game_vblank(u8 pad);                /* pad in PCE $16 layout      */
 void ss2_game_tick(void);
 
@@ -80,7 +81,7 @@ u8   ss2_probe_point(u16 sx, u16 sy);        /* bank 3 $8379               */
 void ss2_spawn_scan(void);                   /* bank 4 $BC10               */
 u8   ss2_random(void);                       /* $FDB4 (returns carry)      */
 void ss2_score_award(u8 id);                 /* bank 4 $BB89               */
-void ss2_item_pickup(u8 x);                  /* bank 2 $7D65               */
+u8   ss2_item_pickup(u8 x);                  /* bank 2 $7D65 (1: rerun $EE67) */
 void ss2_obj_death(u8 x);                    /* bank 2 $6E47               */
 /* per-bank handlers: return 0 when the address is not a known entry */
 u8   ss2_obj_handler(u8 bank, u16 addr, u8 x);

@@ -204,6 +204,29 @@ static void build_sat(void)
     ZP(0x39) = ZP(0x38);
 }
 
+/* bank 2 $7649/$7688: life and magic bars. The shown value creeps up to
+ * the real one, one unit every 8 frames; the bar drawn this frame uses the
+ * value before the step (ss2_hud_life/magic). Low life beeps every 32
+ * frames. */
+u8 ss2_hud_life[2], ss2_hud_magic[2];      /* [0] shown units, [1] max units */
+
+static u8 bar_step(u8 shown, u8 real)
+{
+    if (shown != real && !(Z_FRAME & 7)) shown++;
+    return shown;
+}
+
+static void hud_bars(void)
+{
+    if (P_LIFE < 5 && P_MODE != 0x40 && !(Z_FRAME & 0x1F)) ss2_sfx(0x18);
+    ss2_hud_life[0] = R(0x22BA);
+    ss2_hud_life[1] = R(0x22B9);
+    R(0x22BA) = bar_step(R(0x22BA), P_LIFE);
+    ss2_hud_magic[0] = R(0x22BD);
+    ss2_hud_magic[1] = R(0x22BC);
+    R(0x22BD) = bar_step(R(0x22BD), P_MAGIC);
+}
+
 /* bank 4 $BA66: compare 8 digits at a against b: -1, 0, 1 */
 static s8 cmp8(u16 a, u16 b)
 {
@@ -301,6 +324,7 @@ void ss2_game_tick(void)
     if (!(Z_FRAME & 0x0F))
         for (i = 0x20; i < 0xBF; i++)
             if (R(0x2C1A + i) && R(0x2C1A + i) != 0xFF) R(0x2C1A + i)--;
+    hud_bars();
     /* task 3 */
     score_task();
     build_sat();

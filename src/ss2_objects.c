@@ -229,11 +229,11 @@ static void spend_magic(u8 x)        /* $F324: shots 4-6 cost magic */
     if (m < d) { P_MAGIC = 0; R(0x22BD) = 0; }
 }
 
-static void collide(u8 x)
+static u8 collide(u8 x)
 {
     u8 y;
     u16 wx, wy, bx, by;
-    if (P_MODE == 0x40) return;
+    if (P_MODE == 0x40) return 0;
     if (!(O(0x269A, x) & 0x20))
     {
         bx = (u16)(OX16(x) + (u8)(((O(0x253A, x) & 1) + 1) << 3));
@@ -268,7 +268,7 @@ static void collide(u8 x)
             {
                 spark(y);
                 damage(x, R(0x22B4));
-                return;
+                return 0;
             }
         }
         ZP(0x26) = 8; ZP(0x27) = 0;
@@ -276,7 +276,7 @@ static void collide(u8 x)
         {
             spark(y);
             react(x);
-            return;
+            return 0;
         }
         if (++y == P_STAFFMAX) break;
     }
@@ -300,7 +300,7 @@ shots:
                 R(0x237F + y) = R(0x238D + y);
                 if (y >= 4) spend_magic(x);
                 damage(x, R(0x236A + y));
-                return;
+                return 0;
             }
             if (near(bx, sx, (u8)(O(0x271A, x) + mx), 0) && near(by, sy, (u8)(O(0x273A, x) + my), 0))
             {
@@ -309,14 +309,14 @@ shots:
                 R(0x237F + y) = R(0x238D + y);
                 if (y >= 4) spend_magic(x);
                 react(x);
-                return;
+                return 0;
             }
         }
     }
 body:
     /* $F3E4: touching the player */
-    if (O(0x269A, x) & 0x04) return;
-    if (!O(0x26BA, x) && (P_MODE != 0x80 || P_C4)) return;
+    if (O(0x269A, x) & 0x04) return 0;
+    if (!O(0x26BA, x) && (P_MODE != 0x80 || P_C4)) return 0;
     {
         u16 sx = (u16)(PX16 + 0x10), sy;
         u8 my;
@@ -325,12 +325,12 @@ body:
         if (!((O(0x2B1A, x) | O(0x2B3A, x)) &&
               near(wx, sx, (u8)(O(0x2B1A, x) + 8), 0) && near(wy, sy, (u8)(O(0x2B3A, x) + my), 0)))
         {
-            if (!near(bx, sx, (u8)(O(0x271A, x) + 8), 0)) return;
-            if (!near(by, sy, (u8)(O(0x273A, x) + my), 0)) return;
+            if (!near(bx, sx, (u8)(O(0x271A, x) + 8), 0)) return 0;
+            if (!near(by, sy, (u8)(O(0x273A, x) + my), 0)) return 0;
         }
     }
     /* $F506 */
-    if (O(0x26BA, x)) { ss2_item_pickup(x); return; }
+    if (O(0x26BA, x)) return ss2_item_pickup(x);
     {
         u8 d = O(0x26FA, x);
         if (P_FLAGSC1 & 0x80) d = (u8)(((u8)(d - 1) >> 1) + 1);
@@ -356,6 +356,7 @@ body:
     P_HITOBJ = (u8)(x + 1);
     P_HURT = 0x5A;
     if (O(0x269A, x) & 0x10) ss2_obj_die(x);
+    return 0;
 }
 
 /* ---- script and motion ($EE67-$EFBA) ---------------------------------- */
@@ -433,7 +434,7 @@ void ss2_obj_common(u8 x)
         u16 t = (u16)(OX16(x) + 0x60);
         if (t >= 0x1A0 || OY16(x) >= 0x130) { kill_spawned(x); return; }
     }
-    collide(x);
+    if (collide(x)) ss2_obj_common(x);     /* item handler: PLA PLA PLX JMP $EE67 */
 }
 
 /* $EE95: leave the world, releasing the spawner's count */
@@ -466,7 +467,7 @@ void ss2_obj_update(u8 x)
     if (!O(0x26BA, x))
     {
         if (ZP(0x87)) return;
-        if (ZP(0x71)) { collide(x); return; }
+        if (ZP(0x71)) { if (collide(x)) ss2_obj_common(x); return; }
         if (!(O(0x269A, x) & 0x20) && Z_INLOCK1) return;
     }
     if (O(0x245A, x) != 0x20)
@@ -588,9 +589,3 @@ u8 ss2_spawn_handler(u8 bank, u16 addr)
     return 0;
 }
 
-/* bank 2 $7D65: item pickup by kind ($26BA) */
-void ss2_item_pickup(u8 x)
-{
-    (void)x;
-    ss2_unported(0x7D65);
-}

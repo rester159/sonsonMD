@@ -22,7 +22,8 @@ def main():
     src = HERE / 'gpgx_shot.c'
     if not exe.exists() or exe.stat().st_mtime < src.stat().st_mtime:
         subprocess.run(['cc', '-O2', str(src), '-o', str(exe)], check=True)
-    subprocess.run([str(exe), str(CORE), str(ROOT / 'out' / 'rom.bin'), frames, str(out), script, shots], check=True, timeout=600)
+    rom = os.environ.get('SS2_ROM', str(ROOT / 'out' / 'rom.bin'))
+    subprocess.run([str(exe), str(CORE), rom, frames, str(out), script, shots], check=True, timeout=600)
     ims = []
     for f in shots.split(','):
         p = out / ('frame-%s.ppm' % f)

@@ -210,6 +210,50 @@ static void draw_sprites(void)
     VDP_updateSprites(nspr, DMA_QUEUE);
 }
 
+/* ---- HUD (window rows 0-5 = PCE BAT rows 1-6) -------------------------- */
+
+static u8 hud_drawn_life[2] = { 0xFF, 0xFF }, hud_drawn_magic[2] = { 0xFF, 0xFF };
+
+/* bank 4 $BB99/$BBC2: n digits from RAM at (col, row) */
+static void hud_digits(u16 src, u8 n, u16 col, u16 row)
+{
+    u8 i;
+    for (i = 0; i < n; i++)
+        VDP_setTileMapXY(WINDOW, (u16)(ss2_hud_digit[R(src + i) % 10] + HUD_TILE), (u16)(col + i), row);
+}
+
+/* bank 2 $76B3: bar of max/2 cells, shown/2 full cells, an odd half cell */
+static void hud_bar(const u8 *v, u16 table, u16 row)
+{
+    u8 x = 0, max = (u8)(v[1] >> 1), full = (u8)(v[0] >> 1);
+    for (; x < full; x++)
+        VDP_setTileMapXY(WINDOW, (u16)(ss2_hud_bar[ss2_rom_byte((u16)(table + x)) & 63] + HUD_TILE), (u16)(7 + x), row);
+    if (v[0] & 1)
+    {
+        VDP_setTileMapXY(WINDOW, (u16)(ss2_hud_bar[(ss2_rom_byte((u16)(table + x)) + 1) & 63] + HUD_TILE), (u16)(7 + x), row);
+        x++;
+    }
+    for (; x < max; x++)
+        VDP_setTileMapXY(WINDOW, (u16)(ss2_hud_bar[0x3C] + HUD_TILE), (u16)(7 + x), row);
+}
+
+static void draw_hud(u8 all)
+{
+    if (all || (ss2_hud_dirty & 1)) hud_digits(0x2205, 6, 7, 1);
+    if (all || (ss2_hud_dirty & 2)) hud_digits(0x220E, 5, 20, 1);
+    ss2_hud_dirty = 0;
+    if (all || hud_drawn_life[0] != ss2_hud_life[0] || hud_drawn_life[1] != ss2_hud_life[1])
+    {
+        hud_bar(ss2_hud_life, 0x4DB9, 3);
+        hud_drawn_life[0] = ss2_hud_life[0]; hud_drawn_life[1] = ss2_hud_life[1];
+    }
+    if (all || hud_drawn_magic[0] != ss2_hud_magic[0] || hud_drawn_magic[1] != ss2_hud_magic[1])
+    {
+        hud_bar(ss2_hud_magic, 0x4DC5, 4);
+        hud_drawn_magic[0] = ss2_hud_magic[0]; hud_drawn_magic[1] = ss2_hud_magic[1];
+    }
+}
+
 /* Genesis pad -> PCE $16 layout (L D R U Run Sel II I):
  * C = I (jump), B = II (attack), A = SELECT, START = RUN */
 static u8 pce_pad(u16 p)
@@ -329,6 +373,9 @@ void ss2_run(void)
     ss2_sound_init();
     ss2_sound_request(SS2_SND_MUS_STAGE(Z_STAGE));
     video_init();
+    ss2_hud_life[0] = R(0x22BA); ss2_hud_life[1] = R(0x22B9);
+    ss2_hud_magic[0] = R(0x22BD); ss2_hud_magic[1] = R(0x22BC);
+    draw_hud(1);
     camera_from_state();
     redraw_view();
     apply_scroll();
@@ -372,6 +419,7 @@ void ss2_run(void)
         stream_view();
         apply_scroll();
         draw_sprites();
+        draw_hud(0);
         PROF(7);
 #ifdef SS2_PROF
         prof_end(t0, v0);

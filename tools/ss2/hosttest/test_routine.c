@@ -47,7 +47,13 @@ int main(int argc, char **argv)
         ss2_expected_pad = post[0x16];
         ss2_unported_count = 0;
         ROUTINE();
-        if (ss2_unported_count) { unported_frames++; if (unported_frames <= 4) printf("frame %u: unported $%04X\n", fr, ss2_unported_last); continue; }
+        if (ss2_unported_count)
+        {
+            extern u8 ss2_unported_bank;
+            unported_frames++;
+            if (unported_frames <= 4) printf("frame %u: unported $%04X (bank $%02X at $C000)\n", fr, ss2_unported_last, ss2_unported_bank);
+            continue;
+        }
         for (a = 0; a < 0x2000; a++)
             if (!masked(a) && ss2_ram[a] != post[a])
             {

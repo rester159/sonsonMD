@@ -181,15 +181,14 @@ static void container_hit(u8 x)
     ss2_obj_death(x);
 }
 
-/* $9002-$9026: an item placed in the level (kind 3-9) at ($40-$43) */
-static void place_item(u8 kind)
+/* $9032/$93D6: an item at ($40-$43) for spawner $44 (record $91EE for
+ * kinds below $0A, $959E above) */
+static void spawn_item(u8 kind)
 {
     u8 s = ZP(0x44), x;
-    ZP(0x35) = kind;
-    if (O(0x2B5A, s)) return;
     x = ss2_obj_alloc();
     if (x == 0xFF) return;
-    ss2_obj_init(x, 0x91EE);
+    ss2_obj_init(x, (kind & 0x7F) < 0x0A ? 0x91EE : 0x959E);
     O(0x25BA, x) = 0; O(0x25DA, x) = 0;
     O(0x25FA, x) = 0; O(0x261A, x) = 0;
     O(0x247A, x) = ZP(0x40); O(0x249A, x) = ZP(0x41);
@@ -200,6 +199,39 @@ static void place_item(u8 kind)
     item_kind(x, kind);
 }
 
+/* $9002-$9026: an item placed in the level (kind 3-9) */
+static void place_item(u8 kind)
+{
+    ZP(0x35) = kind;
+    if (O(0x2B5A, ZP(0x44))) return;
+    spawn_item(kind);
+}
+
+/* $983E: closed container, or its item once the spawner was opened */
+static void spawn_container(void)
+{
+    u8 s = ZP(0x44), x;
+    if (O(0x2B5A, s)) return;
+    if (O(0x2C1A, s))
+    {
+        ZP(0x35) = R(0x2223 + s);
+        spawn_item(ZP(0x35));
+        return;
+    }
+    x = ss2_obj_alloc();
+    if (x == 0xFF) return;
+    ss2_obj_init(x, 0x989D);
+    O(0x25BA, x) = 0; O(0x25DA, x) = 0;
+    O(0x25FA, x) = 0; O(0x261A, x) = 0;
+    O(0x247A, x) = ZP(0x40); O(0x249A, x) = ZP(0x41);
+    O(0x24DA, x) = ZP(0x42); O(0x24FA, x) = ZP(0x43);
+    O(0x297A, x) = 0;
+    O(0x287A, x) = 0;
+    O(0x281A, x) = s;
+    O(0x2B5A, s)++;
+    ss2_obj_common(x);
+}
+
 u8 ss2_item_spawn_handler(u16 addr)
 {
     if (addr >= 0x9002 && addr <= 0x9026 && !((addr - 0x9002) % 6))
@@ -207,6 +239,143 @@ u8 ss2_item_spawn_handler(u16 addr)
         place_item((u8)(3 + (addr - 0x9002) / 6));
         return 1;
     }
+    if (addr == 0x983E) { spawn_container(); return 1; }
+    return 0;
+}
+
+/* ---- pickups (bank 2 $7D65, handlers in bank 3) ------------------------ */
+
+/* $8289: common: pickup sound, switch to the item's collected handler */
+static void collected(u8 x)
+{
+    ss2_sfx(0x28);
+    O(0x267A, x) = 1;
+    O(0x28DA, x) = O(0x291A, x);
+    O(0x28BA, x) = O(0x28FA, x);
+}
+
+/* $80C8: money bag: award, then float up with its collected script.
+ * Returns 1: the source drops collide's return and re-enters $EE67. */
+static u8 money(u8 x, u8 award)
+{
+    ss2_score_award(award);
+    ss2_sfx(0x28);
+    O(0x269A, x) |= 0x24;
+    O(0x267A, x) = 1;
+    O(0x293A, x) = O(0x299A, x);
+    O(0x295A, x) = O(0x29BA, x);
+    O(0x28DA, x) = 0x67; O(0x28BA, x) = 0xEE;
+    O(0x25FA, x) = 0xFF; O(0x261A, x) = 0;
+    O(0x25BA, x) = 0; O(0x25DA, x) = 0;
+    return 1;
+}
+
+static u8 min_add(u8 v, u8 add, u8 cap)
+{
+    u8 t = (u8)(v + add);
+    return t < cap ? t : cap;
+}
+
+/* bank 4 $BA52: 8-digit BCD subtract of the table at a from the money */
+static void money_sub(u16 a)
+{
+    s8 y;
+    u8 c = 1;
+    for (y = 7; y >= 0; y--)
+    {
+        s16 d = (s16)(R(0x220B + y) - ss2_rom_byte((u16)(a + y)) - (1 - c));
+        c = 1;
+        if (d < 0) { d += 0x0A; c = 0; }
+        R(0x220B + y) = (u8)d;
+    }
+}
+
+/* $82A0: trap item: hurt the player once ($86 latches) */
+static void trap(u8 x)
+{
+    if (Z_DEMOFX) return;
+    if ((u8)(R(0x22E9) | R(0x22EA) | R(0x22EB)) == 0x80)
+    {
+        u8 m = P_MAGIC, d = O(0x26FA, x);
+        P_MAGIC = (u8)(m - d);
+        R(0x22BD) = P_MAGIC;
+        if (m <= d) { P_MAGIC = 0; R(0x22BD) = 0; }
+    }
+    else if (!ZP(0x65))
+    {
+        u8 l = P_LIFE, d = O(0x26FA, x);
+        P_LIFE = (u8)(l - d);
+        R(0x22BA) = P_LIFE;
+        if (l <= d)
+        {
+            P_HITOBJ = (u8)(x + 1);
+            P_LIFE = 0; R(0x22BA) = 0;
+            P_MODE = 0x40;
+            return;
+        }
+    }
+    P_MODE = 0x20;
+    P_HITOBJ = (u8)(x + 1);
+    P_HURT = 0x5A;
+    Z_DEMOFX = 1;
+}
+
+u8 ss2_item_pickup(u8 x)
+{
+    static const u8 money_award[7] = { 0x20, 0x21, 0x22, 0x23, 0x24, 0x26, 0x28 };
+    static const u8 food_award[4] = { 0x01, 0x02, 0x04, 0x06 };
+    u8 k = O(0x26BA, x);
+    switch (k)
+    {
+        case 3: case 4: case 5: case 6: case 7: case 8: case 9:
+            return money(x, money_award[k - 3]);
+        case 15:                            /* $81BB: life vessel */
+        {
+            u8 s;
+            collected(x);
+            R(0x22B9) = min_add(R(0x22B9), 2, 0x18);
+            P_LIFE = min_add(P_LIFE, 4, R(0x22B9));
+            for (s = 1, k = Z_STAGE; k; k--) s = (u8)(s << 1);
+            ZP(0x37) = s;
+            ZP(0x7C) |= s;
+            return 0;
+        }
+        case 16:                            /* $81F2: magic +2 */
+            collected(x);
+            P_MAGIC = min_add(P_MAGIC, 2, R(0x22BC));
+            return 0;
+        case 18:                            /* $8207: lose money */
+            collected(x);
+            if (!(R(0x220B) | R(0x220C) | R(0x220D) | R(0x220E) | R(0x220F) | R(0x2210)))
+            {
+                R(0x2211) = 0;
+                R(0x2212) = 0;
+            }
+            else money_sub(0x4C0C);
+            ss2_hud_dirty |= 2;
+            return 0;
+        case 19: case 20: case 21: case 22: /* $8237: food points */
+            ss2_score_award(food_award[k - 19]);
+            collected(x);
+            return 0;
+        case 23: case 24:                   /* $8257/$825D: food life */
+            ZP(0x35) = k == 23 ? 2 : 5;
+            collected(x);
+            P_LIFE = min_add(P_LIFE, ZP(0x35), R(0x22B9));
+            return 0;
+        case 25:                            /* $8276: staff upgrade */
+        {
+            u8 t = ss2_rom_byte((u16)(0x4CAB + Z_STAGE));
+            collected(x);
+            if (t >= Z_STAFFPAL) Z_STAFFPAL = t;
+            ss2_unported(0x79F7);           /* staff art reload: presentation, pending */
+            return 0;
+        }
+        case 30:
+            trap(x);
+            return 0;
+    }
+    ss2_unported((u16)(0x7D00 | k));        /* doors, shops, message items */
     return 0;
 }
 

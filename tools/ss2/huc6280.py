@@ -213,6 +213,10 @@ class CPU:
         m, md = OPS.get(op, ('???', 'imp'))
         if self.trace is not None:
             self.trace(self, pc, op)
+            if self.pc != pc:           # a research hook redirected execution
+                pc = self.pc
+                op = self.rd(pc)
+                m, md = OPS.get(op, ('???', 'imp'))
         n = SIZE[md]
         self.pc = (pc + n) & 0xFFFF
         self.cycles += _CYC[md]
