@@ -275,6 +275,13 @@ void ss2_game_vblank(u8 pad)
     Z_FRAME++;
 }
 
+#ifdef SS2_PROF
+void ss2_prof_mark(u8 sec);
+#define PROF(n) ss2_prof_mark(n)
+#else
+#define PROF(n)
+#endif
+
 void ss2_game_tick(void)
 {
     u8 i;
@@ -284,9 +291,12 @@ void ss2_game_tick(void)
     ss2_player_update();
     select_frame();
     play_clock();
+    PROF(1);
     ss2_spawn_scan();
+    PROF(2);
     /* task 2 */
     ss2_objects_update();
+    PROF(3);
     trail();
     spark();
     if (!(Z_FRAME & 0x0F))

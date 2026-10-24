@@ -252,6 +252,56 @@ static void camera_from_state(void)
     camy = (s16)(((((Z_CAMY_HI & 7) << 8) | Z_CAMY_LO) + 61) & 2047);
 }
 
+#ifdef SS2_PROF
+#define PROF(n) ss2_prof_mark(n)
+#else
+#define PROF(n)
+#endif
+
+#ifdef SS2_PROF
+/* profiling build: worst frame load in scanlines (262 = one NTSC frame)
+ * and frames whose work ran past the next VBlank, drawn on the HUD row */
+static u16 prof_max, prof_over, prof_frames;
+u16 ss2_prof_sec[8];          /* worst lines per section after warm-up */
+static u32 prof_sum[8];
+static u16 prof_n, prof_warm;
+static u16 prof_last;
+void ss2_prof_mark(u8 sec)
+{
+    u16 v = (u16)GET_VCOUNTER, d = (u16)(v >= prof_last ? v - prof_last : 0);
+    if (prof_warm >= 120)
+    {
+        if (d > ss2_prof_sec[sec]) ss2_prof_sec[sec] = d;
+        prof_sum[sec] += d;
+    }
+    prof_last = v;
+}
+static void prof_end(u32 t0, u16 v0)
+{
+    char buf[24];
+    u16 v = (u16)GET_VCOUNTER, lines;
+    if (prof_warm < 120) { prof_warm++; return; }
+    prof_n++;
+    if (vtimer != t0 || v >= 0xE0) { prof_over++; lines = 224; }
+    else lines = (u16)(v - v0);
+    if (lines > prof_max) prof_max = lines;
+    if (++prof_frames >= 30)
+    {
+        sprintf(buf, "L%3u O%4u", prof_max, prof_over);
+        VDP_drawTextBG(WINDOW, buf, 1, 0);
+        {
+            u8 k;
+            for (k = 0; k < 8; k++)
+            {
+                sprintf(buf, "%u:%3u/%3u", k, (u16)(prof_sum[k] / (prof_n ? prof_n : 1)), ss2_prof_sec[k]);
+                VDP_drawTextBG(WINDOW, buf, (u16)(1 + (k & 1) * 12), (u16)(1 + (k >> 1)));
+            }
+        }
+        prof_frames = 0;
+    }
+}
+#endif
+
 void ss2_run(void)
 {
     u16 pad;
@@ -259,6 +309,7 @@ void ss2_run(void)
 
     for (i = 0; i < 0x2000; i++) ss2_ram[i] = ss2_s0_ram[i];
     ss2_mpr6 = 9;
+    ss2_page[6] = ss2_banks[9];
     shown_frame = 0xFF;
     snd_shutdown();
     ss2_sound_init();
@@ -270,17 +321,35 @@ void ss2_run(void)
 
     for (;;)
     {
+#ifdef SS2_PROF
+        u32 t0;
+        u16 v0;
+#endif
         SYS_doVBlankProcess();
+#ifdef SS2_PROF
+        /* measure inside active display, where the V counter is linear
+         * (NTSC VBlank counts $E5-$EA twice) */
+        while (GET_VCOUNTER != 0) { }
+        t0 = vtimer;
+        v0 = (u16)GET_VCOUNTER;
+        prof_last = v0;
+#endif
         pad = JOY_readJoypad(JOY_1);
         if ((pad & (BUTTON_START | BUTTON_A)) == (BUTTON_START | BUTTON_A))
             break;                              /* RUN+SELECT: the PCE reset combo */
         ss2_game_vblank(pce_pad(pad));
+        PROF(0);
         sound_irq();
+        PROF(0);
         ss2_game_tick();
         camera_from_state();
         stream_view();
         apply_scroll();
         draw_sprites();
+        PROF(7);
+#ifdef SS2_PROF
+        prof_end(t0, v0);
+#endif
     }
     ss2_sound_shutdown();
     video_shutdown();

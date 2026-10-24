@@ -25,10 +25,20 @@ extern const u8 ss2_bank17[0x2000];
 
 extern u8 ss2_mpr6;                          /* bank mapped at $C000       */
 void ss2_map6(u8 bank);                      /* $BB83 (also sets $8E)      */
-u8   ss2_bank_byte(u8 bank, u16 addr);
 
-u8   ss2_rom_byte(u16 addr);                 /* gameplay MPR mapping       */
-u8   ss2_metatile_byte(u16 addr, u8 index);  /* bank 6|stage bit2 at $C000 */
+/* CPU view per 8 KiB page (the MPR model): $2000 work RAM, $4000-$BFFF
+ * banks 1-4, $C000 the current bank, $E000 bank 0 */
+extern const u8 *ss2_page[8];
+extern const u8 *const ss2_banks[0x20];      /* by HuCard bank number      */
+
+static inline u8 ss2_rom_byte(u16 addr) { return ss2_page[addr >> 13][addr & 0x1FFF]; }
+static inline u8 ss2_bank_byte(u8 bank, u16 addr) { return ss2_banks[bank & 0x1F][addr & 0x1FFF]; }
+/* metatile table: bank 6 | stage bit 2 at $C000 */
+static inline u8 ss2_metatile_byte(u16 addr, u8 index)
+{
+    extern u8 ss2_ram[0x2000];
+    return ss2_banks[6 | ((ss2_ram[0x69] >> 2) & 1)][(u16)(addr + index) & 0x1FFF];
+}
 
 /* presentation requests raised by the logic */
 extern u8 ss2_staff_sprites_hidden;

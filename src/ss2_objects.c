@@ -31,6 +31,8 @@ void ss2_map6(u8 bank)
 {
     ZP(0x8E) = bank;
     ss2_mpr6 = bank;
+    ss2_page[6] = ss2_banks[bank & 0x1F];
+    if (ss2_page[6] == ss2_banks[0x0A]) ss2_unported((u16)(0xB000 | bank));
 }
 
 static void kill_spawned(u8 x);

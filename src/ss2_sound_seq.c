@@ -47,6 +47,7 @@ void ss2_snd_host_event(char kind, u8 ch, u8 byte);   /* validation harness only
 #endif
 
 /* ---- data access ------------------------------------------------------ */
+#ifdef SS2_SND_HOST
 static u8 rd(u16 a)
 {
     u16 o = (u16)(a - SS2_SND_BANK_BASE);
@@ -54,6 +55,10 @@ static u8 rd(u16 a)
     ss2_snd_seq_faults++;
     return 0;
 }
+#else
+/* target: data reads were validated in range for every id (validate.py) */
+static inline u8 rd(u16 a) { return ss2_snd_bank[(u16)(a - SS2_SND_BANK_BASE)]; }
+#endif
 
 /* ---- PSG output ($807D / $806B / $806F) -------------------------------- */
 #define psg(r, v) ss2_snd_psg_write((r), (v))
@@ -98,7 +103,11 @@ static void load_wave(u8 *p)                /* $848B */
     if (DA & 0x80) return;
     psg(4, 0x40); psg(4, 0x00);
     ss2_snd_psg_wave(inst);
+#ifdef SS2_SND_HOST
     for (y = 0; y < 32; y++) psg(6, rd((u16)(inst + y)));
+#else
+    (void)y;    /* the renderer selects the FM patch by source address */
+#endif
     psg(4, 0x80);
 }
 
@@ -586,7 +595,9 @@ static u8 sfx_channel(u8 *q)                /* $8753 */
                 src = (u16)(rd((u16)(0x890A + y)) | (rd((u16)(0x890B + y)) << 8));
                 psg(4, 0x40); psg(4, 0x00);
                 ss2_snd_psg_wave(src);
+#ifdef SS2_SND_HOST
                 for (y = 0; y < 32; y++) psg(6, rd((u16)(src + y)));
+#endif
             }
         }
         sfx_volume_out(q);

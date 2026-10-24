@@ -72,10 +72,19 @@ void ss2_snd_psg_write(u8 reg, u8 val)
 
 void ss2_snd_psg_wave(u16 src)
 {
+    static u16 last_src = 0xFFFF;
+    static u8 last_patch;
     u16 i;
     if (vsel >= 6) return;
+    if (src == last_src) { vp[vsel].patch = last_patch; return; }
     for (i = 0; i < ss2_snd_patch_count; i++)
-        if (ss2_snd_wave_src[i] == src) { vp[vsel].patch = (u8)i; return; }
+        if (ss2_snd_wave_src[i] == src)
+        {
+            vp[vsel].patch = (u8)i;
+            last_src = src;
+            last_patch = (u8)i;
+            return;
+        }
 }
 
 /* ---- YM2612 helpers (caller holds the Z80 bus) --------------------------- */
@@ -259,16 +268,26 @@ void ss2_sound_set_hold(u8 v)
     ss2_snd_seq_set_hold(v);
 }
 
+#ifdef SS2_PROF
+void ss2_prof_mark(u8 sec);
+#define PROF(n) ss2_prof_mark(n)
+#else
+#define PROF(n)
+#endif
+
 void ss2_sound_tick(void)
 {
     if (!ready) return;
+    PROF(4);
     ss2_snd_seq_frame();
     if (SYS_isPAL() && ++pal_phase >= 5)
     {                                           /* 50 Hz: 6 source frames per 5 */
         pal_phase = 0;
         ss2_snd_seq_frame();
     }
+    PROF(5);
     render();
+    PROF(6);
 }
 
 void ss2_sound_shutdown(void)
