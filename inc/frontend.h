@@ -9,7 +9,8 @@
  * "PORTED BY RESTER159, 2026" credit string.
  *
  * Boot order (main.c): sega_splash_run() -> capcom_splash_run() ->
- * mode = selector_run() -> game_init() + the native game loop.
+ * game_select_run() -> (SONSON) mode = selector_run() -> game_init() + the
+ * native game loop.
  *
  * Each stage draws its own tiles/palette, runs to completion, then tears the
  * VDP/sound hardware back to a clean state so the next stage (and finally
@@ -19,6 +20,10 @@
 #define FRONTEND_H
 
 #include <genesis.h>
+
+/* Game-select return values (game_select_run). */
+#define GAME_SONSON   0
+#define GAME_SONSON2  1
 
 /* Selector return values -> stored in g_mode (game.h). */
 #define MODE_ARCADE   0
@@ -34,6 +39,11 @@ void sega_splash_run(void);
  * Blocks ~6 s, then tears down to black + a reset YM, Z80 returned to SGDK's
  * clean halt state. */
 void capcom_splash_run(void);
+
+/* SELECT GAME screen: the SONSON and SON SON II logos side by side (same
+ * size), arcade-font "SELECT GAME" header. Blocks until the player picks;
+ * returns GAME_SONSON or GAME_SONSON2. */
+u8 game_select_run(void);
 
 /* ARCADE / HOME mode selector with the SONSON title + the RESTER credit.
  * Blocks until the player picks a mode; returns MODE_ARCADE or MODE_HOME. */

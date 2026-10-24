@@ -2,7 +2,6 @@
 #include "game.h"
 #include "frontend.h"
 #include "save.h"
-#include "game_select.h"
 #include "ss2.h"
 
 /* ===========================================================================
@@ -12,7 +11,8 @@
  *
  *  The native build now ships the full owner presentation before the game:
  *
- *      SEGA splash  ->  CAPCOM logo intro  ->  ARCADE/HOME selector  ->  game
+ *      SEGA splash  ->  CAPCOM logo intro  ->  SELECT GAME  ->
+ *      ARCADE/HOME selector  ->  game
  *
  *  The two logo splashes reuse the owner's verified SGDK kits verbatim
  *  (sega_logo / capcom_logo); the selector is a clean native re-creation that
@@ -56,12 +56,6 @@ int main(bool hardReset)
     sega_splash_run();                    /* SEGA opening (Sonic-1 + chant)    */
     capcom_splash_run();                  /* CAPCOM logo + register-exact FM   */
 
-    /* ---- TWO-GAME CARTRIDGE: SON SON / SON SON II ----
-     * SON SON II returns here when its session ends; SON SON keeps its own
-     * selector/attract loop below (Reset brings back this chooser). */
-    while (game_select_run() == GAME_SONSON2)
-        ss2_run();
-
     /* ---- SESSION LOOP: selector -> config -> play -> (game over) -> selector */
     while (TRUE)
     {
@@ -72,6 +66,14 @@ int main(bool hardReset)
          * (laid out for 40 columns) render exactly as on the first boot. */
         VDP_setScreenWidth320();
         VDP_setPlaneSize(64, 32, TRUE);
+
+        /* SELECT GAME: SONSON goes on to the ARCADE/HOME selector below;
+         * SON SON II runs its port and comes back here when it ends. */
+        if (game_select_run() == GAME_SONSON2)
+        {
+            ss2_run();                    /* returns on START+A */
+            continue;                     /* loop top restores H40 */
+        }
 
         g_mode = selector_run();          /* ARCADE / HOME + RESTER credit     */
 
