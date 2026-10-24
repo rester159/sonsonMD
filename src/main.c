@@ -9,7 +9,8 @@
  *
  *  The native build now ships the full owner presentation before the game:
  *
- *      SEGA splash  ->  CAPCOM logo intro  ->  ARCADE/HOME selector  ->  game
+ *      SEGA splash  ->  CAPCOM logo intro  ->  SELECT GAME  ->
+ *      ARCADE/HOME selector  ->  game
  *
  *  The two logo splashes reuse the owner's verified SGDK kits verbatim
  *  (sega_logo / capcom_logo); the selector is a clean native re-creation that
@@ -71,6 +72,12 @@ int main(bool hardReset)
          * (laid out for 40 columns) render exactly as on the first boot. */
         VDP_setScreenWidth320();
         VDP_setPlaneSize(64, 32, TRUE);
+
+        /* SELECT GAME: SONSON goes on to the ARCADE/HOME selector below.
+         * SON SON II has no port in this ROM yet -- picking it stays on the
+         * game-select screen until it's wired up. */
+        if (game_select_run() != GAME_SONSON)
+            continue;
 
         g_mode = selector_run();          /* ARCADE / HOME + RESTER credit     */
 

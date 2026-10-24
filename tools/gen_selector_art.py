@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""gen_selector_art.py -- bake the two mode-selector logos (cut out of the cover
+"""gen_selector_art.py -- bake the two game-select logos (cut out of the cover
 images in tools/selector_art/) into native Genesis tiles + tilemaps + palettes
-for src/selector.c. Emits src/selector_art.c + inc/selector_art.h with
+for src/game_select.c. Emits src/selector_art.c + inc/selector_art.h with
 selector_art_* symbols.
 
 Each logo is keyed off its background (mask -> index 0, so it floats on the
 black backdrop), cropped to the mask's bounds and scaled to fit the SAME
-144x80 box (18x10 tiles), centred. Then reduced to Genesis colour: every
-channel snapped to the 3-bit VDP DAC ladder, 15 median-cut colours (from logo
-pixels only) with the brightest forced to white at index 15 (so the selector's
-white text can share the logo's palette line). No dithering. Identical tiles
-are shared per logo.
-  ARCADE = SONSON logo from the arcade flyer (with its katakana)
-  HOME   = SON SON II logo from the PC Engine box"""
+144x80 box (18x10 tiles), centred. White is taken out (owner request): thin
+white (highlights, rims) is repainted from the nearest logo colour, large white
+blobs (letter counters) become transparent, and pinholes left by the keying
+are filled the same way. Then reduced to Genesis colour: every channel snapped
+to the 3-bit VDP DAC ladder, 15 median-cut colours from logo pixels only. No
+dithering. Identical tiles are shared per logo.
+  arcade = SONSON logo from the arcade flyer (with its katakana)
+  home   = SON SON II logo from the PC Engine box"""
 import os
 import numpy as np
 from PIL import Image, ImageFilter
@@ -68,28 +69,56 @@ COVERS = [  # (symbol, source, region holding the logo in source px, keyer)
     ("home",   "home_box.webp",    (0, 0, 380, 270),  key_home),
 ]
 
+def repaint(a, good, fix):
+    """Paint the fix pixels of RGB array a from their nearest good pixel."""
+    _, (iy, ix) = nd.distance_transform_edt(~good, return_indices=True)
+    a = a.copy(); a[fix] = a[iy[fix], ix[fix]]
+    return a
+
+def unwhite(on, a, counter):
+    """Take the white out of a logo at source resolution (on = logo mask,
+    a = RGB array). White blobs whose core is >= counter px are letter
+    counters -> transparent; the rest (highlights, rims, the near-white
+    antialiasing round them) is repainted from the nearest logo colour."""
+    r, g, b = (a[..., i].astype(int) for i in range(3))
+    lo = np.minimum(np.minimum(r, g), b)
+    white = on & (lo >= 150) & (np.maximum(np.maximum(r, g), b) - lo <= 90)
+    lab, n = nd.label(white)
+    core = nd.binary_erosion(white, iterations=2)
+    hole = np.isin(lab, [i for i in range(1, n + 1) if core[lab == i].sum() >= counter])
+    fix = nd.binary_dilation(white & ~hole, iterations=2) & on & ~hole
+    on = on & ~hole
+    return on, repaint(a, on & ~fix, fix)
+
+def plug(on, a, most=8):
+    """Smooth the scaled mask's edge, then fill pinholes (enclosed gaps of
+    < most px) left after scaling."""
+    sm = nd.median_filter(on, size=3)               # smooth ragged keying edges
+    a = repaint(a, on, sm & ~on); on = sm
+    lab, n = nd.label(nd.binary_fill_holes(on) & ~on)
+    fix = np.isin(lab, [i for i in range(1, n + 1) if (lab == i).sum() < most])
+    return on | fix, repaint(a, on, fix)
+
 def bake(src, box, keyer):
     im = Image.open(os.path.join(ART, src)).convert("RGB").crop(box)
     a = np.array(im)
     m = keyer(*(a[..., i].astype(int) for i in range(3)))
     ys, xs = np.nonzero(m)
     x0, y0, x1, y1 = xs.min(), ys.min(), xs.max() + 1, ys.max() + 1
-    a[~m] = 0
     s = min(W / (x1 - x0), H / (y1 - y0))           # fit the box, keep aspect
+    m, a = unwhite(m, a, 6 / (s * s))               # counters >= ~6 px once scaled
+    a[~m] = 0
     sw, sh = round((x1 - x0) * s), round((y1 - y0) * s)
     logo = Image.fromarray(a[y0:y1, x0:x1]).resize((sw, sh), Image.LANCZOS)
     logo = logo.filter(ImageFilter.UnsharpMask(radius=1, percent=80, threshold=2))
     mask = Image.fromarray((m[y0:y1, x0:x1] * 255).astype(np.uint8)).resize((sw, sh), Image.LANCZOS)
     im = Image.new("RGB", (W, H)); im.paste(logo, ((W - sw) // 2, (H - sh) // 2))
     mk = Image.new("L", (W, H)); mk.paste(mask, ((W - sw) // 2, (H - sh) // 2))
-    im = im.point(lambda v: LV[lvl(v)])            # pre-snap to the 512-colour space
-    on = np.array(mk) >= 128
+    on, im = plug(np.array(mk) >= 128, np.array(im))
+    im = Image.fromarray(im).point(lambda v: LV[lvl(v)])   # pre-snap to the 512-colour space
     sample = Image.fromarray(np.array(im)[on][None, :, :])   # logo pixels only
     q = sample.quantize(15, method=Image.MEDIANCUT, dither=Image.NONE).getpalette()[:45]
     rgb = [tuple(LV[lvl(c)] for c in q[i:i + 3]) for i in range(0, 45, 3)]
-    wi = min(range(15), key=lambda i: sum(255 - v for v in rgb[i]))
-    del rgb[wi]
-    rgb.append((255, 255, 255))                    # brightest -> index 15 = white (text colour)
     p = Image.new("P", (1, 1))
     p.putpalette(sum(rgb, ()) + rgb[0] * (256 - 15))   # pad with a real entry
     q = np.array(im.quantize(palette=p, dither=Image.NONE))
@@ -110,8 +139,8 @@ baked = [(sym, *bake(src, box, keyer)) for sym, src, box, keyer in COVERS]
 
 h = open(os.path.join(REPO, "inc", "selector_art.h"), "w", newline="\n")
 h.write("/* selector_art.h -- GENERATED by tools/gen_selector_art.py. DO NOT EDIT.\n")
-h.write(" * The ARCADE / HOME logos for the mode selector: both 18x10 tiles\n")
-h.write(" * (144x80 px), one palette line each (index 15 = white, 0 transparent =\n")
+h.write(" * The SONSON / SON SON II logos for the game select screen: both 18x10\n")
+h.write(" * tiles (144x80 px), one palette line each (index 0 transparent =\n")
 h.write(" * the black backdrop round each keyed-out logo). */\n")
 h.write("#ifndef SELECTOR_ART_H\n#define SELECTOR_ART_H\n#include <genesis.h>\n\n")
 h.write("#define SELECTOR_ART_TW  %d   /* tiles */\n#define SELECTOR_ART_TH  %d\n" % (TW, TH))

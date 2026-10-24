@@ -8,23 +8,15 @@
  * ARCADE / HOME choice, the prompt, and the EXACT credit string), rendered with
  * SGDK's font on a text plane. No old-port engine state.
  *
- * Layout (H40 / 40-col text grid, owner-approved logo layout):
- *   rows  1- 2   SONSON title banner
- *   rows  7-16   two logos, IDENTICAL 18x10 tiles (144x80 px), on BG_B:
- *                ARCADE = the arcade flyer's SONSON logo at cols 1-18, HOME =
- *                the PC Engine box's SON SON II logo at cols 21-38
- *                (selector_art.c, baked by tools/gen_selector_art.py)
- *   row  18      ARCADE / HOME labels under each logo (selected = red + a red
- *                frame round its logo, else white)
- *   row  26      PRESS ANY BUTTON TO SELECT   (yellow)
- *   row  27      PORTED BY RESTER 159, 2026   (white)  <- exact shipped string
+ * Layout (FRONTEND_SPEC 3, re-centred for the native H40 / 40-col text grid):
+ *   rows  7- 9   SONSON title banner
+ *   row  18      ARCADE   (highlight = red, else white)
+ *   row  20      HOME     (highlight = red, else white)
+ *   row  24      PRESS ANY BUTTON TO SELECT   (yellow)
+ *   row  26      PORTED BY RESTER 159, 2026   (white)  <- exact shipped string
  *
- * Palettes: PAL0 = ARCADE logo, PAL1 = HOME logo (15 Genesis colours each,
- * index 15 forced white so white text draws with PAL0), PAL2 = red text +
- * frame, PAL3 = yellow text.
- *
- * Behaviour (matches home.c::mode_selector): Up/Down (or Left/Right) moves the
- * highlight (wraps between the 2 logos), any button (A/B/C/Start) confirms; edge-triggered
+ * Behaviour (matches home.c::mode_selector): Up/Down moves the highlight
+ * (wraps between the 2 rows), any button (A/B/C/Start) confirms; edge-triggered
  * with the 3-read debounce + 20-frame settle that kill the SGDK 6-button
  * TH-detect phantom presses at power-on (both pads forced to 3-button mode).
  * Engine-off frame loop: wait a VBlank (vtimer ticks in SGDK's V-Int), update
@@ -34,14 +26,11 @@
  */
 #include <genesis.h>
 #include "frontend.h"
-#include "selector_art.h"
 
-/* Text colours are picked by switching VDP_setTextPalette() before each draw.
- * Index 0 transparent (the black backdrop shows through); the font draws in
- * index 15. White shares the ARCADE logo's line (its index 15 is white). */
-#define PAL_ARCADE  PAL0
-#define PAL_HOME    PAL1
-#define PAL_WHITE   PAL0
+/* Three font palette lines so individual text lines can be coloured by
+ * switching VDP_setTextPalette() before each draw. Index 0 transparent (the
+ * black backdrop shows through); the font draws in index 15. */
+#define PAL_WHITE   PAL1
 #define PAL_RED     PAL2
 #define PAL_YELLOW  PAL3
 
@@ -49,32 +38,9 @@
  * Kept verbatim -- this is the load-bearing presentation requirement. */
 #define CREDIT_STR  "PORTED BY RESTER 159, 2026"
 
+#define ROW_ARCADE  18
+#define ROW_HOME    20
 #define COLS        40   /* H40 text grid width */
-#define ROW_LOGO    7    /* logo top row (10 rows tall)           */
-#define ROW_LABEL   18
-#define COL_ARCADE  1    /* logo left columns (18 cols wide)      */
-#define COL_HOME    21
-
-/* VRAM: ARCADE tiles, then HOME tiles, then the 8 frame tiles. */
-#define VRAM_ARCADE TILE_USER_INDEX
-#define VRAM_HOME   (VRAM_ARCADE + SELECTOR_ART_ARCADE_TILE_COUNT)
-#define VRAM_FRAME  (VRAM_HOME + SELECTOR_ART_HOME_TILE_COUNT)
-
-/* Selection frame: a 2px red line (colour 15) with a 1px gap round the logo,
- * drawn in the ring of cells just outside it. Order: TL T TR L R BL B BR. */
-#define FL 0x00000FF0   /* left line   (px 5-6) */
-#define FR 0x0FF00000   /* right line  (px 1-2) */
-#define FA 0xFFFFFFFF   /* across      */
-static const u32 frame_tiles[8 * 8] = {
-    0, 0, 0, 0, 0, 0x00000FFF, 0x00000FFF, FL,      /* TL */
-    0, 0, 0, 0, 0, FA, FA, 0,                       /* T  */
-    0, 0, 0, 0, 0, 0xFFF00000, 0xFFF00000, FR,      /* TR */
-    FL, FL, FL, FL, FL, FL, FL, FL,                 /* L  */
-    FR, FR, FR, FR, FR, FR, FR, FR,                 /* R  */
-    FL, 0x00000FFF, 0x00000FFF, 0, 0, 0, 0, 0,      /* BL */
-    0, FA, FA, 0, 0, 0, 0, 0,                       /* B  */
-    FR, 0xFFF00000, 0xFFF00000, 0, 0, 0, 0, 0,      /* BR */
-};
 
 /* ---- one-colour font palette: a flat colour in index 15, 0 transparent. */
 static void set_font_pal(u16 palLine, u16 color)
@@ -86,93 +52,39 @@ static void set_font_pal(u16 palLine, u16 color)
     PAL_setColors(palLine * 16, pal, 16, CPU);
 }
 
-/* ---- text centred on column cx (x2: cx2 = 2*centre, so half-columns work). */
-static void draw_at(u16 row, u16 cx2, const char *s, u16 palLine)
+/* ---- centred text on the active text plane (40-col grid). */
+static void draw_center(u16 row, const char *s, u16 palLine)
 {
     u16 len = 0;
     const char *p;
     for (p = s; *p; p++) len++;
     VDP_setTextPalette(palLine);
-    VDP_drawTextBG(BG_A, s, (u16)((cx2 - len) / 2), row);
+    VDP_drawTextBG(BG_A, s, (u16)((COLS - len) / 2), row);
 }
 
-/* ---- centred text on the active text plane (40-col grid). */
-static void draw_center(u16 row, const char *s, u16 palLine)
-{
-    draw_at(row, COLS, s, palLine);
-}
-
-/* ---- one logo image on BG_B at (col, ROW_LOGO). */
-static void draw_logo(const u16 *map, u16 vram, u16 pal, u16 col)
-{
-    u16 x, y;
-    for (y = 0; y < SELECTOR_ART_TH; y++)
-        for (x = 0; x < SELECTOR_ART_TW; x++)
-            VDP_setTileMapXY(BG_B,
-                TILE_ATTR_FULL(pal, 0, 0, 0, vram + map[y * SELECTOR_ART_TW + x]),
-                col + x, ROW_LOGO + y);
-}
-
-/* ---- load + draw both logos (same size, side by side). */
-static void draw_logos(void)
-{
-    PAL_setColors(PAL_ARCADE * 16, selector_art_arcade_pal, 16, CPU);
-    PAL_setColors(PAL_HOME   * 16, selector_art_home_pal,   16, CPU);
-    VDP_loadTileData(selector_art_arcade_tiles, VRAM_ARCADE, SELECTOR_ART_ARCADE_TILE_COUNT, DMA);
-    VDP_loadTileData(selector_art_home_tiles,   VRAM_HOME,   SELECTOR_ART_HOME_TILE_COUNT,   DMA);
-    VDP_loadTileData(frame_tiles, VRAM_FRAME, 8, DMA);
-    draw_logo(selector_art_arcade_map, VRAM_ARCADE, PAL_ARCADE, COL_ARCADE);
-    draw_logo(selector_art_home_map,   VRAM_HOME,   PAL_HOME,   COL_HOME);
-}
-
-/* ---- the red selection frame round the logo at col (or clear it). */
-static void draw_frame(u16 col, bool on)
-{
-    const u16 x0 = col - 1, x1 = col + SELECTOR_ART_TW;
-    const u16 y0 = ROW_LOGO - 1, y1 = ROW_LOGO + SELECTOR_ART_TH;
-    u16 i;
-#define FT(n) (on ? TILE_ATTR_FULL(PAL_RED, 0, 0, 0, VRAM_FRAME + (n)) : 0)
-    VDP_setTileMapXY(BG_A, FT(0), x0, y0);
-    VDP_setTileMapXY(BG_A, FT(2), x1, y0);
-    VDP_setTileMapXY(BG_A, FT(5), x0, y1);
-    VDP_setTileMapXY(BG_A, FT(7), x1, y1);
-    for (i = col; i < x1; i++)
-    {
-        VDP_setTileMapXY(BG_A, FT(1), i, y0);
-        VDP_setTileMapXY(BG_A, FT(6), i, y1);
-    }
-    for (i = ROW_LOGO; i < y1; i++)
-    {
-        VDP_setTileMapXY(BG_A, FT(3), x0, i);
-        VDP_setTileMapXY(BG_A, FT(4), x1, i);
-    }
-#undef FT
-}
-
-/* ---- the SONSON title banner (rows 1-2). Drawn boldly with wide spacing +
+/* ---- the SONSON title banner (rows 7-9). Drawn boldly with wide spacing +
  * a rule line so it reads as a title rather than a menu label. The native
  * baked arcade title tiles aren't usable here (they're keyed to the captured
  * gameplay scene's char set, not the title glyphs), so this is the
  * faithful-enough SGDK-font recreation the directive allows. */
 static void draw_title(void)
 {
-    /* white = the logos' index 15 (PAL0 is the ARCADE logo line) */
+    set_font_pal(PAL_WHITE,  0x0EEE);   /* bright white  */
     set_font_pal(PAL_RED,    0x000E);   /* red           */
     set_font_pal(PAL_YELLOW, 0x00EE);   /* yellow        */
 
-    draw_center(1, "S O N S O N", PAL_WHITE);
-    draw_center(2, "============", PAL_RED);
+    draw_center(7, "S O N S O N", PAL_WHITE);
+    draw_center(8, "============", PAL_RED);
 }
 
-/* ---- redraw the two labels + the frame with the current highlight. */
+/* ---- redraw the two choice rows with the current highlight. */
 static void draw_choices(u8 sel)
 {
-    draw_frame(COL_ARCADE, sel == MODE_ARCADE);
-    draw_frame(COL_HOME,   sel == MODE_HOME);
-    draw_at(ROW_LABEL, 2 * COL_ARCADE + SELECTOR_ART_TW, "ARCADE",
-            sel == MODE_ARCADE ? PAL_RED : PAL_WHITE);
-    draw_at(ROW_LABEL, 2 * COL_HOME + SELECTOR_ART_TW, "HOME",
-            sel == MODE_HOME ? PAL_RED : PAL_WHITE);
+    /* clear the two rows first (in case lengths differ) */
+    VDP_clearTextArea(0, ROW_ARCADE, COLS, 1);
+    VDP_clearTextArea(0, ROW_HOME,   COLS, 1);
+    draw_center(ROW_ARCADE, "ARCADE", sel == MODE_ARCADE ? PAL_RED : PAL_WHITE);
+    draw_center(ROW_HOME,   "HOME",   sel == MODE_HOME   ? PAL_RED : PAL_WHITE);
 }
 
 /* ---- debounced edge reader (home.c parity): a pad bit must be seen in THREE
@@ -221,16 +133,10 @@ u8 selector_run(void)
     VDP_clearPlane(BG_A, TRUE);
     VDP_clearPlane(BG_B, TRUE);
     VDP_setBackgroundColor(0);
-    /* A returning pass comes back from the game's camera-scrolled BG_A. */
-    VDP_setHorizontalScroll(BG_A, 0);
-    VDP_setVerticalScroll(BG_A, 0);
-    VDP_setHorizontalScroll(BG_B, 0);
-    VDP_setVerticalScroll(BG_B, 0);
 
-    draw_logos();
     draw_title();
-    draw_center(26, "PRESS ANY BUTTON TO SELECT", PAL_YELLOW);
-    draw_center(27, CREDIT_STR, PAL_WHITE);
+    draw_center(24, "PRESS ANY BUTTON TO SELECT", PAL_YELLOW);
+    draw_center(26, CREDIT_STR, PAL_WHITE);
     edges_rearm();
     draw_choices(sel);
 
@@ -241,19 +147,17 @@ u8 selector_run(void)
         u16 pressed = edges_read();
         if (settle < 20) { settle++; pressed = 0; }
 
-        if (pressed & (BUTTON_UP | BUTTON_DOWN | BUTTON_LEFT | BUTTON_RIGHT))
+        if (pressed & (BUTTON_UP | BUTTON_DOWN))
         {
-            sel ^= 1;               /* two logos -> toggle (wraps)            */
+            sel ^= 1;               /* two rows -> toggle (wraps)             */
             draw_choices(sel);
         }
         if (pressed & (BUTTON_A | BUTTON_B | BUTTON_C | BUTTON_START))
             break;
     }
 
-    /* Clear our screen so game_init starts from black (the logo palettes
-     * too -- the next screen sets its own lines). */
+    /* Clear our screen so game_init starts from black. */
     VDP_clearPlane(BG_A, TRUE);
     VDP_clearPlane(BG_B, TRUE);
-    PAL_setColors(0, palette_black, 32, CPU);
     return sel;
 }
