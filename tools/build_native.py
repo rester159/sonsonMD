@@ -49,6 +49,13 @@ for source in sorted((root/'src').glob('*.c')):
     objects.append(obj)
 run(['m68k-elf-gcc',*(['-flto','-fno-strict-aliasing','-O'+args.opt,*args.cflag] if args.lto else []),'-m68000','-n','-T',sdk/'md.ld','-nostdlib',out/'sega.o',*objects,sdk/'lib/libmd.a','-lgcc','-Wl,--gc-sections','-o',out/'rom.out'])
 run(['m68k-elf-objcopy','-O','binary',out/'rom.out',out/'rom.bin'])
+# GCC 16 m68k miscompiles some copy loops into move (aN)+,d(aN,...) (stores one
+# byte too high). Known pre-existing sites in the prebuilt SGDK libmd
+# (Z80_upload clones) are reported; any other site fails the build.
+hz=subprocess.run(['python3',str(root/'tools/check_autoinc_hazard.py'),str(out/'rom.out')],capture_output=True,text=True).stdout.splitlines()
+new=[h for h in hz if ' Z80_upload.' not in h]
+for h in hz: print('warning:' if h not in new else 'error:',h)
+assert not new, 'auto-increment hazard in project code (see tools/check_autoinc_hazard.py)'
 (out/'symbol.txt').write_bytes(subprocess.check_output(['m68k-elf-nm','-n',out/'rom.out']))
 b=bytearray((out/'rom.bin').read_bytes());
 assert len(b)<=0x400000, 'Linear 4 MiB cartridge window exceeded; review ROM hardware profile'

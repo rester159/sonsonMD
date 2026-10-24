@@ -19,6 +19,8 @@ extern u8 ss2_ram[0x2000];
 
 #define R(a)        (ss2_ram[(u16)((a) - 0x2000) & 0x1FFF])
 #define ZP(a)       R(0x2000 + (a))
+/* struct-of-arrays field `a` of slot x (x <= $FF never leaves the image) */
+#define O(a, x)     (ss2_ram[(u16)((a) - 0x2000) + (u8)(x)])
 
 /* ---- zero page ---- */
 #define Z_FRAME     ZP(0x12)    /* frame counter                          */

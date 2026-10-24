@@ -307,7 +307,21 @@ void ss2_run(void)
     u16 pad;
     u16 i;
 
-    for (i = 0; i < 0x2000; i++) ss2_ram[i] = ss2_s0_ram[i];
+    /* GCC 16 compiles a plain copy loop (and the inlined LTO memcpy) into
+     * move.b (a0)+,(0,a0,d1.l), which stores one byte too high on the 68000
+     * (tools/check_autoinc_hazard.py). The empty asm keeps load and store as
+     * separate instructions. */
+    {
+        const u32 *src = (const u32 *) ss2_s0_ram;
+        u32 *dst = (u32 *) ss2_ram;
+        u16 i;
+        for (i = 0; i < 0x2000 / 4; i++)
+        {
+            u32 v = src[i];
+            __asm__ volatile ("" : "+d" (v));
+            dst[i] = v;
+        }
+    }
     ss2_mpr6 = 9;
     ss2_page[6] = ss2_banks[9];
     shown_frame = 0xFF;
@@ -335,6 +349,18 @@ void ss2_run(void)
         prof_last = v0;
 #endif
         pad = JOY_readJoypad(JOY_1);
+#ifdef SS2_PROF
+        /* fixed workload by logic tick (not wall time): walk right, attack
+         * every 12 ticks, jump every 90; frozen after 1200 ticks */
+        {
+            static u16 tick;
+            if (tick >= 1200) continue;
+            pad = BUTTON_RIGHT;
+            if ((tick % 12) < 3) pad |= BUTTON_B;
+            if ((tick % 90) >= 30 && (tick % 90) < 39) pad |= BUTTON_C;
+            tick++;
+        }
+#endif
         if ((pad & (BUTTON_START | BUTTON_A)) == (BUTTON_START | BUTTON_A))
             break;                              /* RUN+SELECT: the PCE reset combo */
         ss2_game_vblank(pce_pad(pad));

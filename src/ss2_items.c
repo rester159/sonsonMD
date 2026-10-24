@@ -11,7 +11,6 @@
 #include "ss2_ram.h"
 #include "ss2_logic.h"
 
-#define O(a, x)     R((u16)((a) + (x)))
 #define OX16(x)     ((u16)((O(0x247A, x) << 8) | O(0x249A, x)))
 #define OY16(x)     ((u16)((O(0x24DA, x) << 8) | O(0x24FA, x)))
 

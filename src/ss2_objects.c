@@ -18,7 +18,6 @@
 #include "ss2_ram.h"
 #include "ss2_logic.h"
 
-#define O(a, x)     R((u16)((a) + (x)))
 #define OX16(x)     ((u16)((O(0x247A, x) << 8) | O(0x249A, x)))
 #define OY16(x)     ((u16)((O(0x24DA, x) << 8) | O(0x24FA, x)))
 #define PX16        ((u16)((P_XH << 8) | P_XL))
@@ -103,13 +102,14 @@ void ss2_obj_snap_y(u8 x)
     set_oy16(x, (u16)(OY16(x) - t));
 }
 
-/* bank 3 $8505: shift by the camera movement since the previous frame */
+/* bank 3 $8505: shift by the camera movement since the previous frame
+ * (the delta is the same for every slot, so it is computed once a frame) */
+static s16 cam_dx, cam_dy;
+static u8 shots_live;
 static void camera_shift(u8 x)
 {
-    s16 d = (s8)(u8)(ZP(0x4C) - Z_CAMX_LO);
-    set_ox16(x, (u16)(OX16(x) + d));
-    d = (s8)(u8)(ZP(0x4F) - Z_CAMY_LO);
-    set_oy16(x, (u16)(OY16(x) + d));
+    set_ox16(x, (u16)(OX16(x) + cam_dx));
+    set_oy16(x, (u16)(OY16(x) + cam_dy));
 }
 
 /* bank 3 $8428/$8436: free slot searched upward from 0 / downward from 31
@@ -164,7 +164,6 @@ u8 ss2_spawn_visible(void)
     if (ZP(0x88)) return 0;
     ZP(0x2E) = (u8)sx; ZP(0x2F) = (u8)(sx >> 8);
     if (sx >= 0x140) return 0;
-    ZP(0x2E) = (u8)sy; ZP(0x2F) = (u8)(sy >> 8);
     return sy < 0x108;
 }
 
@@ -179,8 +178,6 @@ static u8 near(u16 a, u16 b, u8 size, u8 side)
         if (side) { ZP(0x26) = 0xF8; ZP(0x27) = 0xFF; }
         d = (u16)(0 - d);
     }
-    ZP(0x34) = (u8)d; ZP(0x35) = (u8)(d >> 8);
-    ZP(0x36) = size; ZP(0x37) = 0;
     return d < size;
 }
 
@@ -264,9 +261,6 @@ static void collide(u8 x)
         if (R(0x23DD + y) != 0x80) break;
         sx = (u16)(PX16 + (u16)((R(0x23E2 + y) << 8) | R(0x23E7 + y)) + 8);
         sy = (u16)(PY16 + (P_CLIMBSTEP ? 0x17 : 0x0E));
-        ZP(0x2C) = (u8)sx; ZP(0x2D) = (u8)(sx >> 8);
-        ZP(0x2E) = (u8)sy; ZP(0x2F) = (u8)(sy >> 8);
-        ZP(0x32) = 8; ZP(0x33) = 2;
         if (O(0x2B1A, x) | O(0x2B3A, x))
         {
             ZP(0x26) = 8; ZP(0x27) = 0;
@@ -288,7 +282,7 @@ static void collide(u8 x)
     }
 shots:
     /* $F26F: player shots */
-    if (!(O(0x269A, x) & 0x01))
+    if (shots_live && !(O(0x269A, x) & 0x01))
     {
         for (y = 0; y < 7; y++)
         {
@@ -297,10 +291,7 @@ shots:
             if (R(0x22E5 + y) != 0x80) continue;
             sx = (u16)(((R(0x22EC + y) << 8) | R(0x22F3 + y)) + 8);
             sy = (u16)(((R(0x2301 + y) << 8) | R(0x2308 + y)) + 8);
-            ZP(0x2C) = (u8)sx; ZP(0x2D) = (u8)(sx >> 8);
-            ZP(0x2E) = (u8)sy; ZP(0x2F) = (u8)(sy >> 8);
             mx = R(0x2371 + y); my = R(0x2378 + y);
-            ZP(0x32) = mx; ZP(0x33) = my;
             if ((O(0x2B1A, x) | O(0x2B3A, x)) &&
                 near(wx, sx, (u8)(O(0x2B1A, x) + mx), 0) && near(wy, sy, (u8)(O(0x2B3A, x) + my), 0))
             {
@@ -329,12 +320,8 @@ body:
     {
         u16 sx = (u16)(PX16 + 0x10), sy;
         u8 my;
-        ZP(0x2C) = (u8)sx; ZP(0x2D) = (u8)(sx >> 8);
-        ZP(0x32) = 8;
         if (!P_CLIMBSTEP) { sy = (u16)(PY16 + 0x10); my = 0x0E; }
         else { sy = (u16)(PY16 + 0x14); my = 0x0C; }
-        ZP(0x2E) = (u8)sy; ZP(0x2F) = (u8)(sy >> 8);
-        ZP(0x33) = my;
         if (!((O(0x2B1A, x) | O(0x2B3A, x)) &&
               near(wx, sx, (u8)(O(0x2B1A, x) + 8), 0) && near(wy, sy, (u8)(O(0x2B3A, x) + my), 0)))
         {
@@ -426,18 +413,24 @@ void ss2_obj_common(u8 x)
     /* $EF38: motion */
     if (O(0x245A, x) == 0x40) return;
     {
-        u32 v = ((u32)O(0x247A, x) << 16) | ((u32)O(0x249A, x) << 8) | O(0x24BA, x);
-        v += (u32)(s32)(s16)((O(0x25BA, x) << 8) | O(0x25DA, x));
-        O(0x247A, x) = (u8)(v >> 16); O(0x249A, x) = (u8)(v >> 8); O(0x24BA, x) = (u8)v;
-        v = ((u32)O(0x24DA, x) << 16) | ((u32)O(0x24FA, x) << 8) | O(0x251A, x);
-        v += (u32)(s32)(s16)((O(0x25FA, x) << 8) | O(0x261A, x));
-        O(0x24DA, x) = (u8)(v >> 16); O(0x24FA, x) = (u8)(v >> 8); O(0x251A, x) = (u8)v;
-        ZP(0x30) = (O(0x25FA, x) & 0x80) ? 0xFF : 0;
+        u16 t;
+        u8 h = O(0x25BA, x);
+        t = (u16)(O(0x24BA, x) + O(0x25DA, x));
+        O(0x24BA, x) = (u8)t;
+        t = (u16)(O(0x249A, x) + h + (t >> 8));
+        O(0x249A, x) = (u8)t;
+        O(0x247A, x) = (u8)(O(0x247A, x) + ((h & 0x80) ? 0xFF : 0) + (t >> 8));
+        h = O(0x25FA, x);
+        t = (u16)(O(0x251A, x) + O(0x261A, x));
+        O(0x251A, x) = (u8)t;
+        t = (u16)(O(0x24FA, x) + h + (t >> 8));
+        O(0x24FA, x) = (u8)t;
+        O(0x24DA, x) = (u8)(O(0x24DA, x) + ((h & 0x80) ? 0xFF : 0) + (t >> 8));
+        ZP(0x30) = (h & 0x80) ? 0xFF : 0;
     }
     if (O(0x269A, x) & 0x08)
     {
         u16 t = (u16)(OX16(x) + 0x60);
-        ZP(0x28) = (u8)t; ZP(0x29) = (u8)(t >> 8);
         if (t >= 0x1A0 || OY16(x) >= 0x130) { kill_spawned(x); return; }
     }
     collide(x);
@@ -490,6 +483,10 @@ void ss2_objects_update(void)
 {
     u8 x;
     P_PUSHOBJ = 0;
+    cam_dx = (s8)(u8)(ZP(0x4C) - Z_CAMX_LO);
+    cam_dy = (s8)(u8)(ZP(0x4F) - Z_CAMY_LO);
+    shots_live = 0;
+    for (x = 0; x < 7; x++) if (R(0x22E5 + x) == 0x80) shots_live = 1;
     for (x = 0; x < 0x20; x++)
         if (O(0x245A, x)) ss2_obj_update(x);
 }

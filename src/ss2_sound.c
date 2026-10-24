@@ -87,15 +87,100 @@ void ss2_snd_psg_wave(u16 src)
         }
 }
 
-/* ---- YM2612 helpers (caller holds the Z80 bus) --------------------------- */
+/* ---- YM2612 output -------------------------------------------------------
+ * Per-frame register writes are queued and handed to a small Z80 program
+ * that performs them with its own busy-flag waits, so the 68000 never spins
+ * on the YM. Protocol (Z80 RAM): $1000 = entry count (0 = idle), $1001+ =
+ * entries (part offset 0/2, register, value). The Z80 clears $1000 when done.
+ *
+ *   0000 DI / LD SP,$2000
+ *   0004 loop: LD A,($1000) / OR A / JR Z,loop / LD B,A / LD HL,$1001
+ *   000E next: LD A,(HL) / INC HL / LD E,A / LD D,$40
+ *   0013 busy: LD A,($4000) / RLA / JR C,busy
+ *   0019 LD A,(HL) / INC HL / LD (DE),A / INC DE / LD A,(HL) / INC HL
+ *   001F LD (DE),A / DJNZ next / XOR A / LD ($1000),A / JR loop
+ */
+static const u8 ym_z80[] = {
+    0xF3, 0x31, 0x00, 0x20,
+    0x3A, 0x00, 0x10, 0xB7, 0x28, 0xFA, 0x47, 0x21, 0x01, 0x10,
+    0x7E, 0x23, 0x5F, 0x16, 0x40,
+    0x3A, 0x00, 0x40, 0x17, 0x38, 0xFA,
+    0x7E, 0x23, 0x12, 0x13, 0x7E, 0x23,
+    0x12, 0x10, 0xEC, 0xAF, 0x32, 0x00, 0x10, 0x18, 0xDC };
+
+#define YMQ_MAX 120
+static vu8 *ymq_p;              /* next free entry in Z80 RAM ($1001+)     */
+static u8 ymq_n;
+static u8 ymq_on;               /* 1: queue for the Z80; 0: direct (bus held) */
+
+static void ym_out(u8 part, u8 reg, u8 val)
+{
+    if (!ymq_on) { YM2612_writeReg(part, reg, val); return; }
+    if (ymq_n >= YMQ_MAX) return;
+    ymq_p[0] = (u8)(part << 1);
+    ymq_p[1] = reg;
+    ymq_p[2] = val;
+    ymq_p += 3;
+    ymq_n++;
+}
+
+/* Take the Z80 bus for the frame's register list; the previous list is
+ * normally long finished (a frame holds ~16 ms, a full list ~3 ms). */
+static void ymq_begin(void)
+{
+    vu8 *z = (vu8 *) Z80_RAM;
+    for (;;)
+    {
+        Z80_requestBus(TRUE);
+        if (!z[0x1000]) break;
+        Z80_releaseBus();
+    }
+    ymq_p = z + 0x1001;
+    ymq_n = 0;
+    ymq_on = 1;
+}
+
+static void ymq_end(void)
+{
+    vu8 *z = (vu8 *) Z80_RAM;
+    ymq_on = 0;
+    z[0x1000] = ymq_n;          /* publish last */
+    Z80_releaseBus();
+}
+
+/* Load the YM write player. SGDK's Z80_upload is not used: the GCC 16
+ * build of libmd compiles its byte copy as move.b (a0)+,(0,a0,d0.l), which
+ * stores every byte one address too high on the 68000. The empty asm keeps
+ * each load and store a separate instruction. */
+static void load_ym_z80(void)
+{
+    vu8 *z = (vu8 *) Z80_RAM;
+    u16 i;
+    Z80_loadDriver(Z80_DRIVER_NULL, TRUE);      /* SGDK bookkeeping: a known driver */
+    SYS_disableInts();
+    Z80_requestBus(TRUE);
+    for (i = 0; i < 0x2000; i++) z[i] = 0;
+    for (i = 0; i < sizeof(ym_z80); i++)
+    {
+        u8 b = ym_z80[i];
+        __asm__ volatile ("" : "+d" (b));
+        z[i] = b;
+    }
+    Z80_startReset();
+    Z80_releaseBus();
+    for (i = 0; i < 400; i++) __asm__ volatile ("nop");
+    Z80_endReset();
+    SYS_enableInts();
+}
+
 static void ym(u8 ch, u8 reg, u8 val)
 {
-    YM2612_writeReg(ch >= 3 ? 1 : 0, (u8)(reg + (ch % 3)), val);
+    ym_out(ch >= 3 ? 1 : 0, (u8)(reg + (ch % 3)), val);
 }
 
 static void ym_key(u8 ch, u8 on)
 {
-    YM2612_writeReg(0, 0x28, (u8)((on ? 0xF0 : 0x00) | (ch >= 3 ? 4 : 0) | (ch % 3)));
+    ym_out(0, 0x28, (u8)((on ? 0xF0 : 0x00) | (ch >= 3 ? 4 : 0) | (ch % 3)));
 }
 
 static void ym_voice_init(u8 ch)
@@ -220,9 +305,9 @@ static void render_noise(void)
 static void render(void)
 {
     u8 ch;
-    bool taken = Z80_getAndRequestBus(TRUE);
+    ymq_begin();
     for (ch = 0; ch < 6; ch++) render_fm(ch);
-    if (!taken) Z80_releaseBus();
+    ymq_end();
     render_noise();
 }
 
@@ -244,8 +329,8 @@ void ss2_sound_init(void)
 {
     u8 i;
     ready = 0;
-    Z80_loadDriver(Z80_DRIVER_NULL, TRUE);      /* same ownership model as src/sound.c */
-    Z80_requestBus(TRUE);
+    ymq_on = 0;
+    load_ym_z80();
     for (i = 0; i < 6; i++)
     {
         vp[i].per = 0; vp[i].ctrl = 0; vp[i].bal = 0; vp[i].noise = 0; vp[i].patch = 0;
@@ -293,6 +378,10 @@ void ss2_sound_tick(void)
 void ss2_sound_shutdown(void)
 {
     ready = 0;
+    ymq_on = 0;
     chips_silent();
     ss2_snd_seq_reset();
+    /* leave the chips as SonSon's driver expects: NULL driver, bus held */
+    Z80_loadDriver(Z80_DRIVER_NULL, TRUE);
+    Z80_requestBus(TRUE);
 }

@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <dlfcn.h>
+typedef unsigned char u8;
 
 struct Game { const char *path; const void *data; size_t size; const char *meta; };
 struct Variable { const char *key, *value; };
@@ -129,6 +130,7 @@ int main(int argc, char **argv)
     FN(bool, retro_load_game, (const struct Game *));
     FN(void, retro_run, (void));
     FN(void, retro_unload_game, (void));
+    FN(void *, retro_get_memory_data, (unsigned));
     FN(void, retro_deinit, (void));
     retro_set_environment(environment);
     retro_set_video_refresh(video);
@@ -149,6 +151,13 @@ int main(int argc, char **argv)
     struct Game g = { argv[2], data, (size_t)n, NULL };
     if (!retro_load_game(&g)) return 3;
     for (frame = 0; frame < frames; frame++) retro_run();
+    if (getenv("SS2_RAMDUMP"))
+    {
+        /* 68000 work RAM (64 KiB, byte-swapped words in this core) */
+        FILE *rf = fopen(getenv("SS2_RAMDUMP"), "wb");
+        u8 *ram = (u8 *)retro_get_memory_data(2);
+        if (rf && ram) { fwrite(ram, 1, 0x10000, rf); fclose(rf); }
+    }
     if (pcm) fclose(pcm);
     retro_unload_game();
     retro_deinit();

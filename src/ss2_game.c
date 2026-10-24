@@ -12,7 +12,6 @@
 #include "ss2_ram.h"
 #include "ss2_logic.h"
 
-#define O(a, x)     R((u16)((a) + (x)))
 
 /* sprite table in the PCE SATB word layout: y, x, pattern, attribute */
 u16 ss2_sat[64 * 4];
