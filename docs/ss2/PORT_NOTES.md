@@ -60,21 +60,53 @@ SonSon via the game chooser (`src/game_select.c`).
   entries `(ptr lo, ptr hi, attr hi)`).
 * Pad: `$16` held / `$20` pressed; bits L D R U Run Sel II I. Run+Select = reset.
 
+## Tasks (bank 0 $E1A5 scheduler) -- src/ss2_task.c
+
+Four slots in zp $00+4n: state (0 free, 1 waiting, 2 running, 4 ready, 8
+new entry), timer, resume data. VBlank IRQ counts waits down ($E14B); the
+idle loop resumes ready slots from slot 0 after every yield. During play:
+slot 0 main loop ($EC3B: $FDD9 pause, body $EC42-$EDA2, then if no
+VBlank yet: wait 1, $FE5A weapon box, $EDB7 flash, loop), slot 1 title RUN
+handler idling at $E2A6, slot 3 score task ($FD05). Native slots are
+coroutines (68000 register swap / host ucontext); `ss2_wait(n)` = $E1FE,
+`ss2_task_restart(fn)` = the source's "LDX #$xx / TXS" restarts (e.g. a
+door ends with PLA x4 / JMP $EDB0). Host replay modes: per-frame
+(`ss2_frame_tick_then_vblank`) and continuous through the real scheduler
+(`SS2_CONTINUOUS=1 ... ss2_frame_coro`).
+
 ## Frame structure (bank 0)
 
-Task 1 (`$EC3B`): wait VBlank; player (`04:$BD16` demo input, `09:$C000`,
-`09:$D03D` projectiles); frame select `$EC5D`; upload `02:$79A2`; BCD play
-clock `$66-$68`; `$E841` map streaming. Task 2 (`$ECCF`): 32 object slots
-(`$EE01`, struct-of-arrays at `$245A + n*$20`), player position trail
-`$22DB-$22E4`, collisions `03:$8732`, HUD `02:$7649/$7688`, sprites.
+Per frame: VBlank IRQ (pad $FEDE, $12++, $14=0, task countdown, sound
+ring pop + driver tick -- the raster-split IRQ path runs sound every
+gameplay frame), then slot 0 (player, frame select, clock, spawn scan
+$E845->$BC10, objects $ED0D, trail, spark, respawn timers, HUD bars),
+slot 3 (seed advance, score/money awards, extra life, hi-score).
+
+## Parallel work (agents, isolated worktrees)
+
+Per-bank object code lives in its own file so branches merge cleanly:
+ss2_obj05.c + ss2_objfix.c (bank 5, fixed bank 3), ss2_obj17.c +
+ss2_obj07.c + ss2_objfix4.c (banks $17/$07, fixed bank 4), ss2_obj09.c +
+ss2_obj0f.c + ss2_obj1f.c. Sound driver: ss2_sound*.c (see SOUND.md).
+
+## Toolchain hazard
+
+GCC 16.1 -O3/LTO emits `move.b (aN)+,d(aN,...)` for some copy loops; the
+68000 updates aN before computing the destination (bytes land one too
+high). Hit: SS2 RAM bootstrap copy, Z80 list copy, SGDK libmd Z80_upload
+(also in SonSon v1.0: SEGA chant PCM driver load). tools/check_autoinc_hazard.py
+runs after each link; keep load and store separate (empty asm barrier).
 
 ## Status
 
 | Subsystem | State |
 | --- | --- |
-| Level decode/render/stream | done, matches PCE frame |
-| Player `$C000` | rebuilt; 700/700 trace frames exact (walk/jump/hurt/staff) |
-| Cloud `$CE74`, magic `$D1E8`, push `$7FD8`, `$C4B8`, `$C4D7` | unported markers |
-| Projectiles `$D03D` | pending |
-| Object engine `$EE01`, enemies (banks 10, 23), collisions `$8732` | pending |
-| HUD, sound, title, stages 2-7 | pending |
+| Level decode/render/stream | done for stage 1 (all 7 stages being converted) |
+| Player `$C000` | exact (cloud, magic, push, $C4B8, $C4D7 pending) |
+| Object engine, spawner, stage-1 walkers, items, containers, score task, HUD bars | exact on traces |
+| Task scheduler | exact (continuous replay) |
+| Sound | driver PSG-exact; YM via Z80 list; sequencer being optimized |
+| Banks 5/7/9/$0F/$17/$1F enemies | agents in progress |
+| Doors/interiors/fades, messages, shops, pause magic select | next (bank 2) |
+| Stage init/clear, title, intro, death/continue, ending | pending |
+| Genesis frame budget | over budget in busy scenes before sequencer optimization |
