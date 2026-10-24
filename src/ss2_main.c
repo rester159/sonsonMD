@@ -18,10 +18,10 @@
 #include "ss2_sound.h"
 #include "sound.h"
 
+/* VRAM tile bases for the current stage (stage_gfx_load) */
 #define BG_TILE      TILE_USER_INDEX
-#define HUD_TILE     (BG_TILE + SS2_S0_NTILES)
-#define PLAYER_TILE  (HUD_TILE + SS2_HUD_NTILES)
-#define SPR_TILE     (PLAYER_TILE + 16)
+static u16 HUD_TILE, PLAYER_TILE, SPR_TILE;
+static const Ss2StageGfx *gfx;
 
 #define HUD_ROWS     6
 #define VIEW_TOP     (HUD_ROWS * 8)
@@ -46,7 +46,7 @@ static u16 world_tile(u16 tx, u16 ty)
     tx &= 255;
     ty &= 255;
     m = R(0x3000 + (((ty >> 5) << 3) | (tx >> 5)) * 64 + ((ty >> 2) & 7) * 8 + ((tx >> 2) & 7));
-    return (u16)(ss2_s0_meta[m * 16 + (ty & 3) * 4 + (tx & 3)] + BG_TILE);
+    return (u16)(gfx->meta[m * 16 + (ty & 3) * 4 + (tx & 3)] + BG_TILE);
 }
 
 static void draw_column(s16 tx, s16 ty0)
@@ -116,11 +116,14 @@ static void video_init(void)
     VDP_setBackgroundColor(0);
     VDP_resetSprites();
     VDP_updateSprites(1, CPU);
-    PAL_setColors(0, ss2_s0_palette, 64, CPU);
-    VDP_loadTileData(ss2_s0_tiles, BG_TILE, SS2_S0_NTILES, CPU);
-    VDP_loadTileData(ss2_hud_tiles, HUD_TILE, SS2_HUD_NTILES, CPU);
-    VDP_loadTileData(ss2_spr_tiles, SPR_TILE, SS2_SPR_NTILES, CPU);
-    VDP_setTileMapDataRectEx(WINDOW, ss2_hud_map, HUD_TILE, 0, 0, 32, HUD_ROWS, 32, CPU);
+    HUD_TILE = (u16)(BG_TILE + gfx->bg_ntiles);
+    PLAYER_TILE = (u16)(HUD_TILE + gfx->hud_ntiles);
+    SPR_TILE = (u16)(PLAYER_TILE + 16);
+    PAL_setColors(0, gfx->palette, 64, CPU);
+    VDP_loadTileData(gfx->bg_tiles, BG_TILE, gfx->bg_ntiles, CPU);
+    VDP_loadTileData(gfx->hud_tiles, HUD_TILE, gfx->hud_ntiles, CPU);
+    VDP_loadTileData(gfx->spr_tiles, SPR_TILE, gfx->spr_ntiles, CPU);
+    VDP_setTileMapDataRectEx(WINDOW, gfx->hud_map, HUD_TILE, 0, 0, 32, HUD_ROWS, 32, CPU);
     VDP_setWindowOnTop(HUD_ROWS);
     VDP_setEnable(TRUE);
 }
@@ -160,10 +163,10 @@ static void player_sprite(s16 x, s16 y, u16 attr)
     u8 frame = (u8)((u16)(ptr - 0xC000) / 0x180);
     if (frame < SS2_PLAYER_FRAMES && frame != shown_frame)
     {
-        VDP_loadTileData(ss2_player_tiles + (u16)frame * 128, PLAYER_TILE, 16, DMA_QUEUE);
+        VDP_loadTileData(gfx->player_tiles + (u16)frame * 128, PLAYER_TILE, 16, DMA_QUEUE);
         shown_frame = frame;
     }
-    put_sprite(x, y, SPRITE_SIZE(4, 4), TILE_ATTR_FULL(SS2_PLAYER_PAL, 1, 0, (attr & 0x0800) ? 1 : 0, PLAYER_TILE));
+    put_sprite(x, y, SPRITE_SIZE(4, 4), TILE_ATTR_FULL(gfx->player_pal, 1, 0, (attr & 0x0800) ? 1 : 0, PLAYER_TILE));
 }
 
 static void draw_sprites(void)
@@ -191,10 +194,10 @@ static void draw_sprites(void)
             continue;
         }
         pal = (u8)(attr & 15);
-        line = ss2_spr_line[pal];
+        line = gfx->spr_line[pal];
         for (r = 0; r < ch; r++)
         {
-            u16 c = (u16)(cell + r * 2), t = ss2_spr_lut[pal * 256 + (c >> 1)];
+            u16 c = (u16)(cell + r * 2), t = gfx->spr_lut[pal * 256 + (c >> 1)];
             s16 y;
             if (!t || line > 3) { ss2_sprite_misses++; continue; }
             t = (u16)(SPR_TILE + t - 1);
@@ -219,7 +222,7 @@ static void hud_digits(u16 src, u8 n, u16 col, u16 row)
 {
     u8 i;
     for (i = 0; i < n; i++)
-        VDP_setTileMapXY(WINDOW, (u16)(ss2_hud_digit[R(src + i) % 10] + HUD_TILE), (u16)(col + i), row);
+        VDP_setTileMapXY(WINDOW, (u16)(gfx->hud_digit[R(src + i) % 10] + HUD_TILE), (u16)(col + i), row);
 }
 
 /* bank 2 $76B3: bar of max/2 cells, shown/2 full cells, an odd half cell */
@@ -227,14 +230,14 @@ static void hud_bar(const u8 *v, u16 table, u16 row)
 {
     u8 x = 0, max = (u8)(v[1] >> 1), full = (u8)(v[0] >> 1);
     for (; x < full; x++)
-        VDP_setTileMapXY(WINDOW, (u16)(ss2_hud_bar[ss2_rom_byte((u16)(table + x)) & 63] + HUD_TILE), (u16)(7 + x), row);
+        VDP_setTileMapXY(WINDOW, (u16)(gfx->hud_bar[ss2_rom_byte((u16)(table + x)) & 63] + HUD_TILE), (u16)(7 + x), row);
     if (v[0] & 1)
     {
-        VDP_setTileMapXY(WINDOW, (u16)(ss2_hud_bar[(ss2_rom_byte((u16)(table + x)) + 1) & 63] + HUD_TILE), (u16)(7 + x), row);
+        VDP_setTileMapXY(WINDOW, (u16)(gfx->hud_bar[(ss2_rom_byte((u16)(table + x)) + 1) & 63] + HUD_TILE), (u16)(7 + x), row);
         x++;
     }
     for (; x < max; x++)
-        VDP_setTileMapXY(WINDOW, (u16)(ss2_hud_bar[0x3C] + HUD_TILE), (u16)(7 + x), row);
+        VDP_setTileMapXY(WINDOW, (u16)(gfx->hud_bar[0x3C] + HUD_TILE), (u16)(7 + x), row);
 }
 
 static void draw_hud(u8 all)
@@ -348,15 +351,22 @@ static void prof_end(u32 t0, u16 v0)
 
 void ss2_run(void)
 {
+    ss2_run_stage(0);
+}
+
+/* Start stage k (0-6) from its bootstrap state */
+void ss2_run_stage(u8 k)
+{
     u16 pad;
-    u16 i;
 
     /* GCC 16 compiles a plain copy loop (and the inlined LTO memcpy) into
      * move.b (a0)+,(0,a0,d1.l), which stores one byte too high on the 68000
      * (tools/check_autoinc_hazard.py). The empty asm keeps load and store as
      * separate instructions. */
     {
-        const u32 *src = (const u32 *) ss2_s0_ram;
+        const u32 *src;
+        gfx = &ss2_stage_gfx[k];
+        src = (const u32 *) gfx->ram;
         u32 *dst = (u32 *) ss2_ram;
         u16 i;
         for (i = 0; i < 0x2000 / 4; i++)

@@ -10,5 +10,6 @@
 #include <genesis.h>
 
 void ss2_run(void);
+void ss2_run_stage(u8 k);      /* development: start stage k (0-6) */
 
 #endif

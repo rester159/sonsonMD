@@ -32,7 +32,7 @@ def stage_start(k, frames=900):
     """Stage index k (0-6) start state: from the stage-1 snapshot, enter the
     stage-clear path ($F861: INC $69 -> stage init $F9F0) with $69 = k-1 at
     a frame start, then press RUN periodically through the stage intro."""
-    path = os.path.join(OUT, 'stage%d_start.pkl' % k)
+    path = os.path.join(OUT, 'stage_idx%d.pkl' % k)
     if os.path.exists(path):
         return pickle.load(open(path, 'rb'))
     if k == 0:
@@ -49,6 +49,14 @@ def stage_start(k, frames=900):
         m.pad = 0x80 if (f % 150) in range(60, 64) else 0
         m.run_frame()
     m.cpu.trace = None
+    # RUN also toggles pause ($6B = 8): leave the stage running
+    for _ in range(4):
+        if not m.ram[0x6B]:
+            break
+        for f in range(40):
+            m.pad = 0x80 if f < 4 else 0
+            m.run_frame()
+    assert not m.ram[0x6B], 'stage %d snapshot is paused' % (k + 1)
     pickle.dump(m, open(path, 'wb'))
     return m
 

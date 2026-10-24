@@ -22,6 +22,8 @@ extern const u8 ss2_bank9[0x2000];
 extern const u8 ss2_bank5[0x2000];
 extern const u8 ss2_bank8[0x2000];
 extern const u8 ss2_bank17[0x2000];
+extern const u8 ss2_bankF[0x2000];
+extern const u8 ss2_bank1F[0x2000];
 
 extern u8 ss2_mpr6;                          /* bank mapped at $C000       */
 void ss2_map6(u8 bank);                      /* $BB83 (also sets $8E)      */

@@ -560,8 +560,17 @@ void ss2_spawn_scan(void)
 
 /* ---- handler tables ---------------------------------------------------- */
 
-u8 ss2_obj17_handler(u16 addr, u8 x);
-u8 ss2_spawn17_handler(u16 addr);
+/* per-bank object code: src/ss2_objNN.c (stubs return 0 until ported) */
+u8 ss2_obj05_handler(u16 addr, u8 x);   u8 ss2_spawn05_handler(u16 addr);
+u8 ss2_obj07_handler(u16 addr, u8 x);   u8 ss2_spawn07_handler(u16 addr);
+u8 ss2_obj09_handler(u16 addr, u8 x);   u8 ss2_spawn09_handler(u16 addr);
+u8 ss2_obj0f_handler(u16 addr, u8 x);   u8 ss2_spawn0f_handler(u16 addr);
+u8 ss2_obj17_handler(u16 addr, u8 x);   u8 ss2_spawn17_handler(u16 addr);
+u8 ss2_obj1f_handler(u16 addr, u8 x);   u8 ss2_spawn1f_handler(u16 addr);
+/* fixed-bank object code outside the item system: bank 3 ($8000-$9FFF)
+ * in ss2_objfix.c, bank 4 ($A000-$BFFF) in ss2_objfix4.c */
+u8 ss2_objfix_handler(u16 addr, u8 x);  u8 ss2_spawnfix_handler(u16 addr);
+u8 ss2_objfix4_handler(u16 addr, u8 x); u8 ss2_spawnfix4_handler(u16 addr);
 
 /* Handlers below $C000 live in the fixed banks; $C000-$DFFF is the
  * object's own bank (MPR6). */
@@ -569,11 +578,18 @@ u8 ss2_item_handler(u16 addr, u8 x);
 
 u8 ss2_obj_handler(u8 bank, u16 addr, u8 x)
 {
-    if (addr < 0xC000) return ss2_item_handler(addr, x);
-    if (addr >= 0xC000 && addr < 0xE000)
-    {
-        if (bank == 0x17) return ss2_obj17_handler(addr, x);
-    }
+    if (addr >= 0xA000 && addr < 0xC000) return ss2_objfix4_handler(addr, x);
+    if (addr < 0xA000) return ss2_item_handler(addr, x) || ss2_objfix_handler(addr, x);
+    if (addr < 0xE000)
+        switch (bank)
+        {
+            case 0x05: return ss2_obj05_handler(addr, x);
+            case 0x07: return ss2_obj07_handler(addr, x);
+            case 0x09: return ss2_obj09_handler(addr, x);
+            case 0x0F: return ss2_obj0f_handler(addr, x);
+            case 0x17: return ss2_obj17_handler(addr, x);
+            case 0x1F: return ss2_obj1f_handler(addr, x);
+        }
     return 0;
 }
 
@@ -581,11 +597,18 @@ u8 ss2_item_spawn_handler(u16 addr);
 
 u8 ss2_spawn_handler(u8 bank, u16 addr)
 {
-    if (addr < 0xC000) return ss2_item_spawn_handler(addr);
-    if (addr >= 0xC000 && addr < 0xE000)
-    {
-        if (bank == 0x17) return ss2_spawn17_handler(addr);
-    }
+    if (addr >= 0xA000 && addr < 0xC000) return ss2_spawnfix4_handler(addr);
+    if (addr < 0xA000) return ss2_item_spawn_handler(addr) || ss2_spawnfix_handler(addr);
+    if (addr < 0xE000)
+        switch (bank)
+        {
+            case 0x05: return ss2_spawn05_handler(addr);
+            case 0x07: return ss2_spawn07_handler(addr);
+            case 0x09: return ss2_spawn09_handler(addr);
+            case 0x0F: return ss2_spawn0f_handler(addr);
+            case 0x17: return ss2_spawn17_handler(addr);
+            case 0x1F: return ss2_spawn1f_handler(addr);
+        }
     return 0;
 }
 
