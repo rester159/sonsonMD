@@ -3,7 +3,7 @@ import sys, huc6280
 rom = open(__file__.rsplit('/', 3)[0] + '/arcade/Son_Son_II_J_TEng.pce', 'rb').read()
 def make_read(mpr):
     def rd(a):
-        b = mpr[a >> 13]
+        a &= 0xFFFF; b = mpr[a >> 13]
         if b >= 0x80: return 0
         return rom[(b % 32) * 0x2000 + (a & 0x1FFF)]
     return rd
@@ -16,6 +16,7 @@ if __name__ == '__main__':
         i, v = o.split('='); mpr[int(i)] = int(v, 16)
     rd = make_read(mpr); pc = addr
     for _ in range(n):
+        if pc > 0xFFFF: break
         t, k, _ = huc6280.disasm_one(rd, pc)
         print('%02X:%04X  %-12s %s' % (mpr[pc >> 13], pc, ' '.join('%02X' % rd(pc + i) for i in range(k)), t))
         pc += k

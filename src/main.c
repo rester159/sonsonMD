@@ -2,6 +2,8 @@
 #include "game.h"
 #include "frontend.h"
 #include "save.h"
+#include "game_select.h"
+#include "ss2.h"
 
 /* ===========================================================================
  *  SON SON  --  NATIVE Sega Genesis re-implementation
@@ -53,6 +55,12 @@ int main(bool hardReset)
      * NOT part of either mode's game-over re-entry loop. */
     sega_splash_run();                    /* SEGA opening (Sonic-1 + chant)    */
     capcom_splash_run();                  /* CAPCOM logo + register-exact FM   */
+
+    /* ---- TWO-GAME CARTRIDGE: SON SON / SON SON II ----
+     * SON SON II returns here when its session ends; SON SON keeps its own
+     * selector/attract loop below (Reset brings back this chooser). */
+    while (game_select_run() == GAME_SONSON2)
+        ss2_run();
 
     /* ---- SESSION LOOP: selector -> config -> play -> (game over) -> selector */
     while (TRUE)
