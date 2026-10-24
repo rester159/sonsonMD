@@ -113,14 +113,13 @@ static void apply_scroll(void)
  * Window cells are PCE BG tiles $180+ch (palette 1) placed at world-tile
  * positions: they go into the plane A ring at (tx & 63, ty & 31); the
  * camera holds still while a window is up. Glyph tiles are uploaded on
- * demand into SGDK's font tiles (unused by this game). HUD icon tables
- * ($BADE) go to the window plane; their tiles stay resident after the
- * sprite tiles (ICON_TILE). SonSon gets SGDK's font back when plane B returns to $C000
+ * demand into tiles 1504-1567. HUD icon tables ($BADE) go to the window
+ * plane; their tiles stay resident at 1568-1663. SonSon gets SGDK's font back when plane B returns to $C000
  * (SGDK reloads it whenever the lowest table address moves). */
-#define GLYPH_TILE   1440           /* SGDK's font tiles with planes at $C000 */
-#define GLYPH_SLOTS  96
+#define GLYPH_TILE   1504           /* SS2 VRAM map (gen_ss2.py TILE_BUDGET) */
+#define GLYPH_SLOTS  64
+#define ICON_TILE    1568
 #define NGLYPH       0xC0           /* ss2_bat_keys[0..$BF] = $1180-$123F */
-static u16 ICON_TILE;
 static u8 glyph_slot[NGLYPH];       /* slot + 1, 0 = not loaded */
 static u8 glyph_next;
 
@@ -316,7 +315,6 @@ static void video_init(void)
     VDP_loadTileData(gfx->bg_tiles, BG_TILE, gfx->bg_ntiles, CPU);
     VDP_loadTileData(gfx->hud_tiles, HUD_TILE, gfx->hud_ntiles, CPU);
     VDP_loadTileData(gfx->spr_tiles, SPR_TILE, gfx->spr_ntiles, CPU);
-    ICON_TILE = (u16)(SPR_TILE + gfx->spr_ntiles);
     VDP_loadTileData(gfx->bat_tiles + NGLYPH * 8, ICON_TILE, SS2_BAT_NKEYS - NGLYPH, CPU);
     glyphs_reset();
     memset(hud_last, 0, sizeof hud_last);
@@ -377,14 +375,12 @@ static void player_sprite(s16 x, s16 y, u16 attr)
  * $79F7) and palette 13 after a door's interior palette are converted on
  * demand from the HuCard pattern (ss2_cell_bank/src): a cell pair for one
  * palette -> 8 tiles (two 16x16 cells, column-major like the static ones)
- * in 8-tile blocks freed by plane B sharing plane A's map. */
+ * in 8-tile blocks in VRAM freed by plane B sharing plane A's map. */
 static u8 def_bank[0x200];
 static u16 def_src[0x200];
 
 typedef struct { u8 b0, b1, key; u8 used; u16 s0, s1, pair, tile, last; } CacheEnt;
 static const u16 cache_base[] = {
-    1536, 1544, 1552, 1560, 1568, 1576, 1584, 1592,          /* $C000-$CFFF */
-    1600, 1608, 1616, 1624, 1632, 1640, 1648, 1656,
     1728, 1736, 1744, 1752, 1760, 1768, 1776, 1784,          /* $D800-$DFFF */
     1968, 1976, 1984, 1992, 2000, 2008, 2016, 2024, 2032, 2040 };  /* $F600- */
 #define NCACHE (sizeof cache_base / sizeof cache_base[0])

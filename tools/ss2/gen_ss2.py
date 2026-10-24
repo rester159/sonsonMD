@@ -339,7 +339,9 @@ def bat_keys():
 
 
 BAT_KEYS = None
-TILE_BUDGET = 1424      # tiles 16..1439: SGDK system tiles below, maps at $C000 and the font (1440) above
+TILE_BUDGET = 1488      # tiles 16..1503 (SS2 VRAM map: glyphs 1504-1567, icons 1568-1663, sprite cache above;
+                        # plane B shares plane A's map, so $C000-$CFFF is tile space)
+ICON_SLOTS = 96
 NSTAGES = 7
 
 
@@ -385,8 +387,8 @@ def main():
         src.append(c_array('ss2_%s_spr_cmap13' % n, 'u8', sh['spr_cmap13'], 16, '0x%02X'))
         # temporary bootstrap: stage start work RAM from the research snapshot
         src.append(c_array('ss2_%s_ram' % n, 'u8', list(m.ram), 32, '0x%02X'))
-        total = (len(st['bank'].tiles) + len(sh['hud_bank'].tiles) + 16 + sh['spr_ntiles']
-                 + len(BAT_KEYS) - 0xC0)            # resident HUD icons
+        total = len(st['bank'].tiles) + len(sh['hud_bank'].tiles) + 16 + sh['spr_ntiles']
+        assert len(BAT_KEYS) - 0xC0 <= ICON_SLOTS
         assert total <= TILE_BUDGET, 'stage %d needs %d VRAM tiles' % (k + 1, total)
         desc.append('    { ss2_%s_palette, ss2_%s_tiles, %d, ss2_%s_meta, ss2_%s_attr, %d,\n'
                     '      ss2_%s_hud_tiles, %d, ss2_%s_hud_map, ss2_%s_hud_digit, ss2_%s_hud_bar,\n'
