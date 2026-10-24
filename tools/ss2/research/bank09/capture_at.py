@@ -87,7 +87,35 @@ def inject():
             r[0xB5A + s] = 0
 
 
+# bytes written from interrupt context during this capture (as
+# tools/ss2/irq_mask.py does for its stage-1 run): saved as OUT.irq, OR-ed
+# into the mask by replay.c (other stages' music touches more driver RAM)
+irq_depth = [0]
+irq_addrs = set()
+orig_irq = m.cpu.irq
+
+
+def irq(vector):
+    irq_depth[0] += 1
+    orig_irq(vector)
+
+
+m.cpu.irq = irq
+orig_write = m.write
+
+
+def write(a, v):
+    if irq_depth[0] and 0x1F0000 <= a < 0x1F2000:
+        irq_addrs.add(a - 0x1F0000)
+    orig_write(a, v)
+
+
+m.write = write
+
+
 def tr(c, pc, op):
+    if irq_depth[0] and op == 0x40 and c.mpr[pc >> 13] == 0:   # RTI
+        irq_depth[0] -= 1
     if c.mpr[7] != 0 or pc != 0xEC42:
         return
     if not done[0]:
@@ -108,6 +136,7 @@ with open(out, 'wb') as fh:
         fh.write(struct.pack('<H', fr & 0xFFFF))
         fh.write(a)
         fh.write(b)
+open(out + '.irq', 'wb').write(bytes(1 if i in irq_addrs else 0 for i in range(0x2000)))
 r = m.ram
 print(len(pairs), 'pairs; end player world (%d, %d)' % (
     ((r[0x45] << 8 | r[0x46]) + (r[0x298] << 8 | r[0x299])) & 0x7FF,

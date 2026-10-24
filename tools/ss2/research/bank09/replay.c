@@ -27,6 +27,7 @@ static int mine_bank(u8 b) { return b == 0x09 || b == 0x0F || b == 0x1F; }
 struct hist { u8 bank; u16 addr; unsigned n; };
 static struct hist uh[64], hh[64];
 static unsigned nuh, nhh;
+static unsigned dmine[0x2000], dother[0x2000];
 
 static void add(struct hist *h, unsigned *n, u8 bank, u16 addr)
 {
@@ -47,6 +48,17 @@ int main(int argc, char **argv)
         FILE *m = fopen(getenv("SS2_IRQ_MASK"), "rb");
         if (!m || fread(irq_mask, 1, 0x2000, m) != 0x2000) { fprintf(stderr, "no IRQ mask\n"); return 2; }
         fclose(m);
+    }
+    {
+        /* PAIRS.irq from capture_at.py: interrupt writes seen in this run */
+        static unsigned char extra[0x2000];
+        char path[1024];
+        FILE *m;
+        snprintf(path, sizeof path, "%s.irq", argv[1]);
+        m = fopen(path, "rb");
+        if (m && fread(extra, 1, 0x2000, m) == 0x2000)
+            for (i = 0; i < 0x2000; i++) irq_mask[i] |= extra[i];
+        if (m) fclose(m);
     }
     for (i = 0; i < n; i++)
     {
@@ -85,6 +97,7 @@ int main(int argc, char **argv)
                 if (diffs < 12 && bad < maxrep)
                     printf("frame %u: $%04X pre %02X want %02X got %02X\n", fr, a + 0x2000, pre[a], post[a], ss2_ram[a]);
                 diffs++;
+                if (is_mine) dmine[a]++; else dother[a]++;
             }
         if (diffs) { bad++; if (is_mine) mine_bad++; }
         else if (is_mine) mine_ok++;
@@ -94,5 +107,8 @@ int main(int argc, char **argv)
            mine, mine_ok, mine_bad, mine_unp, mine_unp_own);
     for (i = 0; i < nhh; i++) printf("  handler %02X:%04X live in %u frames\n", hh[i].bank, hh[i].addr, hh[i].n);
     for (i = 0; i < nuh; i++) printf("  unported $%04X (bank $%02X at $C000): %u frames\n", uh[i].addr, uh[i].bank, uh[i].n);
+    for (i = 0; i < 0x2000; i++)
+        if (dmine[i] || dother[i])
+            printf("  diff $%04X: %u frames with, %u without a bank 9/F/1F object\n", i + 0x2000, dmine[i], dother[i]);
     return bad ? 1 : 0;
 }
