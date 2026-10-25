@@ -243,51 +243,63 @@ static u8 collide(u8 x)
     u8 y;
     u16 wx, wy, bx, by;
     if (P_MODE == 0x40) return 0;
-    if (!(OF(0x269A) & 0x20))
     {
-        bx = (u16)(((u16)((OF(0x247A) << 8) | OF(0x249A))) + (u8)(((OF(0x253A) & 1) + 1) << 3));
-        by = (u16)(((u16)((OF(0x24DA) << 8) | OF(0x24FA))) + (u8)(((OF(0x253A) & 0x30) + 0x10) >> 1));
-    }
-    else
-    {
-        bx = ((u16)((OF(0x247A) << 8) | OF(0x249A)));
-        by = ((u16)((OF(0x24DA) << 8) | OF(0x24FA)));
+        /* the slot fields read once: each zero-page byte store below would
+         * otherwise make the compiler reload them (char aliasing) */
+        const u16 ox = (u16)((OF(0x247A) << 8) | OF(0x249A));
+        const u16 oy = (u16)((OF(0x24DA) << 8) | OF(0x24FA));
+        const s8 ax = (s8)OF(0x2ADA), ay = (s8)OF(0x2AFA);
+        if (!(OF(0x269A) & 0x20))
+        {
+            const u8 sz = OF(0x253A);
+            bx = (u16)(ox + (u8)(((sz & 1) + 1) << 3));
+            by = (u16)(oy + (u8)(((sz & 0x30) + 0x10) >> 1));
+        }
+        else { bx = ox; by = oy; }
+        wx = (u16)(ox + ax);
+        wy = (u16)(oy + ay);
     }
     ZP(0xBB) = (u8)(bx >> 8); ZP(0xBC) = (u8)bx;
     ZP(0xBD) = (u8)(by >> 8); ZP(0xBE) = (u8)by;
-    wx = (u16)(((u16)((OF(0x247A) << 8) | OF(0x249A))) + (s8)OF(0x2ADA));
-    wy = (u16)(((u16)((OF(0x24DA) << 8) | OF(0x24FA))) + (s8)OF(0x2AFA));
     ZP(0xBF) = (u8)(wx >> 8); ZP(0xC0) = (u8)wx;
     ZP(0xC1) = (u8)(wy >> 8); ZP(0xC2) = (u8)wy;
 
     if (OF(0x245A) == 0x20 || OF(0x285A)) goto body;
     if (OF(0x269A) & 0x02) goto shots;
     if (R(0x2432) == 4) goto shots;
-    /* $F063: staff segments */
-    for (y = 0; ; )
+    /* $F063: staff segments; nothing here writes RAM before a hit but
+     * $26/$27, so the player and slot fields hold for the whole loop */
+    if (R(0x23DD) == 0x80)
     {
-        u16 sx, sy;
-        if (R(0x23DD + y) != 0x80) break;
-        sx = (u16)(PX16 + (u16)((R(0x23E2 + y) << 8) | R(0x23E7 + y)) + 8);
-        sy = (u16)(PY16 + (P_CLIMBSTEP ? 0x17 : 0x0E));
-        if (OF(0x2B1A) | OF(0x2B3A))
+        const u16 px = PX16, sy = (u16)(PY16 + (P_CLIMBSTEP ? 0x17 : 0x0E));
+        const u8 wb = (u8)(OF(0x2B1A) | OF(0x2B3A));
+        const u8 wsx = (u8)(OF(0x2B1A) + 8), wsy = (u8)(OF(0x2B3A) + 2);
+        const u8 bsx = (u8)(OF(0x271A) + 8), bsy = (u8)(OF(0x273A) + 2);
+        const u8 n = P_STAFFMAX;
+        for (y = 0; ; )
         {
+            u16 sx;
+            if (R(0x23DD + y) != 0x80) break;
+            sx = (u16)(px + (u16)((R(0x23E2 + y) << 8) | R(0x23E7 + y)) + 8);
+            if (wb)
+            {
+                ZP(0x26) = 8; ZP(0x27) = 0;
+                if (near(wx, sx, wsx, 1) && near(wy, sy, wsy, 0))
+                {
+                    spark(y);
+                    damage(x, R(0x22B4));
+                    return 0;
+                }
+            }
             ZP(0x26) = 8; ZP(0x27) = 0;
-            if (near(wx, sx, (u8)(OF(0x2B1A) + 8), 1) && near(wy, sy, (u8)(OF(0x2B3A) + 2), 0))
+            if (near(bx, sx, bsx, 1) && near(by, sy, bsy, 0))
             {
                 spark(y);
-                damage(x, R(0x22B4));
+                react(x);
                 return 0;
             }
+            if (++y == n) break;
         }
-        ZP(0x26) = 8; ZP(0x27) = 0;
-        if (near(bx, sx, (u8)(OF(0x271A) + 8), 1) && near(by, sy, (u8)(OF(0x273A) + 2), 0))
-        {
-            spark(y);
-            react(x);
-            return 0;
-        }
-        if (++y == P_STAFFMAX) break;
     }
 shots:
     /* $F26F: player shots */
