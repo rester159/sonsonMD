@@ -10,14 +10,18 @@
 #include "ss2_ram.h"
 #include "ss2_logic.h"
 
+/* field a of slot x through o = &ss2_ram[x] (a fixed displacement) */
+#define OF(a) (o[(u16)((a) - 0x2000)])
+
 static void set_vx(u8 x, u16 v) { O(0x25BA, x) = (u8)(v >> 8); O(0x25DA, x) = (u8)v; }
 static void set_vy(u8 x, u16 v) { O(0x25FA, x) = (u8)(v >> 8); O(0x261A, x) = (u8)v; }
 
 /* the $2CDA per-spawner palette nibble shared by the spawns */
 static void spawner_nibble(u8 s, u8 x)
 {
-    if (!O(0x2CDA, s)) O(0x2CDA, s) = (u8)(O(0x289A, x) & 0x0F);
-    else O(0x289A, x) = (u8)((O(0x289A, x) & 0xF0) | O(0x2CDA, s));
+    u8 *const o = &ss2_ram[x];
+    if (!O(0x2CDA, s)) O(0x2CDA, s) = (u8)(OF(0x289A) & 0x0F);
+    else OF(0x289A) = (u8)((OF(0x289A) & 0xF0) | O(0x2CDA, s));
 }
 
 /* ---- $DDF6 shuttle ---------------------------------------------------- */
@@ -58,39 +62,41 @@ static void shuttle_spawn(u8 dir)
 /* $DEE7: stop for $5A frames, keeping the velocity */
 static void shuttle_pause(u8 x)
 {
-    O(0x299A, x) = 0x5A;
-    O(0x29FA, x) = O(0x25DA, x);
-    O(0x29DA, x) = O(0x25BA, x);
-    O(0x2A3A, x) = O(0x261A, x);
-    O(0x2A1A, x) = O(0x25FA, x);
+    u8 *const o = &ss2_ram[x];
+    OF(0x299A) = 0x5A;
+    OF(0x29FA) = OF(0x25DA);
+    OF(0x29DA) = OF(0x25BA);
+    OF(0x2A3A) = OF(0x261A);
+    OF(0x2A1A) = OF(0x25FA);
     set_vx(x, 0);
     set_vy(x, 0);
 }
 
 static void shuttle(u8 x)
 {
-    if (O(0x299A, x))
+    u8 *const o = &ss2_ram[x];
+    if (OF(0x299A))
     {
         /* $DF13: resume after the pause */
-        if (!--O(0x299A, x))
+        if (!--OF(0x299A))
         {
-            O(0x25DA, x) = O(0x29FA, x);
-            O(0x25BA, x) = O(0x29DA, x);
-            O(0x261A, x) = O(0x2A3A, x);
-            O(0x25FA, x) = O(0x2A1A, x);
+            OF(0x25DA) = OF(0x29FA);
+            OF(0x25BA) = OF(0x29DA);
+            OF(0x261A) = OF(0x2A3A);
+            OF(0x25FA) = OF(0x2A1A);
         }
         ss2_obj_common(x);
         return;
     }
-    if (!--O(0x297A, x))
+    if (!--OF(0x297A))
     {
         /* $DEC4: reverse */
-        set_vx(x, (u16)(0 - ((O(0x25BA, x) << 8) | O(0x25DA, x))));
-        set_vy(x, (u16)(0 - ((O(0x25FA, x) << 8) | O(0x261A, x))));
-        O(0x297A, x) = 0x60;
+        set_vx(x, (u16)(0 - ((OF(0x25BA) << 8) | OF(0x25DA))));
+        set_vy(x, (u16)(0 - ((OF(0x25FA) << 8) | OF(0x261A))));
+        OF(0x297A) = 0x60;
         shuttle_pause(x);
     }
-    else if (O(0x297A, x) == 0x30)
+    else if (OF(0x297A) == 0x30)
         shuttle_pause(x);
     ss2_obj_common(x);
 }
@@ -98,27 +104,28 @@ static void shuttle(u8 x)
 /* $DF36: count hits; the $96th destroys it */
 static void shuttle_hit(u8 x)
 {
-    if (++O(0x29BA, x) == 0x96)
+    u8 *const o = &ss2_ram[x];
+    if (++OF(0x29BA) == 0x96)
     {
         /* $DF84 */
         u8 s;
-        O(0x245A, x) = 0x40;
-        ss2_score_award(O(0x279A, x));
-        s = O(0x281A, x);
+        OF(0x245A) = 0x40;
+        ss2_score_award(OF(0x279A));
+        s = OF(0x281A);
         O(0x2B5A, s)--;
         O(0x2C1A, s) = 0x64;
         ss2_obj_death(x);
         return;
     }
-    O(0x245A, x) = 0x80;
-    O(0x26DA, x) = 0x64;
-    O(0x299A, x) = 0x5A;
-    if (O(0x25DA, x) | O(0x25BA, x) | O(0x261A, x) | O(0x25FA, x))
+    OF(0x245A) = 0x80;
+    OF(0x26DA) = 0x64;
+    OF(0x299A) = 0x5A;
+    if (OF(0x25DA) | OF(0x25BA) | OF(0x261A) | OF(0x25FA))
     {
-        O(0x29FA, x) = O(0x25DA, x);
-        O(0x29DA, x) = O(0x25BA, x);
-        O(0x2A3A, x) = O(0x261A, x);
-        O(0x2A1A, x) = O(0x25FA, x);
+        OF(0x29FA) = OF(0x25DA);
+        OF(0x29DA) = OF(0x25BA);
+        OF(0x2A3A) = OF(0x261A);
+        OF(0x2A1A) = OF(0x25FA);
         set_vx(x, 0);
         set_vy(x, 0);
     }
@@ -196,8 +203,9 @@ static void boss_fire(u8 y)
 /* $D505: shot hit */
 static void boss_shot_hit(u8 x)
 {
-    if (O(0x245A, x) == 0x40) { O(0x245A, x) = 0; return; }
-    O(0x245A, x) = 0x80;
+    u8 *const o = &ss2_ram[x];
+    if (OF(0x245A) == 0x40) { OF(0x245A) = 0; return; }
+    OF(0x245A) = 0x80;
     ss2_obj_common(x);
 }
 
@@ -215,10 +223,11 @@ static u16 boss_distance(u8 x)
 /* $D173: walking */
 static void boss_walking(u8 x)
 {
-    O(0x263A, x) = (s8)O(0x25BA, x) < 0 ? 0xE8 : 0x17;
-    O(0x265A, x) = 0x2F;
+    u8 *const o = &ss2_ram[x];
+    OF(0x263A) = (s8)OF(0x25BA) < 0 ? 0xE8 : 0x17;
+    OF(0x265A) = 0x2F;
     if (ss2_obj_probe(x)) set_vx(x, 0);
-    if (!--O(0x29DA, x)) O(0x297A, x) = 0;
+    if (!--OF(0x29DA)) OF(0x297A) = 0;
     ss2_obj_common(x);
 }
 
@@ -232,10 +241,11 @@ static void boss_timer(u8 x)
 /* $D212: firing: the shot leaves after $18 frames */
 static void boss_firing(u8 x)
 {
-    if (!--O(0x29FA, x))
+    u8 *const o = &ss2_ram[x];
+    if (!--OF(0x29FA))
     {
-        set_script(x, O(0x29BA, x) ? 0xDB6F : 0xDAE2);
-        O(0x267A, x) = 1;
+        set_script(x, OF(0x29BA) ? 0xDB6F : 0xDAE2);
+        OF(0x267A) = 1;
         boss_fire(x);
     }
     boss_timer(x);
@@ -244,9 +254,10 @@ static void boss_firing(u8 x)
 /* $D09A: AI */
 static void boss_ai(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     u16 d = boss_distance(x);
     u8 y;
-    switch (O(0x297A, x))
+    switch (OF(0x297A))
     {
         case 0: break;
         case 1: boss_walking(x); return;
@@ -274,36 +285,36 @@ static void boss_ai(u8 x)
         }
         if (k < 2)
         {
-            u8 right = O(0x299A, x) ? 1 : 0;
+            u8 right = OF(0x299A) ? 1 : 0;
             if (k == 1) right ^= 1;
             set_vx(x, right ? 0x0100 : 0xFF00);
-            O(0x29BA, x) = O(0x299A, x);
-            set_script(x, O(0x299A, x) ? 0xD67F : 0xD56C);
-            O(0x267A, x) = 1;
-            O(0x297A, x) = 1;
-            O(0x29DA, x) = 0x20;
+            OF(0x29BA) = OF(0x299A);
+            set_script(x, OF(0x299A) ? 0xD67F : 0xD56C);
+            OF(0x267A) = 1;
+            OF(0x297A) = 1;
+            OF(0x29DA) = 0x20;
             boss_walking(x);
             return;
         }
-        O(0x29BA, x) = O(0x299A, x);
+        OF(0x29BA) = OF(0x299A);
         if (k == 2)
         {
             /* $D19C: crouch */
-            set_script(x, O(0x299A, x) ? 0xD823 : 0xD792);
-            O(0x267A, x) = 1;
+            set_script(x, OF(0x299A) ? 0xD823 : 0xD792);
+            OF(0x267A) = 1;
             set_vx(x, 0);
-            O(0x297A, x) = 2;
-            O(0x29DA, x) = 0x1E;
+            OF(0x297A) = 2;
+            OF(0x29DA) = 0x1E;
             boss_timer(x);
             return;
         }
         /* $D1DA: fire */
-        set_script(x, O(0x299A, x) ? 0xD9CB : 0xD8B4);
-        O(0x267A, x) = 1;
+        set_script(x, OF(0x299A) ? 0xD9CB : 0xD8B4);
+        OF(0x267A) = 1;
         set_vx(x, 0);
-        O(0x297A, x) = 3;
-        O(0x29DA, x) = 0x1E;
-        O(0x29FA, x) = 0x18;
+        OF(0x297A) = 3;
+        OF(0x29DA) = 0x1E;
+        OF(0x29FA) = 0x18;
         boss_firing(x);
     }
 }
@@ -338,16 +349,17 @@ static void boss2_ai(u8 x);
 /* $D265/$D272: the first form is replaced by the flying second form */
 static void boss_reform(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     ZP(0x87) = 0;
     ss2_obj_init(x, 0xD530);
-    O(0x24FA, x) = 0x78;
-    O(0x24DA, x) = 0;
-    O(0x251A, x) = 0;
-    O(0x24BA, x) = 0;
+    OF(0x24FA) = 0x78;
+    OF(0x24DA) = 0;
+    OF(0x251A) = 0;
+    OF(0x24BA) = 0;
     set_vx(x, 0);
     set_vy(x, 0);
-    O(0x297A, x) = 0;
-    set_script(x, O(0x29BA, x) ? 0xDC29 : 0xDBFC);
+    OF(0x297A) = 0;
+    set_script(x, OF(0x29BA) ? 0xDC29 : 0xDBFC);
     ss2_obj_common(x);
 }
 
@@ -361,68 +373,70 @@ static void boss_exploding(u8 x)
 /* $D247 */
 static void boss_hit(u8 x)
 {
-    if (O(0x245A, x) == 0x40)
+    u8 *const o = &ss2_ram[x];
+    if (OF(0x245A) == 0x40)
     {
         ZP(0x87)++;
-        O(0x297A, x) = 0x32;
+        OF(0x297A) = 0x32;
         set_hit(x, 0xD25F);
         boss_exploding(x);
         return;
     }
-    O(0x245A, x) = 0x80;
+    OF(0x245A) = 0x80;
     ss2_obj_common(x);
 }
 
 /* $D2BA: second form: bounces around the top of the room */
 static void boss2_ai(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     u16 d;
-    if (O(0x247A, x))
+    if (OF(0x247A))
     {
-        if (O(0x247A, x) & 0x80) { if (O(0x249A, x) <= 0xE0) O(0x249A, x) = 0xE0; }
-        else if (O(0x249A, x) > 0x20) O(0x249A, x) = 0x20;
+        if (OF(0x247A) & 0x80) { if (OF(0x249A) <= 0xE0) OF(0x249A) = 0xE0; }
+        else if (OF(0x249A) > 0x20) OF(0x249A) = 0x20;
     }
-    if (O(0x24FA, x) == 0x78 && !O(0x251A, x))
+    if (OF(0x24FA) == 0x78 && !OF(0x251A))
     {
         d = boss_distance(x);
         if (d >= 0x40)
         {
             /* $D332 */
-            if (!O(0x299A, x)) { set_script(x, 0xDBFC); O(0x2A7A, x) = 0xF0; O(0x2A5A, x) = 0xFF; }
-            else { set_script(x, 0xDC29); O(0x2A7A, x) = 0x10; O(0x2A5A, x) = 0x00; }
-            O(0x267A, x) = 1;
+            if (!OF(0x299A)) { set_script(x, 0xDBFC); OF(0x2A7A) = 0xF0; OF(0x2A5A) = 0xFF; }
+            else { set_script(x, 0xDC29); OF(0x2A7A) = 0x10; OF(0x2A5A) = 0x00; }
+            OF(0x267A) = 1;
             ss2_random();
             if (ZP(0x8D) & 0x80)
             {
-                if ((s8)O(0x25FA, x) < 0) { set_vy(x, 0xFF00); O(0x2ABA, x) = 0x10; O(0x2A9A, x) = 0x00; }
-                else { set_vy(x, 0x0100); O(0x2ABA, x) = 0xF0; O(0x2A9A, x) = 0xFF; }
+                if ((s8)OF(0x25FA) < 0) { set_vy(x, 0xFF00); OF(0x2ABA) = 0x10; OF(0x2A9A) = 0x00; }
+                else { set_vy(x, 0x0100); OF(0x2ABA) = 0xF0; OF(0x2A9A) = 0xFF; }
             }
             else
             {
-                if ((s8)O(0x25FA, x) < 0) { set_vy(x, 0xFE00); O(0x2ABA, x) = 0x20; O(0x2A9A, x) = 0x00; }
-                else { set_vy(x, 0x0200); O(0x2ABA, x) = 0xE0; O(0x2A9A, x) = 0xFF; }
+                if ((s8)OF(0x25FA) < 0) { set_vy(x, 0xFE00); OF(0x2ABA) = 0x20; OF(0x2A9A) = 0x00; }
+                else { set_vy(x, 0x0200); OF(0x2ABA) = 0xE0; OF(0x2A9A) = 0xFF; }
             }
         }
         else
         {
             /* $D3D1 */
-            if (!O(0x299A, x)) { set_script(x, 0xDC56); O(0x2A7A, x) = 0xE0; O(0x2A5A, x) = 0xFF; }
-            else { set_script(x, 0xDC83); O(0x2A7A, x) = 0x20; O(0x2A5A, x) = 0x00; }
-            O(0x267A, x) = 1;
+            if (!OF(0x299A)) { set_script(x, 0xDC56); OF(0x2A7A) = 0xE0; OF(0x2A5A) = 0xFF; }
+            else { set_script(x, 0xDC83); OF(0x2A7A) = 0x20; OF(0x2A5A) = 0x00; }
+            OF(0x267A) = 1;
             set_vy(x, 0x0300);
-            O(0x2ABA, x) = 0xE8;
-            O(0x2A9A, x) = 0xFF;
+            OF(0x2ABA) = 0xE8;
+            OF(0x2A9A) = 0xFF;
         }
     }
     /* $D419: accelerate; the x acceleration flips when vy is 0 */
     if (!vy16(x))
     {
-        u16 a = (u16)(0 - ((O(0x2A5A, x) << 8) | O(0x2A7A, x)));
-        O(0x2A7A, x) = (u8)a;
-        O(0x2A5A, x) = (u8)(a >> 8);
+        u16 a = (u16)(0 - ((OF(0x2A5A) << 8) | OF(0x2A7A)));
+        OF(0x2A7A) = (u8)a;
+        OF(0x2A5A) = (u8)(a >> 8);
     }
-    set_vx(x, (u16)(((O(0x25BA, x) << 8) | O(0x25DA, x)) + ((O(0x2A5A, x) << 8) | O(0x2A7A, x))));
-    set_vy(x, (u16)(vy16(x) + ((O(0x2A9A, x) << 8) | O(0x2ABA, x))));
+    set_vx(x, (u16)(((OF(0x25BA) << 8) | OF(0x25DA)) + ((OF(0x2A5A) << 8) | OF(0x2A7A))));
+    set_vy(x, (u16)(vy16(x) + ((OF(0x2A9A) << 8) | OF(0x2ABA))));
     ss2_obj_common(x);
 }
 
@@ -436,14 +450,15 @@ static void boss2_exploding(u8 x)
 /* $D459 */
 static void boss2_hit(u8 x)
 {
-    if (O(0x245A, x) == 0x40)
+    u8 *const o = &ss2_ram[x];
+    if (OF(0x245A) == 0x40)
     {
-        O(0x297A, x) = 0x32;
+        OF(0x297A) = 0x32;
         set_hit(x, 0xD46F);
         boss2_exploding(x);
         return;
     }
-    O(0x245A, x) = 0x80;
+    OF(0x245A) = 0x80;
     boss2_ai(x);
 }
 

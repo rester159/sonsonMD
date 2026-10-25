@@ -21,6 +21,9 @@
 #include "ss2_logic.h"
 #include "ss2_task.h"
 
+/* field a of slot x through o = &ss2_ram[x] (a fixed displacement) */
+#define OF(a) (o[(u16)((a) - 0x2000)])
+
 #define OX16(x)     ((u16)((O(0x247A, x) << 8) | O(0x249A, x)))
 #define OY16(x)     ((u16)((O(0x24DA, x) << 8) | O(0x24FA, x)))
 #define PX16        ((u16)((P_XH << 8) | P_XL))
@@ -40,12 +43,13 @@ static void set_handler(u8 x, u16 h) { O(0x28DA, x) = (u8)h; O(0x28BA, x) = (u8)
 /* bank 3 $85E7: 16-way direction from object x to the player */
 u8 ss2_aim_dir(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     u16 dx, dy, ox, oy, a2, a3, a5, b2, b3, b5;
     u8 y = 0;
-    if (!(O(0x269A, x) & 0x20))
+    if (!(OF(0x269A) & 0x20))
     {
-        ox = (u16)(OX16(x) + 0x100 + (u8)(((O(0x253A, x) & 1) + 1) << 3));
-        oy = (u16)(OY16(x) + 0x100 + (u8)(((O(0x253A, x) & 0x30) + 0x10) >> 1));
+        ox = (u16)(OX16(x) + 0x100 + (u8)(((OF(0x253A) & 1) + 1) << 3));
+        oy = (u16)(OY16(x) + 0x100 + (u8)(((OF(0x253A) & 0x30) + 0x10) >> 1));
     }
     else
     {
@@ -82,13 +86,14 @@ u8 ss2_aim_dir(u8 x)
 /* bank 2 $7BEA: velocity from the direction $277A in table set $27FA */
 void ss2_aim_velocity(u8 x)
 {
-    u16 t = (u16)(0x7C1B + O(0x27FA, x));
+    u8 *const o = &ss2_ram[x];
+    u16 t = (u16)(0x7C1B + OF(0x27FA));
     u16 p = (u16)(ss2_bank_byte(2, t) | (ss2_bank_byte(2, (u16)(t + 1)) << 8));
-    p = (u16)(p + (u8)(O(0x277A, x) << 2));
-    O(0x25DA, x) = ss2_bank_byte(2, p);
-    O(0x25BA, x) = ss2_bank_byte(2, (u16)(p + 1));
-    O(0x261A, x) = ss2_bank_byte(2, (u16)(p + 2));
-    O(0x25FA, x) = ss2_bank_byte(2, (u16)(p + 3));
+    p = (u16)(p + (u8)(OF(0x277A) << 2));
+    OF(0x25DA) = ss2_bank_byte(2, p);
+    OF(0x25BA) = ss2_bank_byte(2, (u16)(p + 1));
+    OF(0x261A) = ss2_bank_byte(2, (u16)(p + 2));
+    OF(0x25FA) = ss2_bank_byte(2, (u16)(p + 3));
 }
 
 /* bank 2 $6E1A, started in task slot 2 by the spawn ($E1E2): wait for an
@@ -227,9 +232,10 @@ static void fire(u8 y)
 /* $DAE8/$DAED: shot flies until it meets a wall */
 static void shot(u8 x)
 {
-    O(0x245A, x) = 0x80;
-    O(0x263A, x) = 0;
-    O(0x265A, x) = 0;
+    u8 *const o = &ss2_ram[x];
+    OF(0x245A) = 0x80;
+    OF(0x263A) = 0;
+    OF(0x265A) = 0;
     if (ss2_obj_probe(x)) { ss2_obj_die(x); return; }
     ss2_obj_common(x);
 }
@@ -246,8 +252,9 @@ static void shot_hit(u8 x)
 /* side probe at the leading edge; a wall stops the walk */
 static void side_wall(u8 x)
 {
-    O(0x263A, x) = (s8)O(0x25BA, x) < 0 ? 0xE8 : 0x17;
-    O(0x265A, x) = 0x1F;
+    u8 *const o = &ss2_ram[x];
+    OF(0x263A) = (s8)OF(0x25BA) < 0 ? 0xE8 : 0x17;
+    OF(0x265A) = 0x1F;
     if (ss2_obj_probe(x)) set_vx(x, 0);
 }
 
@@ -264,31 +271,33 @@ static void walking(u8 x)
 /* $D616/$D622: start walking left/right */
 static void walk(u8 x, u8 right)
 {
+    u8 *const o = &ss2_ram[x];
     set_vx(x, right ? 0x0100 : 0xFF00);
     set_vy(x, 0);
-    O(0x29BA, x) = O(0x299A, x);
+    OF(0x29BA) = OF(0x299A);
     pose_walk(x);
-    O(0x297A, x) = 1;
-    O(0x29DA, x) = 0x20;
+    OF(0x297A) = 1;
+    OF(0x29DA) = 0x20;
     walking(x);
 }
 
 /* $D6A4 */
 static void jumping(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     side_wall(x);
-    if ((s8)O(0x25FA, x) >= 0)
+    if ((s8)OF(0x25FA) >= 0)
     {
-        O(0x263A, x) = 0;
-        O(0x265A, x) = 0x20;
+        OF(0x263A) = 0;
+        OF(0x265A) = 0x20;
         if (ss2_obj_probe(x)) { ss2_obj_snap_y(x); stand(x); return; }
     }
     set_vy(x, (u16)(vy16(x) + 0x40));
-    if (O(0x29BA, x) == O(0x299A, x) && !vy16(x))
+    if (OF(0x29BA) == OF(0x299A) && !vy16(x))
     {
         /* $D6FB: at the top of the jump, maybe fire */
         ss2_random();
-        if (!(O(0x2A9A, x) & 2))
+        if (!(OF(0x2A9A) & 2))
         {
             if (ZP(0x8D) & 1) pose_crouch(x);
         }
@@ -305,12 +314,13 @@ static void jumping(u8 x)
 /* $D66E */
 static void jump(u8 x)
 {
-    O(0x29BA, x) = O(0x299A, x);
-    set_vx(x, O(0x299A, x) ? 0x0180 : 0xFE80);
+    u8 *const o = &ss2_ram[x];
+    OF(0x29BA) = OF(0x299A);
+    set_vx(x, OF(0x299A) ? 0x0180 : 0xFE80);
     set_vy(x, 0xFB00);
-    O(0x29BA, x) = O(0x299A, x);
+    OF(0x29BA) = OF(0x299A);
     pose_stand(x);
-    O(0x297A, x) = 2;
+    OF(0x297A) = 2;
     jumping(x);
 }
 
@@ -327,12 +337,13 @@ static void crouching(u8 x)
 /* $D726 */
 static void crouch(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     set_vx(x, 0);
     set_vy(x, 0);
-    O(0x29BA, x) = O(0x299A, x);
+    OF(0x29BA) = OF(0x299A);
     pose_crouch(x);
-    O(0x297A, x) = 3;
-    O(0x29DA, x) = 0x20;
+    OF(0x297A) = 3;
+    OF(0x29DA) = 0x20;
     crouching(x);
 }
 
@@ -346,36 +357,39 @@ static void waiting(u8 x)
 /* $D765 */
 static void stand(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     set_vx(x, 0);
     set_vy(x, 0);
-    O(0x29BA, x) = O(0x299A, x);
+    OF(0x29BA) = OF(0x299A);
     pose_stand(x);
-    O(0x297A, x) = 4;
-    O(0x29DA, x) = 0x18;
+    OF(0x297A) = 4;
+    OF(0x29DA) = 0x18;
     waiting(x);
 }
 
 /* $D78F */
 static void shoot(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     set_vx(x, 0);
     set_vy(x, 0);
-    O(0x29BA, x) = O(0x299A, x);
+    OF(0x29BA) = OF(0x299A);
     pose_fire(x);
-    O(0x297A, x) = 5;
-    O(0x29DA, x) = 0x18;
+    OF(0x297A) = 5;
+    OF(0x29DA) = 0x18;
     fire(x);
     waiting(x);
 }
 
 static void boss_ai(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     u16 a = (u16)(OX16(x) + 0x100), p = (u16)(PX16 + 0x110), d = (u16)(a - p);
     u8 y, r, k;
-    O(0x299A, x) = 0;
-    if (a < p) { O(0x299A, x) = 1; d = (u16)(0 - d); }
+    OF(0x299A) = 0;
+    if (a < p) { OF(0x299A) = 1; d = (u16)(0 - d); }
     ZP(0x26) = (u8)d; ZP(0x27) = (u8)(d >> 8);
-    switch (O(0x297A, x))
+    switch (OF(0x297A))
     {
         case 0: break;
         case 1: walking(x); return;
@@ -395,7 +409,7 @@ static void boss_ai(u8 x)
     y = (u8)(y << 3);
     ss2_random();
     {
-        u16 t = (u16)((O(0x2A7A, x) << 8) | O(0x2A5A, x));
+        u16 t = (u16)((OF(0x2A7A) << 8) | OF(0x2A5A));
         ZP(0x26) = (u8)t; ZP(0x27) = (u8)(t >> 8);
         r = (u8)(ZP(0x8D) & 0x1F);
         for (k = 0; k < 5; k++)
@@ -408,8 +422,8 @@ static void boss_ai(u8 x)
     switch (k)
     {
         case 0: stand(x); return;                           /* $D765 */
-        case 1: walk(x, O(0x299A, x) != 0); return;         /* $D60A toward */
-        case 2: walk(x, O(0x299A, x) == 0); return;         /* $D611 away */
+        case 1: walk(x, OF(0x299A) != 0); return;         /* $D60A toward */
+        case 2: walk(x, OF(0x299A) == 0); return;         /* $D611 away */
         case 3: jump(x); return;                            /* $D66E */
         case 4: crouch(x); return;                          /* $D726 */
         default: shoot(x); return;                          /* $D78F */
@@ -465,34 +479,35 @@ static void boss_enter_plain(u8 x)
 /* $D83E: knocked away from the player, sliding to a stop */
 static void knockback(u8 x)
 {
-    if (!O(0x29FA, x))
+    u8 *const o = &ss2_ram[x];
+    if (!OF(0x29FA))
     {
-        O(0x29FA, x)++;
-        if (OX16(x) >= PX16) { O(0x29BA, x) = 0; set_vx(x, 0x0380); }
-        else { O(0x29BA, x) = 1; set_vx(x, 0xFC80); }
+        OF(0x29FA)++;
+        if (OX16(x) >= PX16) { OF(0x29BA) = 0; set_vx(x, 0x0380); }
+        else { OF(0x29BA) = 1; set_vx(x, 0xFC80); }
         set_vy(x, 0);
         pose_crouch(x);
     }
     if (!(vx16(x) | vy16(x)))
     {
-        O(0x245A, x) = 0x80;
-        O(0x29FA, x) = 0;
-        O(0x297A, x) = 0;
+        OF(0x245A) = 0x80;
+        OF(0x29FA) = 0;
+        OF(0x297A) = 0;
         tail(x);
         return;
     }
     if (vx16(x))
     {
-        O(0x263A, x) = (s8)O(0x25BA, x) < 0 ? 0xE8 : 0x17;
-        O(0x265A, x) = 0x1F;
+        OF(0x263A) = (s8)OF(0x25BA) < 0 ? 0xE8 : 0x17;
+        OF(0x265A) = 0x1F;
         if (ss2_obj_probe(x)) set_vx(x, 0);
-        else if (!vy16(x)) set_vx(x, (u16)(vx16(x) + ((s8)O(0x25BA, x) < 0 ? 0x0040 : 0xFFC0)));
+        else if (!vy16(x)) set_vx(x, (u16)(vx16(x) + ((s8)OF(0x25BA) < 0 ? 0x0040 : 0xFFC0)));
     }
     /* $D8F1 */
-    if ((s8)O(0x25FA, x) >= 0)
+    if ((s8)OF(0x25FA) >= 0)
     {
-        O(0x263A, x) = 0;
-        O(0x265A, x) = 0x20;
+        OF(0x263A) = 0;
+        OF(0x265A) = 0x20;
         if (ss2_obj_probe(x))
         {
             set_vy(x, 0);

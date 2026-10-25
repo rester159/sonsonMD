@@ -13,6 +13,9 @@
 #include "ss2_logic.h"
 #include "ss2_task.h"
 
+/* field a of slot x through o = &ss2_ram[x] (a fixed displacement) */
+#define OF(a) (o[(u16)((a) - 0x2000)])
+
 
 /* sprite table in the PCE SATB word layout: y, x, pattern, attribute */
 u16 ss2_sat[64 * 4];
@@ -109,37 +112,39 @@ static void sat_put(u16 y, u16 x, u16 pat, u16 attr)
 /* $896A: one sprite per object */
 static void sat_object(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     u8 lo;
-    if (O(0x245A, x) != 0x40 && !O(0x26BA, x) && ZP(0x71) && ZP(0x71) < 0x28 && !(ZP(0x71) & 4))
+    if (OF(0x245A) != 0x40 && !OF(0x26BA) && ZP(0x71) && ZP(0x71) < 0x28 && !(ZP(0x71) & 4))
         return;
     ZP(0x38)++;
-    lo = O(0x255A, x);
-    if (O(0x283A, x)) lo |= 0x0F;
-    sat_put((u16)((((O(0x24DA, x) << 8) | O(0x24FA, x)) + 0x40)),
-            (u16)((((O(0x247A, x) << 8) | O(0x249A, x)) + 0x20)),
-            (u16)((O(0x257A, x) << 8) | O(0x259A, x)),
-            (u16)((O(0x253A, x) << 8) | lo));
+    lo = OF(0x255A);
+    if (OF(0x283A)) lo |= 0x0F;
+    sat_put((u16)((((OF(0x24DA) << 8) | OF(0x24FA)) + 0x40)),
+            (u16)((((OF(0x247A) << 8) | OF(0x249A)) + 0x20)),
+            (u16)((OF(0x257A) << 8) | OF(0x259A)),
+            (u16)((OF(0x253A) << 8) | lo));
 }
 
 /* $89D2: composite object: list of (dy, dx, frame, attr hi) */
 static void sat_composite(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     u16 list, an;
     u8 n, y;
-    if (O(0x245A, x) != 0x40 && !O(0x26BA, x) && ZP(0x71) && ZP(0x71) < 0x28 && !(ZP(0x71) & 4))
+    if (OF(0x245A) != 0x40 && !OF(0x26BA) && ZP(0x71) && ZP(0x71) < 0x28 && !(ZP(0x71) & 4))
         return;
-    ss2_map6(O(0x275A, x));
-    list = (u16)((O(0x257A, x) << 8) | O(0x259A, x));
+    ss2_map6(OF(0x275A));
+    list = (u16)((OF(0x257A) << 8) | OF(0x259A));
     n = ss2_rom_byte((u16)(list + 1));
     if (!n) return;
-    an = (u16)((O(0x27BA, x) << 8) | O(0x27DA, x));
+    an = (u16)((OF(0x27BA) << 8) | OF(0x27DA));
     for (y = 2; n; n--)
     {
         u16 sy, sx, pat;
         u8 f, lo;
-        sy = (u16)(((O(0x24DA, x) << 8) | O(0x24FA, x)) + (s8)ss2_rom_byte((u16)(list + y)) + 0x40);
+        sy = (u16)(((OF(0x24DA) << 8) | OF(0x24FA)) + (s8)ss2_rom_byte((u16)(list + y)) + 0x40);
         y++;
-        sx = (u16)(((O(0x247A, x) << 8) | O(0x249A, x)) + (s8)ss2_rom_byte((u16)(list + y)) + 0x20);
+        sx = (u16)(((OF(0x247A) << 8) | OF(0x249A)) + (s8)ss2_rom_byte((u16)(list + y)) + 0x20);
         y++;
         f = ss2_rom_byte((u16)(list + y));
         if (f == 0xFF) pat = 0x0090;
@@ -149,8 +154,8 @@ static void sat_composite(u8 x)
             pat = (u16)((u8)t | ((u8)(ss2_rom_byte(an) + (t >> 8)) << 8));
         }
         y++;
-        lo = O(0x255A, x);
-        if (O(0x283A, x)) lo |= 0x0F;
+        lo = OF(0x255A);
+        if (OF(0x283A)) lo |= 0x0F;
         sat_put(sy, sx, pat, (u16)((ss2_rom_byte((u16)(list + y)) << 8) | lo));
         y++;
         ZP(0x38)++;
@@ -164,12 +169,24 @@ static void sat_composite(u8 x)
  * disturbed. */
 static void sat_banks(void)
 {
-    u8 x, pass;
+    /* only the last mapping's state ($8E, page 6) remains, so the bank is
+     * mapped once at the end; the unported placeholder bank is still mapped
+     * where it occurs (its diagnostic) */
+    u8 x, pass, last = 0, found = 0, z71 = ZP(0x71);
+    u8 blink = (u8)(z71 && z71 < 0x28 && !(z71 & 4));
     for (pass = 0; pass < 2; pass++)
         for (x = 0; x < 0x20; x++)
-            if (O(0x245A, x) && !O(0x287A, x) == !pass && (O(0x269A, x) & 0x20)
-                && !(O(0x245A, x) != 0x40 && !O(0x26BA, x) && ZP(0x71) && ZP(0x71) < 0x28 && !(ZP(0x71) & 4)))
-                ss2_map6(O(0x275A, x));
+        {
+            const u8 *o = &ss2_ram[x];
+            u8 st = o[0x045A];
+            if (st && !o[0x087A] == !pass && (o[0x069A] & 0x20) && !(st != 0x40 && !o[0x06BA] && blink))
+            {
+                u8 b = o[0x075A];
+                if (ss2_banks[b & 0x1F] == ss2_banks[0x0A]) { ss2_map6(b); found = 0; }
+                else { last = b; found = 1; }
+            }
+        }
+    if (found) ss2_map6(last);
 }
 
 /* the shop scene's sprites (bank 3 $9EF0-$9F87, bank 4 $A514-$A5F9):

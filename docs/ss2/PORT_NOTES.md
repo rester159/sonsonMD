@@ -175,6 +175,27 @@ Stage frame rates with the player kept alive (autoplay, 7,800 refreshes):
 | before | 59.3 | 33.0 | 56.5 | 55.0 | 56.9 | 38.6 | 37.4 |
 | after  | 59.5 | 33.1 | 57.6 | 56.2 | 57.2 | 50.6 | 42.1 |
 
+Second round, same route in both builds (`SS2_AUTOPLAY_ABS=60`: the play
+pattern indexed by the absolute loop pass; earlier runs drifted apart as
+timing changed):
+
+| | S1 | S2 | S3 | S4 | S5 | S6 | S7 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 41f2bb8 | 59.0 | 32.9 | 60.0 | 55.6 | 35.8 | 46.5 | 41.0 |
+| now     | 59.7 | 35.6 | 60.0 | 57.0 | 36.9 | 54.6 | 43.9 |
+
+Round 2 (all output-identical: 62/62 traces, and a -D SS2_SPRCHECK build
+that compares the memoized sprite table with the full path every pass):
+object fields through a slot pointer (`OF(a)`, 128 functions),
+`ss2_rom_byte` page by rotate, terrain probe inline with table-built map
+offsets, per-entry sprite row memo, sat_banks maps once, spawn scan maps
+bank 8 only after a spawn, two queued scroll transfers instead of four.
+
+**RAM**: task stacks are 2 KiB each (deepest measured use 432 bytes,
+`-D SS2_STACKCHK`); at 4 KiB only ~600 bytes of heap were left
+(`-D SS2_HEAPCHK`), now 8.8 KiB. The PC-sampling build crashed at the old
+size. Stages 2, 5 and 7 still have scenes over the frame budget.
+
 Work per pass in the heavy stages is 300-350 lines against a 262-line
 frame; objects (stage 2: 133 lines; terrain probes, `ss2_obj_common`,
 `collide`), the SAT build + sprite conversion (45-100) and sound (~50) are

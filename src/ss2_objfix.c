@@ -16,6 +16,9 @@
 #include "ss2_ram.h"
 #include "ss2_logic.h"
 
+/* field a of slot x through o = &ss2_ram[x] (a fixed displacement) */
+#define OF(a) (o[(u16)((a) - 0x2000)])
+
 #define OX16(x)     ((u16)((O(0x247A, x) << 8) | O(0x249A, x)))
 #define OY16(x)     ((u16)((O(0x24DA, x) << 8) | O(0x24FA, x)))
 
@@ -33,8 +36,9 @@ static void set_hit(u8 x, u16 h) { O(0x291A, x) = (u8)h; O(0x28FA, x) = (u8)(h >
 
 static void place(u8 x)
 {
-    O(0x247A, x) = ZP(0x40); O(0x249A, x) = ZP(0x41);
-    O(0x24DA, x) = ZP(0x42); O(0x24FA, x) = ZP(0x43);
+    u8 *const o = &ss2_ram[x];
+    OF(0x247A) = ZP(0x40); OF(0x249A) = ZP(0x41);
+    OF(0x24DA) = ZP(0x42); OF(0x24FA) = ZP(0x43);
 }
 
 /* ---- items (copies of the bank 3 item setup used by ss2_items.c) ------ */
@@ -42,28 +46,29 @@ static void place(u8 x)
 /* $9125/$94DB: item kind setup */
 static void item_kind(u8 x, u8 kind)
 {
-    O(0x2A1A, x) = (u8)(kind & 0x80);
+    u8 *const o = &ss2_ram[x];
+    OF(0x2A1A) = (u8)(kind & 0x80);
     kind &= 0x7F;
-    O(0x26BA, x) = kind;
+    OF(0x26BA) = kind;
     if (kind < 0x0A)
     {
         u8 i = (u8)(kind - 3), t = (u8)(i * 6);
-        O(0x295A, x) = ss2_rom_byte((u16)(0x921A + t));
-        O(0x293A, x) = ss2_rom_byte((u16)(0x921B + t));
-        O(0x29BA, x) = ss2_rom_byte((u16)(0x921C + t));
-        O(0x299A, x) = ss2_rom_byte((u16)(0x921D + t));
-        O(0x29FA, x) = ss2_rom_byte((u16)(0x921E + t));
-        O(0x29DA, x) = ss2_rom_byte((u16)(0x921F + t));
-        O(0x255A, x) |= ss2_rom_byte((u16)(0x9244 + i));
+        OF(0x295A) = ss2_rom_byte((u16)(0x921A + t));
+        OF(0x293A) = ss2_rom_byte((u16)(0x921B + t));
+        OF(0x29BA) = ss2_rom_byte((u16)(0x921C + t));
+        OF(0x299A) = ss2_rom_byte((u16)(0x921D + t));
+        OF(0x29FA) = ss2_rom_byte((u16)(0x921E + t));
+        OF(0x29DA) = ss2_rom_byte((u16)(0x921F + t));
+        OF(0x255A) |= ss2_rom_byte((u16)(0x9244 + i));
     }
     else
     {
         u8 i = (u8)(kind - 0x0A), t = (u8)(i << 2);
-        O(0x295A, x) = ss2_rom_byte((u16)(0x95CA + t));
-        O(0x293A, x) = ss2_rom_byte((u16)(0x95CB + t));
-        O(0x29FA, x) = ss2_rom_byte((u16)(0x95CC + t));
-        O(0x29DA, x) = ss2_rom_byte((u16)(0x95CD + t));
-        O(0x255A, x) |= ss2_rom_byte((u16)(0x9616 + i));
+        OF(0x295A) = ss2_rom_byte((u16)(0x95CA + t));
+        OF(0x293A) = ss2_rom_byte((u16)(0x95CB + t));
+        OF(0x29FA) = ss2_rom_byte((u16)(0x95CC + t));
+        OF(0x29DA) = ss2_rom_byte((u16)(0x95CD + t));
+        OF(0x255A) |= ss2_rom_byte((u16)(0x9616 + i));
     }
 }
 
@@ -106,31 +111,32 @@ static u8 vessel_taken(void)
 /* $9516: falling item of kind $0A+ (same logic as $9173) */
 static void item_fall(u8 x)
 {
-    O(0x263A, x) = 0x08;
-    O(0x265A, x) = (s8)O(0x25FA, x) < 0 ? 0x00 : 0x10;
+    u8 *const o = &ss2_ram[x];
+    OF(0x263A) = 0x08;
+    OF(0x265A) = (s8)OF(0x25FA) < 0 ? 0x00 : 0x10;
     if (!ss2_obj_probe(x))
     {
-        u16 t = (u16)(O(0x261A, x) + 0x40);
-        O(0x261A, x) = (u8)t;
-        O(0x25FA, x) = (u8)(O(0x25FA, x) + (t >> 8));
+        u16 t = (u16)(OF(0x261A) + 0x40);
+        OF(0x261A) = (u8)t;
+        OF(0x25FA) = (u8)(OF(0x25FA) + (t >> 8));
     }
-    else if ((s8)O(0x25FA, x) < 0)
+    else if ((s8)OF(0x25FA) < 0)
     {
         set_vy(x, 0);
     }
-    else if (!O(0x297A, x))
+    else if (!OF(0x297A))
     {
         set_vy(x, 0xFC00);
-        O(0x297A, x) = 1;
+        OF(0x297A) = 1;
     }
     else
     {
         set_vy(x, 0);
-        if (!O(0x2A1A, x))
+        if (!OF(0x2A1A))
         {
-            O(0x267A, x) = 1;
-            O(0x293A, x) = O(0x29DA, x);
-            O(0x295A, x) = O(0x29FA, x);
+            OF(0x267A) = 1;
+            OF(0x293A) = OF(0x29DA);
+            OF(0x295A) = OF(0x29FA);
         }
         set_handler(x, 0xEE67);
     }
@@ -162,10 +168,11 @@ static void platform_bounds(u8 x)
 /* $8BD7: horizontal swing */
 static void platform_h(u8 x)
 {
-    if (!--O(0x299A, x))
+    u8 *const o = &ss2_ram[x];
+    if (!--OF(0x299A))
     {
-        O(0x299A, x) = O(0x297A, x);
-        set_vx(x, (u16)(0 - (u16)((O(0x25BA, x) << 8) | O(0x25DA, x))));
+        OF(0x299A) = OF(0x297A);
+        set_vx(x, (u16)(0 - (u16)((OF(0x25BA) << 8) | OF(0x25DA))));
     }
     platform_bounds(x);
 }
@@ -173,10 +180,11 @@ static void platform_h(u8 x)
 /* $8BF3: vertical swing */
 static void platform_v(u8 x)
 {
-    if (!--O(0x299A, x))
+    u8 *const o = &ss2_ram[x];
+    if (!--OF(0x299A))
     {
-        O(0x299A, x) = O(0x297A, x);
-        set_vy(x, (u16)(0 - (u16)((O(0x25FA, x) << 8) | O(0x261A, x))));
+        OF(0x299A) = OF(0x297A);
+        set_vy(x, (u16)(0 - (u16)((OF(0x25FA) << 8) | OF(0x261A))));
     }
     platform_bounds(x);
 }
@@ -184,11 +192,12 @@ static void platform_v(u8 x)
 /* $8C0F: falls (accelerating to 5 px/frame) once something set it moving */
 static void platform_fall(u8 x)
 {
-    if ((O(0x261A, x) | O(0x25FA, x)) && O(0x25FA, x) != 0x05)
+    u8 *const o = &ss2_ram[x];
+    if ((OF(0x261A) | OF(0x25FA)) && OF(0x25FA) != 0x05)
     {
-        u16 t = (u16)(O(0x261A, x) + 0x20);
-        O(0x261A, x) = (u8)t;
-        O(0x25FA, x) = (u8)(O(0x25FA, x) + (t >> 8));
+        u16 t = (u16)(OF(0x261A) + 0x20);
+        OF(0x261A) = (u8)t;
+        OF(0x25FA) = (u8)(OF(0x25FA) + (t >> 8));
     }
     platform_bounds(x);
 }
@@ -303,18 +312,20 @@ static void block(u8 x)
 /* $8E07: not breakable now: recover */
 static void block_recover(u8 x)
 {
-    O(0x245A, x) = 0x80;
-    O(0x267A, x) = 1;
-    O(0x26DA, x) = 1;
+    u8 *const o = &ss2_ram[x];
+    OF(0x245A) = 0x80;
+    OF(0x267A) = 1;
+    OF(0x26DA) = 1;
     ss2_obj_common(x);
 }
 
 /* $8E03: block struck */
 static void block_hit(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     u16 wx, wy, off;
     if (!ZP(0x76)) { block_recover(x); return; }
-    if (Z_STAGE == 6 && O(0x297A, x) == 0x19 && Z_STAFFPAL != 4) { block_recover(x); return; }
+    if (Z_STAGE == 6 && OF(0x297A) == 0x19 && Z_STAFFPAL != 4) { block_recover(x); return; }
     /* $8E2A */
     if (!--ZP(0x76))
     {
@@ -326,13 +337,13 @@ static void block_hit(u8 x)
         ss2_hud_text(0x4E62);
     }
     /* $8E55 */
-    O(0x267A, x) = 1;
-    O(0x269A, x) |= 0x02;
+    OF(0x267A) = 1;
+    OF(0x269A) |= 0x02;
     set_hit(x, 0xEE67);
     set_script(x, 0x8FFB);
-    if (O(0x297A, x))
+    if (OF(0x297A))
     {
-        u8 s = O(0x281A, x);
+        u8 s = OF(0x281A);
         O(0x2B5A, s) = 0;
         O(0x2C1A, s) = 0xFF;
     }

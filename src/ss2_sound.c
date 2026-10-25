@@ -116,7 +116,7 @@ static vu8 *ymq_p;              /* next free entry in Z80 RAM ($1001+)     */
 static u8 ymq_n;
 static u8 ymq_on;               /* 1: queue for the Z80; 0: direct (bus held) */
 
-static void ym_out(u8 part, u8 reg, u8 val)
+static inline __attribute__((always_inline)) void ym_out(u8 part, u8 reg, u8 val)
 {
     if (!ymq_on) { YM2612_writeReg(part, reg, val); return; }
     if (ymq_n >= YMQ_MAX) return;
@@ -176,14 +176,18 @@ static void load_ym_z80(void)
     SYS_enableInts();
 }
 
-static void ym(u8 ch, u8 reg, u8 val)
+/* channel ch: part ch / 3, register offset ch % 3 (no division) */
+static const u8 ym_part[6] = { 0, 0, 0, 1, 1, 1 };
+static const u8 ym_choff[6] = { 0, 1, 2, 0, 1, 2 };
+
+static inline __attribute__((always_inline)) void ym(u8 ch, u8 reg, u8 val)
 {
-    ym_out(ch >= 3 ? 1 : 0, (u8)(reg + (ch % 3)), val);
+    ym_out(ym_part[ch], (u8)(reg + ym_choff[ch]), val);
 }
 
 static void ym_key(u8 ch, u8 on)
 {
-    ym_out(0, 0x28, (u8)((on ? 0xF0 : 0x00) | (ch >= 3 ? 4 : 0) | (ch % 3)));
+    ym_out(0, 0x28, (u8)((on ? 0xF0 : 0x00) | (ym_part[ch] << 2) | ym_choff[ch]));
 }
 
 static void ym_voice_init(u8 ch)

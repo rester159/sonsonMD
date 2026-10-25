@@ -18,14 +18,18 @@
 #include "ss2_logic.h"
 #include "ss2_task.h"
 
-#define STACK_BYTES 4096
+/* Deepest use measured (-D SS2_STACKCHK, 2026-10-24): 432 bytes (main task;
+ * interrupts included) over boot, title, demo, all 7 stages, stage clear,
+ * game over, continue and the ending. 2 KiB each keeps ~4.7x that and
+ * leaves the heap room it lacked at 4 KiB (602 bytes free). */
+#define STACK_BYTES 2048
 
 #ifdef SS2_HOST
 #include <ucontext.h>
 static ucontext_t sched_ctx, task_ctx[4];
 static char task_stack[4][32768];
 #else
-/* 16 KiB of stacks from SGDK's heap while Son Son II runs (ss2_tasks_alloc
+/* 8 KiB of stacks from SGDK's heap while Son Son II runs (ss2_tasks_alloc
  * / ss2_tasks_free): as static RAM they left the front end's heap too
  * small */
 static u32 (*task_stack)[STACK_BYTES / 4];
@@ -48,9 +52,28 @@ __asm__(
 void ss2_tasks_alloc(void) { }
 void ss2_tasks_free(void) { }
 #else
+#ifdef SS2_STACKCHK
+/* debug: the stacks start filled with a pattern; ss2_stack_check() records
+ * each task's deepest use so far (bytes) in ss2_stack_used[] */
+__attribute__((used, externally_visible)) volatile u16 ss2_stack_used[4];
+void ss2_stack_check(void)
+{
+    u8 n;
+    if (!task_stack) return;
+    for (n = 0; n < 4; n++)
+    {
+        u16 i = 0;
+        while (i < STACK_BYTES / 4 && task_stack[n][i] == 0x5A5AA5A5) i++;
+        if ((u16)(STACK_BYTES - i * 4) > ss2_stack_used[n]) ss2_stack_used[n] = (u16)(STACK_BYTES - i * 4);
+    }
+}
+#endif
 void ss2_tasks_alloc(void)
 {
     if (!task_stack) task_stack = MEM_alloc(4 * STACK_BYTES);
+#ifdef SS2_STACKCHK
+    if (task_stack) { u16 i; for (i = 0; i < 4 * STACK_BYTES / 4; i++) task_stack[0][i] = 0x5A5AA5A5; }
+#endif
 }
 
 void ss2_tasks_free(void)

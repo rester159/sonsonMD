@@ -51,7 +51,17 @@ void ss2_map6(u8 bank);                      /* $BB83 (also sets $8E)      */
 extern const u8 *ss2_page[8];
 extern const u8 *ss2_banks[0x20];             /* by HuCard bank number      */
 
-static inline u8 ss2_rom_byte(u16 addr) { return ss2_page[addr >> 13][addr & 0x1FFF]; }
+/* page = addr >> 13 as a rotate: rol #5 puts it in bits 2-4, the byte
+ * offset of its pointer (16 cycles on the 68000; the shift took 32+) */
+static inline u8 ss2_rom_byte(u16 addr)
+{
+#if defined(SS2_HOST)
+    return ss2_page[addr >> 13][addr & 0x1FFF];      /* host: 8-byte pointers */
+#else
+    u16 off = (u16)((u16)((u16)(addr << 5) | (addr >> 11)) & 0x1C);
+    return (*(const u8 *const *)((const u8 *)ss2_page + off))[addr & 0x1FFF];
+#endif
+}
 static inline u8 ss2_bank_byte(u8 bank, u16 addr) { return ss2_banks[bank & 0x1F][addr & 0x1FFF]; }
 /* metatile table: bank 6 | stage bit 2 at $C000 */
 static inline u8 ss2_metatile_byte(u16 addr, u8 index)
@@ -212,10 +222,8 @@ void ss2_obj_die(u8 x);                      /* $F59F                      */
 void ss2_obj_init(u8 x, u16 rec);            /* bank 3 $8451               */
 u8   ss2_obj_alloc(void);                    /* bank 3 $8428 (0xFF = full) */
 u8   ss2_obj_alloc_top(void);                /* bank 3 $8436               */
-u8   ss2_obj_probe(u8 x);                    /* bank 3 $8327               */
 void ss2_obj_snap_y(u8 x);                   /* bank 3 $858B               */
 u8   ss2_spawn_visible(void);                /* bank 3 $85B1               */
-u8   ss2_probe_point(u16 sx, u16 sy);        /* bank 3 $8379               */
 void ss2_spawn_scan(void);                   /* bank 4 $BC10               */
 u8   ss2_random(void);                       /* $FDB4 (returns carry)      */
 void ss2_score_award(u8 id);                 /* bank 4 $BB89               */
@@ -224,5 +232,42 @@ void ss2_obj_death(u8 x);                    /* bank 2 $6E47               */
 /* per-bank handlers: return 0 when the address is not a known entry */
 u8   ss2_obj_handler(u8 bank, u16 addr, u8 x);
 u8   ss2_spawn_handler(u8 bank, u16 addr);
+
+
+/* bank 3 $8379: map attribute at screen point (sx, sy) + camera; inline
+ * (it runs for every object and the player several times a frame). The
+ * map cell address $3000 | (wy>>8)<<9 | (wx>>8)<<6 | (wy&$E0)>>2 |
+ * (wx&$E0)>>5 is ss2_probe_row[wy>>5] + ss2_probe_col[wx>>5] (disjoint
+ * bit fields). */
+extern const u16 ss2_probe_row[64], ss2_probe_col[64];
+static inline u8 ss2_probe_point(u16 sx, u16 sy)
+{
+    extern u8 ss2_ram[0x2000];
+    u8 *const z = ss2_ram;                   /* zero page = ss2_ram[0..] */
+    u16 wx = (u16)((sx + (u16)((z[0x45] << 8) | z[0x46])) & 0x07FF);
+    u16 wy = (u16)((sy + (u16)((z[0x48] << 8) | z[0x49])) & 0x07FF);
+    u8 m, q, at;
+    z[0x61] = 0; z[0x62] = 0; z[0x63] = 0;   /* Z_HIT_VINE, Z_HIT_3, Z_HIT_HURT */
+    z[0x28] = (u8)wx; z[0x29] = (u8)(wx >> 8);
+    z[0x2A] = (u8)wy; z[0x2B] = (u8)(wy >> 8);
+    m = z[0x1000 + ss2_probe_row[wy >> 5] + ss2_probe_col[wx >> 5]];
+    q = (u8)(((wx & 0x10) >> 3) | ((wy & 0x10) >> 2));
+    at = (u8)(ss2_banks[6 | ((z[0x69] >> 2) & 1)]
+              [(u16)((u16)((z[0x5E] << 8) | z[0x5D]) + (u16)m * 8 + q + 1) & 0x1FFF] & 0x0F);
+    if (!at) return 0;
+    if (at == 2) { z[0x61] = 1; return 0; }
+    if (at == 3) z[0x62] = 1;
+    else if (at == 4) z[0x63] = 1;
+    return 1;
+}
+
+/* bank 3 $8327: probe at the object + signed ($263A, $265A) */
+static inline u8 ss2_obj_probe(u8 x)
+{
+    extern u8 ss2_ram[0x2000];
+    const u8 *const o = &ss2_ram[x];
+    return ss2_probe_point((u16)((u16)((o[0x047A] << 8) | o[0x049A]) + (s8)o[0x063A]),
+                           (u16)((u16)((o[0x04DA] << 8) | o[0x04FA]) + (s8)o[0x065A]));
+}
 
 #endif

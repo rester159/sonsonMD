@@ -40,6 +40,7 @@ extern u16 ss2_tc_now[4];
 static u16 HUD_TILE, PLAYER_TILE, SPR_TILE;
 static const Ss2StageGfx *gfx;
 static void cache_reset(void);
+static void spr_gen_bump(void);
 static u8 pairs_ok;               /* pair_dirty[] is current (draw_sprites) */
 /* cell sources of the stage's own sets (what the static sprite tables were
  * made from); the ending, which converts every sprite at run time, uses
@@ -251,13 +252,14 @@ static void ending_scroll(void)
  * and sprites a frame apart from the background. */
 static void scroll_queue(s16 h, s16 v)
 {
-    static s16 hbuf[2], vbuf[2];        /* read by the DMA at the VBlank */
+    /* plane A then B: adjacent words in the H-scroll table and in VSRAM,
+     * so one transfer each (queue entries are not cheap); read by the DMA
+     * at the VBlank, a RAM buffer that crosses no 128 KiB bank */
+    static s16 hbuf[2], vbuf[2];
     hbuf[0] = hbuf[1] = h;
     vbuf[0] = vbuf[1] = v;
-    VDP_setHorizontalScrollLine(BG_A, 0, &hbuf[0], 1, DMA_QUEUE);
-    VDP_setHorizontalScrollLine(BG_B, 0, &hbuf[1], 1, DMA_QUEUE);
-    VDP_setVerticalScrollTile(BG_A, 0, &vbuf[0], 1, DMA_QUEUE);
-    VDP_setVerticalScrollTile(BG_B, 0, &vbuf[1], 1, DMA_QUEUE);
+    DMA_queueDmaFast(DMA_VRAM, hbuf, VDP_HSCROLL_TABLE, 2, 2);
+    DMA_queueDmaFast(DMA_VSRAM, vbuf, 0, 2, 2);
 }
 
 static void apply_scroll(void)
@@ -713,6 +715,7 @@ static void stage_gfx_load(u8 full)
         shown_bg = shown_sp = 7;
     }
     else shown_bg = shown_sp = 0xFF;
+    spr_gen_bump();
     hud_colours();
     shown_cr = 0xC0;
     shown_c100 = 0;
@@ -808,6 +811,7 @@ static void memo_reset(void);
 static void cache_reset(void)
 {
     pairs_ok = 0;
+    spr_gen_bump();
     memset(cache, 0, sizeof cache);
     memo_reset();
     if (ending_cache()) memset(&ram_share.extra, 0, sizeof ram_share.extra);
@@ -859,7 +863,6 @@ static u16 cache_tile(u16 c, u8 key, u8 *line)
     u16 s0 = ss2_cell_src[c], s1 = ss2_cell_src[c + 1];
     u8 i, victim = 0xFF, n = ncache();
     u16 age = 0;
-    TCOUNT(0);
     *line = (u8)(2 + (cm[1] >> 7));
     /* the pair's last converted entry first: a hit returns the one entry
      * the search below would find (an entry is only added after a full
@@ -924,6 +927,24 @@ static u8 cell_dirty(u16 c)
  * changed: a sprite-set load (ss2_cells_dirty), new defaults, a cache reset,
  * and the ending (whose cache shares the defaults' RAM) */
 static u8 pair_dirty[0x100];
+
+/* Per SAT entry: the VDP rows its pattern/attribute words gave last time
+ * (static-table rows only: tile|attributes, size, y offset). Reused while
+ * the words and spr_gen are unchanged; spr_gen moves whenever an input of
+ * that mapping may change (stage graphics, defaults/dirty pairs, cache
+ * reset, scene colour map, intro palettes, palette 13 variant). */
+typedef struct { u32 key; u16 gen; u8 n; u8 size[4]; u8 yoff[4]; u16 attr[4]; } SprMemo;
+static SprMemo spr_memo[64];
+static u16 spr_gen = 1;
+static u8 spr_nomemo;               /* SS2_SPRCHECK: the full path, for comparison */
+#ifdef SS2_SPRCHECK
+__attribute__((used, externally_visible)) volatile u32 ss2_sprchk[3];   /* passes, mismatches, skipped (conversions) */
+#endif
+static void spr_gen_bump(void)
+{
+    if (!++spr_gen) { memset(spr_memo, 0, sizeof spr_memo); spr_gen = 1; }
+}
+
 static void pairs_update(void)
 {
     u16 c;
@@ -931,6 +952,7 @@ static void pairs_update(void)
     if (pairs_ok) return;
     for (c = 0; c < 0x200; c += 2) pair_dirty[c >> 1] = cell_dirty(c);
     pairs_ok = 1;
+    spr_gen_bump();
 }
 
 /* the ending's sprites per SAT slot: the pattern/attribute words they were
@@ -983,14 +1005,24 @@ static void draw_sprites(void)
     const u16 *spr_lut = gfx->spr_lut;
     u8 no_static = (u8)(scene_cmap() != 0), intro = (u8)(ss2_pal_intro != 0);
     u8 hi = ss2_sat_hi, last = 0;
+    {
+        static u8 m_static = 0xFF, m_intro = 0xFF, m_p13 = 0xFE;
+        if (no_static != m_static || intro != m_intro || ss2_pal13_variant != m_p13)
+        {
+            m_static = no_static; m_intro = intro; m_p13 = ss2_pal13_variant;
+            spr_gen_bump();
+        }
+    }
     if (ending) pairs_ok = 0;
     else pairs_update();
     for (i = 0; i < hi; i++)
     {
         const u16 *e = &ss2_sat[i * 4];
         s16 sx, sy;
+        TCOUNT(0);
         u16 attr = e[3], cell = (u16)((e[2] >> 1) & 0x3FF);
-        u8 cw, ch, pal, line, key, memo, ok = 1;
+        u8 cw, ch, pal, line, key, memo, ok = 1, rec;
+        SprMemo *mm = 0;
         if (!(e[0] & 0x3FF)) continue;
         last = (u8)(i + 1);
         TCOUNT(3);
@@ -1008,6 +1040,23 @@ static void draw_sprites(void)
             player_sprite(sx, sy, attr);
             continue;
         }
+        if (!ending && !spr_nomemo)
+        {
+            mm = &spr_memo[i];
+            if (mm->gen == spr_gen && mm->key == (((u32)e[2] << 16) | attr))
+            {
+                for (r = 0; r < mm->n; r++)
+                {
+                    TCOUNT(2);
+                    put_sprite(sx, (s16)(sy + mm->yoff[r]), mm->size[r], mm->attr[r]);
+                }
+                continue;
+            }
+            mm->gen = 0;
+            mm->n = 0;
+            rec = 1;
+        }
+        else rec = 0;
         pal = (u8)(attr & 15);
         key = (pal == 13 && ss2_pal13_variant < 8) ? (u8)(16 + ss2_pal13_variant) : pal;
         for (r = 0; r < ch; r++)
@@ -1044,18 +1093,25 @@ static void draw_sprites(void)
             {
                 /* reloaded cells, interior palettes, and cells the static
                  * tables never saw (magic, shop): convert from the HuCard */
+                rec = 0;                    /* cache blocks can be evicted */
                 if (cc >= 0x200 || !ss2_cell_bank[cc]) { ss2_sprite_misses++; continue; }
                 t = cache_tile(cc, key, &line);
                 if (!t) { ss2_sprite_misses++; continue; }
             }
 put:
             TCOUNT(2);
-            y = (s16)(sy + ((attr & 0x8000) ? (ch - 1 - r) : r) * 16);
-            if (cw == 2)
-                put_sprite(sx, y, SPRITE_SIZE(4, 2), TILE_ATTR_FULL(line, 1, (attr & 0x8000) ? 1 : 0, (attr & 0x0800) ? 1 : 0, t));
-            else
-                put_sprite(sx, y, SPRITE_SIZE(2, 2), TILE_ATTR_FULL(line, 1, (attr & 0x8000) ? 1 : 0, (attr & 0x0800) ? 1 : 0, (u16)(t + (c & 1) * 4)));
+            {
+                u8 yo = (u8)(((attr & 0x8000) ? (ch - 1 - r) : r) * 16);
+                u8 sz = cw == 2 ? SPRITE_SIZE(4, 2) : SPRITE_SIZE(2, 2);
+                u16 ta = cw == 2
+                    ? TILE_ATTR_FULL(line, 1, (attr & 0x8000) ? 1 : 0, (attr & 0x0800) ? 1 : 0, t)
+                    : TILE_ATTR_FULL(line, 1, (attr & 0x8000) ? 1 : 0, (attr & 0x0800) ? 1 : 0, (u16)(t + (c & 1) * 4));
+                y = (s16)(sy + yo);
+                put_sprite(sx, y, sz, ta);
+                if (rec) { mm->yoff[mm->n] = yo; mm->size[mm->n] = sz; mm->attr[mm->n] = ta; mm->n++; }
+            }
         }
+        if (rec) { mm->key = ((u32)e[2] << 16) | attr; mm->gen = spr_gen; }
         if (ending && !memo) memo_words[i] = ok ? (((u32)e[2] << 16) | attr) : 0;
     }
     ss2_sat_hi = last;
@@ -1311,9 +1367,16 @@ static void run_loop(void);
 #define SS2_BOOTSTRAP 1
 #endif
 
+#ifdef SS2_HEAPCHK
+__attribute__((used, externally_visible)) volatile u16 ss2_heap_free[2];  /* free, largest block after the stacks */
+#endif
 void ss2_run(void)
 {
     ss2_tasks_alloc();
+#ifdef SS2_HEAPCHK
+    ss2_heap_free[0] = MEM_getFree();
+    ss2_heap_free[1] = MEM_getLargestFreeBlock();
+#endif
 #ifdef SS2_BOOTSTRAP
 #ifdef SS2_DBG_STAGE
     ss2_run_stage(SS2_DBG_STAGE);
@@ -1506,9 +1569,35 @@ static void run_loop(void)
         apply_scroll();
         apply_fade();
         PROF(11);
+#ifdef SS2_SPRCHECK
+        {
+            /* check build: the memoized rows must equal the full path's */
+            static VDPSprite full[64];
+            u8 n0;
+            u8 conv;
+            spr_nomemo = 1; draw_sprites(); n0 = nspr; conv = conv_n;
+            memcpy(full, vdpSpriteCache, sizeof full);
+            spr_nomemo = 0; draw_sprites();
+            ss2_sprchk[0]++;
+            /* a pass that converted cells: the second call has its own
+             * conversion budget, so the two can differ without the memo */
+            if (conv | conv_n) ss2_sprchk[2]++;
+            else
+            {
+                const u8 *a = (const u8 *)full, *b = (const u8 *)vdpSpriteCache;
+                u16 k, bad = (u16)(n0 != nspr);
+                for (k = 0; k < (u16)n0 * sizeof(VDPSprite); k++) bad |= (u16)(a[k] != b[k]);
+                if (bad) ss2_sprchk[1]++;
+            }
+        }
+#else
         draw_sprites();
+#endif
         PROF(12);
         draw_hud(0);
+#ifdef SS2_STACKCHK
+        { void ss2_stack_check(void); if (!(ss2_loop_n & 15)) ss2_stack_check(); }
+#endif
         PROF(7);
 #ifdef SS2_PROF
         prof_end(t0, v0);

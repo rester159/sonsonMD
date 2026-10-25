@@ -211,7 +211,16 @@ int main(int argc, char **argv)
             /* from refresh apl_start on: t = passes since then */
             static unsigned l0; static int got;
             unsigned l = (WB(loop_a) << 8) | WB(loop_a + 1);
-            if (frame >= (unsigned)apl_start) { if (!got) { l0 = l; got = 1; } apl_on = 1; apl_t = (l + 1 - l0) & 0xFFFF; }
+            if (getenv("SS2_AUTOPLAY_ABS"))
+            {
+                /* absolute: from loop pass N on, t = pass - N (the same
+                 * input on the same game frame in every build) */
+                static long n0 = -1;
+                if (n0 < 0) n0 = atol(getenv("SS2_AUTOPLAY_ABS"));
+                if ((long)(l + 1) >= n0 && frame >= 1000) { apl_on = 1; apl_t = (unsigned)((l + 1 - n0) & 0xFFFF); }
+                (void)got; (void)l0;
+            }
+            else if (frame >= (unsigned)apl_start) { if (!got) { l0 = l; got = 1; } apl_on = 1; apl_t = (l + 1 - l0) & 0xFFFF; }
         }
         /* SS2_LIFE (profiling): refill life ($22B8) to its maximum ($22B9) */
         if (getenv("SS2_LIFE") && wram && ram_a)

@@ -18,6 +18,9 @@
 #include "ss2_ram.h"
 #include "ss2_logic.h"
 
+/* field a of slot x through o = &ss2_ram[x] (a fixed displacement) */
+#define OF(a) (o[(u16)((a) - 0x2000)])
+
 #define OX16(x)     ((u16)((O(0x247A, x) << 8) | O(0x249A, x)))
 #define OY16(x)     ((u16)((O(0x24DA, x) << 8) | O(0x24FA, x)))
 #define PX16        ((u16)((P_XH << 8) | P_XL))
@@ -63,35 +66,27 @@ void ss2_score_award(u8 id)
     R(0x2284) = (u8)((i + 1) & 0x1F);
 }
 
-/* bank 3 $8379: map attribute at screen point (sx, sy) + camera */
-u8 ss2_probe_point(u16 sx, u16 sy)
-{
-    u16 wx, wy, a;
-    u8 m, q, at;
-    Z_HIT_VINE = 0;
-    Z_HIT_3 = 0;
-    Z_HIT_HURT = 0;
-    wx = (u16)((sx + ((Z_CAMX_HI << 8) | Z_CAMX_LO)) & 0x07FF);
-    wy = (u16)((sy + ((Z_CAMY_HI << 8) | Z_CAMY_LO)) & 0x07FF);
-    ZP(0x28) = (u8)wx; ZP(0x29) = (u8)(wx >> 8);
-    ZP(0x2A) = (u8)wy; ZP(0x2B) = (u8)(wy >> 8);
-    a = (u16)(0x3000 | ((wy >> 8) << 9) | ((wx >> 8) << 6) | ((wy & 0xE0) >> 2) | ((wx & 0xE0) >> 5));
-    m = R(a);
-    q = (u8)(((wx & 0x10) >> 3) | ((wy & 0x10) >> 2));
-    a = (u16)(((Z_MT_HI << 8) | Z_MT_LO) + (u16)m * 8);
-    at = (u8)(ss2_metatile_byte(a, (u8)(q + 1)) & 0x0F);
-    if (!at) return 0;
-    if (at == 2) { Z_HIT_VINE = 1; return 0; }
-    if (at == 3) Z_HIT_3 = 1;
-    else if (at == 4) Z_HIT_HURT = 1;
-    return 1;
-}
-
-/* bank 3 $8327: probe at the object + signed ($263A, $265A) */
-u8 ss2_obj_probe(u8 x)
-{
-    return ss2_probe_point((u16)(OX16(x) + (s8)O(0x263A, x)), (u16)(OY16(x) + (s8)O(0x265A, x)));
-}
+/* ss2_probe_point() (ss2_logic.h): map cell offsets for wy>>5, wx>>5 */
+const u16 ss2_probe_row[64] = {
+    0x000, 0x008, 0x010, 0x018, 0x020, 0x028, 0x030, 0x038,
+    0x200, 0x208, 0x210, 0x218, 0x220, 0x228, 0x230, 0x238,
+    0x400, 0x408, 0x410, 0x418, 0x420, 0x428, 0x430, 0x438,
+    0x600, 0x608, 0x610, 0x618, 0x620, 0x628, 0x630, 0x638,
+    0x800, 0x808, 0x810, 0x818, 0x820, 0x828, 0x830, 0x838,
+    0xA00, 0xA08, 0xA10, 0xA18, 0xA20, 0xA28, 0xA30, 0xA38,
+    0xC00, 0xC08, 0xC10, 0xC18, 0xC20, 0xC28, 0xC30, 0xC38,
+    0xE00, 0xE08, 0xE10, 0xE18, 0xE20, 0xE28, 0xE30, 0xE38,
+};
+const u16 ss2_probe_col[64] = {
+    0x000, 0x001, 0x002, 0x003, 0x004, 0x005, 0x006, 0x007,
+    0x040, 0x041, 0x042, 0x043, 0x044, 0x045, 0x046, 0x047,
+    0x080, 0x081, 0x082, 0x083, 0x084, 0x085, 0x086, 0x087,
+    0x0C0, 0x0C1, 0x0C2, 0x0C3, 0x0C4, 0x0C5, 0x0C6, 0x0C7,
+    0x100, 0x101, 0x102, 0x103, 0x104, 0x105, 0x106, 0x107,
+    0x140, 0x141, 0x142, 0x143, 0x144, 0x145, 0x146, 0x147,
+    0x180, 0x181, 0x182, 0x183, 0x184, 0x185, 0x186, 0x187,
+    0x1C0, 0x1C1, 0x1C2, 0x1C3, 0x1C4, 0x1C5, 0x1C6, 0x1C7,
+};
 
 /* bank 3 $858B: drop the object onto the 16 px grid below its probe */
 void ss2_obj_snap_y(u8 x)
@@ -117,8 +112,11 @@ void ss2_obj_camera(void)
 static u8 shots_live;
 static void camera_shift(u8 x)
 {
-    set_ox16(x, (u16)(OX16(x) + cam_dx));
-    set_oy16(x, (u16)(OY16(x) + cam_dy));
+    u8 *const o = &ss2_ram[x];
+    u16 v = (u16)(((OF(0x247A) << 8) | OF(0x249A)) + cam_dx);
+    OF(0x247A) = (u8)(v >> 8); OF(0x249A) = (u8)v;
+    v = (u16)(((OF(0x24DA) << 8) | OF(0x24FA)) + cam_dy);
+    OF(0x24DA) = (u8)(v >> 8); OF(0x24FA) = (u8)v;
 }
 
 /* bank 3 $8428/$8436: free slot searched upward from 0 / downward from 31
@@ -141,6 +139,7 @@ u8 ss2_obj_alloc_top(void)
 /* bank 3 $8451: initialise slot x from a 22-byte record in the object's bank */
 void ss2_obj_init(u8 x, u16 rec)
 {
+    u8 *const o = &ss2_ram[x];
     static const u16 dst[22] = {
         0x245A, 0x267A, 0x269A, 0x26BA, 0x26DA, 0x26FA, 0x271A, 0x273A, 0x275A, 0x279A, 0x27FA,
         0x289A, 0x255A, 0x253A, 0x27DA, 0x27BA, 0x28DA, 0x28BA, 0x291A, 0x28FA, 0x295A, 0x293A };
@@ -149,19 +148,19 @@ void ss2_obj_init(u8 x, u16 rec)
     {
         u8 v = ss2_rom_byte((u16)(rec + i));
         O(dst[i], x) = v;
-        if (i == 6) O(0x2B1A, x) = v;
-        if (i == 7) O(0x2B3A, x) = v;
+        if (i == 6) OF(0x2B1A) = v;
+        if (i == 7) OF(0x2B3A) = v;
     }
-    O(0x283A, x) = 0;
-    if (!(O(0x269A, x) & 0x20))
+    OF(0x283A) = 0;
+    if (!(OF(0x269A) & 0x20))
     {
-        O(0x2ADA, x) = (u8)(((O(0x253A, x) & 1) + 1) << 3);
-        O(0x2AFA, x) = (u8)(((O(0x253A, x) & 0x30) + 0x10) >> 1);
+        OF(0x2ADA) = (u8)(((OF(0x253A) & 1) + 1) << 3);
+        OF(0x2AFA) = (u8)(((OF(0x253A) & 0x30) + 0x10) >> 1);
     }
     else
     {
-        O(0x2ADA, x) = 0;
-        O(0x2AFA, x) = 0;
+        OF(0x2ADA) = 0;
+        OF(0x2AFA) = 0;
     }
 }
 
@@ -240,13 +239,14 @@ static void spend_magic(u8 x)        /* $F324: shots 4-6 cost magic */
 
 static u8 collide(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     u8 y;
     u16 wx, wy, bx, by;
     if (P_MODE == 0x40) return 0;
-    if (!(O(0x269A, x) & 0x20))
+    if (!(OF(0x269A) & 0x20))
     {
-        bx = (u16)(OX16(x) + (u8)(((O(0x253A, x) & 1) + 1) << 3));
-        by = (u16)(OY16(x) + (u8)(((O(0x253A, x) & 0x30) + 0x10) >> 1));
+        bx = (u16)(OX16(x) + (u8)(((OF(0x253A) & 1) + 1) << 3));
+        by = (u16)(OY16(x) + (u8)(((OF(0x253A) & 0x30) + 0x10) >> 1));
     }
     else
     {
@@ -255,13 +255,13 @@ static u8 collide(u8 x)
     }
     ZP(0xBB) = (u8)(bx >> 8); ZP(0xBC) = (u8)bx;
     ZP(0xBD) = (u8)(by >> 8); ZP(0xBE) = (u8)by;
-    wx = (u16)(OX16(x) + (s8)O(0x2ADA, x));
-    wy = (u16)(OY16(x) + (s8)O(0x2AFA, x));
+    wx = (u16)(OX16(x) + (s8)OF(0x2ADA));
+    wy = (u16)(OY16(x) + (s8)OF(0x2AFA));
     ZP(0xBF) = (u8)(wx >> 8); ZP(0xC0) = (u8)wx;
     ZP(0xC1) = (u8)(wy >> 8); ZP(0xC2) = (u8)wy;
 
-    if (O(0x245A, x) == 0x20 || O(0x285A, x)) goto body;
-    if (O(0x269A, x) & 0x02) goto shots;
+    if (OF(0x245A) == 0x20 || OF(0x285A)) goto body;
+    if (OF(0x269A) & 0x02) goto shots;
     if (R(0x2432) == 4) goto shots;
     /* $F063: staff segments */
     for (y = 0; ; )
@@ -270,10 +270,10 @@ static u8 collide(u8 x)
         if (R(0x23DD + y) != 0x80) break;
         sx = (u16)(PX16 + (u16)((R(0x23E2 + y) << 8) | R(0x23E7 + y)) + 8);
         sy = (u16)(PY16 + (P_CLIMBSTEP ? 0x17 : 0x0E));
-        if (O(0x2B1A, x) | O(0x2B3A, x))
+        if (OF(0x2B1A) | OF(0x2B3A))
         {
             ZP(0x26) = 8; ZP(0x27) = 0;
-            if (near(wx, sx, (u8)(O(0x2B1A, x) + 8), 1) && near(wy, sy, (u8)(O(0x2B3A, x) + 2), 0))
+            if (near(wx, sx, (u8)(OF(0x2B1A) + 8), 1) && near(wy, sy, (u8)(OF(0x2B3A) + 2), 0))
             {
                 spark(y);
                 damage(x, R(0x22B4));
@@ -281,7 +281,7 @@ static u8 collide(u8 x)
             }
         }
         ZP(0x26) = 8; ZP(0x27) = 0;
-        if (near(bx, sx, (u8)(O(0x271A, x) + 8), 1) && near(by, sy, (u8)(O(0x273A, x) + 2), 0))
+        if (near(bx, sx, (u8)(OF(0x271A) + 8), 1) && near(by, sy, (u8)(OF(0x273A) + 2), 0))
         {
             spark(y);
             react(x);
@@ -291,7 +291,7 @@ static u8 collide(u8 x)
     }
 shots:
     /* $F26F: player shots */
-    if (shots_live && !(O(0x269A, x) & 0x01))
+    if (shots_live && !(OF(0x269A) & 0x01))
     {
         for (y = 0; y < 7; y++)
         {
@@ -301,8 +301,8 @@ shots:
             sx = (u16)(((R(0x22EC + y) << 8) | R(0x22F3 + y)) + 8);
             sy = (u16)(((R(0x2301 + y) << 8) | R(0x2308 + y)) + 8);
             mx = R(0x2371 + y); my = R(0x2378 + y);
-            if ((O(0x2B1A, x) | O(0x2B3A, x)) &&
-                near(wx, sx, (u8)(O(0x2B1A, x) + mx), 0) && near(wy, sy, (u8)(O(0x2B3A, x) + my), 0))
+            if ((OF(0x2B1A) | OF(0x2B3A)) &&
+                near(wx, sx, (u8)(OF(0x2B1A) + mx), 0) && near(wy, sy, (u8)(OF(0x2B3A) + my), 0))
             {
                 R(0x22E5 + y) = 0x40;
                 R(0x2386 + y) = R(0x2394 + y);
@@ -311,7 +311,7 @@ shots:
                 damage(x, R(0x236A + y));
                 return 0;
             }
-            if (near(bx, sx, (u8)(O(0x271A, x) + mx), 0) && near(by, sy, (u8)(O(0x273A, x) + my), 0))
+            if (near(bx, sx, (u8)(OF(0x271A) + mx), 0) && near(by, sy, (u8)(OF(0x273A) + my), 0))
             {
                 R(0x22E5 + y) = 0x40;
                 R(0x2386 + y) = R(0x2394 + y);
@@ -324,24 +324,24 @@ shots:
     }
 body:
     /* $F3E4: touching the player */
-    if (O(0x269A, x) & 0x04) return 0;
-    if (!O(0x26BA, x) && (P_MODE != 0x80 || P_C4)) return 0;
+    if (OF(0x269A) & 0x04) return 0;
+    if (!OF(0x26BA) && (P_MODE != 0x80 || P_C4)) return 0;
     {
         u16 sx = (u16)(PX16 + 0x10), sy;
         u8 my;
         if (!P_CLIMBSTEP) { sy = (u16)(PY16 + 0x10); my = 0x0E; }
         else { sy = (u16)(PY16 + 0x14); my = 0x0C; }
-        if (!((O(0x2B1A, x) | O(0x2B3A, x)) &&
-              near(wx, sx, (u8)(O(0x2B1A, x) + 8), 0) && near(wy, sy, (u8)(O(0x2B3A, x) + my), 0)))
+        if (!((OF(0x2B1A) | OF(0x2B3A)) &&
+              near(wx, sx, (u8)(OF(0x2B1A) + 8), 0) && near(wy, sy, (u8)(OF(0x2B3A) + my), 0)))
         {
-            if (!near(bx, sx, (u8)(O(0x271A, x) + 8), 0)) return 0;
-            if (!near(by, sy, (u8)(O(0x273A, x) + my), 0)) return 0;
+            if (!near(bx, sx, (u8)(OF(0x271A) + 8), 0)) return 0;
+            if (!near(by, sy, (u8)(OF(0x273A) + my), 0)) return 0;
         }
     }
     /* $F506 */
-    if (O(0x26BA, x)) return ss2_item_pickup(x);
+    if (OF(0x26BA)) return ss2_item_pickup(x);
     {
-        u8 d = O(0x26FA, x);
+        u8 d = OF(0x26FA);
         if (P_FLAGSC1 & 0x80) d = (u8)(((u8)(d - 1) >> 1) + 1);
         ZP(0x30) = d;
         if ((u8)(R(0x22E9) | R(0x22EA) | R(0x22EB)) == 0x80)
@@ -364,7 +364,7 @@ body:
     }
     P_HITOBJ = (u8)(x + 1);
     P_HURT = 0x5A;
-    if (O(0x269A, x) & 0x10) ss2_obj_die(x);
+    if (OF(0x269A) & 0x10) ss2_obj_die(x);
     return 0;
 }
 
@@ -374,71 +374,72 @@ static u8 rd6(u16 a) { return ss2_rom_byte(a); }
 
 void ss2_obj_common(u8 x)
 {
-    if (ZP(0x87) && !O(0x26BA, x) && (O(0x269A, x) & 0x20)) return;
-    if (!--O(0x267A, x))
+    u8 *const o = &ss2_ram[x];
+    if (ZP(0x87) && !OF(0x26BA) && (OF(0x269A) & 0x20)) return;
+    if (!--OF(0x267A))
     {
         /* $EE82: next script command */
-        u16 p = (u16)((O(0x293A, x) << 8) | O(0x295A, x));
+        u16 p = (u16)((OF(0x293A) << 8) | OF(0x295A));
         u8 c = rd6(p), b;
         ZP(0x3A) = (u8)p; ZP(0x3B) = (u8)(p >> 8);
-        if (c == 0xFF) { O(0x245A, x) = 0; return; }
+        if (c == 0xFF) { OF(0x245A) = 0; return; }
         if (!c)
         {
-            O(0x295A, x) = rd6((u16)(p + 1));
-            O(0x293A, x) = rd6((u16)(p + 2));
-            p = (u16)((O(0x293A, x) << 8) | O(0x295A, x));
+            OF(0x295A) = rd6((u16)(p + 1));
+            OF(0x293A) = rd6((u16)(p + 2));
+            p = (u16)((OF(0x293A) << 8) | OF(0x295A));
             ZP(0x3A) = (u8)p; ZP(0x3B) = (u8)(p >> 8);
         }
-        O(0x267A, x) = rd6(p);
+        OF(0x267A) = rd6(p);
         b = rd6((u16)(p + 1));
-        if (!(O(0x269A, x) & 0x20))
+        if (!(OF(0x269A) & 0x20))
         {
-            u16 an = (u16)((O(0x27BA, x) << 8) | O(0x27DA, x));
+            u16 an = (u16)((OF(0x27BA) << 8) | OF(0x27DA));
             ZP(0x28) = (u8)an; ZP(0x29) = (u8)(an >> 8);
             if (b == 0xFF)
             {
-                O(0x259A, x) = 0x90;
-                O(0x257A, x) = 0;
+                OF(0x259A) = 0x90;
+                OF(0x257A) = 0;
             }
             else
             {
                 u16 t = (u16)((b & 0x3F) + rd6((u16)(an + 1)));
-                O(0x259A, x) = (u8)t;
-                O(0x257A, x) = (u8)(rd6(an) + (t >> 8));
+                OF(0x259A) = (u8)t;
+                OF(0x257A) = (u8)(rd6(an) + (t >> 8));
             }
-            ZP(0x30) = (u8)(O(0x253A, x) & 0x77);
+            ZP(0x30) = (u8)(OF(0x253A) & 0x77);
             ZP(0x30) |= (u8)(b & 0x80);
-            O(0x253A, x) = (u8)(ZP(0x30) | ((b & 0x40) >> 3));
+            OF(0x253A) = (u8)(ZP(0x30) | ((b & 0x40) >> 3));
             p = (u16)(p + 2);
         }
         else
         {
-            O(0x259A, x) = O(0x295A, x);
-            O(0x257A, x) = O(0x293A, x);
+            OF(0x259A) = OF(0x295A);
+            OF(0x257A) = OF(0x293A);
             p = (u16)(p + (u8)((u8)(b << 2) + 2));
         }
-        O(0x295A, x) = (u8)p;
-        O(0x293A, x) = (u8)(p >> 8);
+        OF(0x295A) = (u8)p;
+        OF(0x293A) = (u8)(p >> 8);
     }
     /* $EF38: motion */
-    if (O(0x245A, x) == 0x40) return;
+    if (OF(0x245A) == 0x40) return;
     {
         u16 t;
-        u8 h = O(0x25BA, x);
-        t = (u16)(O(0x24BA, x) + O(0x25DA, x));
-        O(0x24BA, x) = (u8)t;
-        t = (u16)(O(0x249A, x) + h + (t >> 8));
-        O(0x249A, x) = (u8)t;
-        O(0x247A, x) = (u8)(O(0x247A, x) + ((h & 0x80) ? 0xFF : 0) + (t >> 8));
-        h = O(0x25FA, x);
-        t = (u16)(O(0x251A, x) + O(0x261A, x));
-        O(0x251A, x) = (u8)t;
-        t = (u16)(O(0x24FA, x) + h + (t >> 8));
-        O(0x24FA, x) = (u8)t;
-        O(0x24DA, x) = (u8)(O(0x24DA, x) + ((h & 0x80) ? 0xFF : 0) + (t >> 8));
+        u8 h = OF(0x25BA);
+        t = (u16)(OF(0x24BA) + OF(0x25DA));
+        OF(0x24BA) = (u8)t;
+        t = (u16)(OF(0x249A) + h + (t >> 8));
+        OF(0x249A) = (u8)t;
+        OF(0x247A) = (u8)(OF(0x247A) + ((h & 0x80) ? 0xFF : 0) + (t >> 8));
+        h = OF(0x25FA);
+        t = (u16)(OF(0x251A) + OF(0x261A));
+        OF(0x251A) = (u8)t;
+        t = (u16)(OF(0x24FA) + h + (t >> 8));
+        OF(0x24FA) = (u8)t;
+        OF(0x24DA) = (u8)(OF(0x24DA) + ((h & 0x80) ? 0xFF : 0) + (t >> 8));
         ZP(0x30) = (h & 0x80) ? 0xFF : 0;
     }
-    if (O(0x269A, x) & 0x08)
+    if (OF(0x269A) & 0x08)
     {
         u16 t = (u16)(OX16(x) + 0x60);
         if (t >= 0x1A0 || OY16(x) >= 0x130) { kill_spawned(x); return; }
@@ -464,28 +465,29 @@ static void run_handler(u8 x, u16 h)
 
 void ss2_obj_update(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     camera_shift(x);
-    if (O(0x283A, x)) O(0x283A, x)--;
-    if (O(0x285A, x)) O(0x285A, x)--;
-    ss2_map6(O(0x275A, x));
-    if (O(0x245A, x) == 0x40)
+    if (OF(0x283A)) OF(0x283A)--;
+    if (OF(0x285A)) OF(0x285A)--;
+    ss2_map6(OF(0x275A));
+    if (OF(0x245A) == 0x40)
     {
-        if (O(0x283A, x)) return;
+        if (OF(0x283A)) return;
         goto hit;
     }
-    if (!O(0x26BA, x))
+    if (!OF(0x26BA))
     {
         if (ZP(0x87)) return;
         if (ZP(0x71)) { if (collide(x)) ss2_obj_common(x); return; }
-        if (!(O(0x269A, x) & 0x20) && Z_INLOCK1) return;
+        if (!(OF(0x269A) & 0x20) && Z_INLOCK1) return;
     }
-    if (O(0x245A, x) != 0x20)
+    if (OF(0x245A) != 0x20)
     {
-        run_handler(x, (u16)((O(0x28BA, x) << 8) | O(0x28DA, x)));
+        run_handler(x, (u16)((OF(0x28BA) << 8) | OF(0x28DA)));
         return;
     }
 hit:
-    run_handler(x, (u16)((O(0x28FA, x) << 8) | O(0x291A, x)));
+    run_handler(x, (u16)((OF(0x28FA) << 8) | OF(0x291A)));
 }
 
 /* bank 0 $ED0D: update every live slot */
@@ -518,6 +520,8 @@ void ss2_spawn_scan(void)
 {
     u8 row = (u8)(Z_FRAME & 3), saved = ZP(0x8E);
     u16 cx;
+    const u8 *const b8 = ss2_banks[8];      /* the spawn lists' bank (fixed) */
+#define B8(a) (b8[(u16)(a) & 0x1FFF])
     if (row == 3) return;
     ZP(0xE3) = row;
     ZP(0xE2) = 0;
@@ -533,46 +537,47 @@ void ss2_spawn_scan(void)
         ZP(0x37) = (u8)((sx & 7) | ((sy & 7) << 3));
         ss2_map6(8);
         list = (u16)((ss2_rom_byte((u16)(0xBD09 + (u8)(Z_STAGE << 1))) << 8) | ss2_rom_byte((u16)(0xBD08 + (u8)(Z_STAGE << 1))));
-        rec = (u16)((ss2_bank_byte(8, (u16)(list + (u8)(ZP(0x37) << 1) + 1)) << 8) |
-                    ss2_bank_byte(8, (u16)(list + (u8)(ZP(0x37) << 1))));
+        rec = (u16)((B8((u16)(list + (u8)(ZP(0x37) << 1) + 1)) << 8) |
+                    B8((u16)(list + (u8)(ZP(0x37) << 1))));
         ZP(0x26) = (u8)list; ZP(0x27) = (u8)(list >> 8);
         for (;;)
         {
             u8 id;
             u16 d;
             ZP(0x3C) = (u8)rec; ZP(0x3D) = (u8)(rec >> 8);
-            if (ss2_bank_byte(8, rec) == 0xFF) break;
-            id = ss2_bank_byte(8, (u16)(rec + 2));
+            if (B8(rec) == 0xFF) break;
+            id = B8((u16)(rec + 2));
             ZP(0x44) = id;
             if ((id < 0x58 || !ZP(0x70)) && O(0x2B5A, id) != 0xFF)
             {
-                d = (u16)(((ZP(0x3E) << 8) | ss2_bank_byte(8, rec)) - ((ZP(0xE4) << 8) | ZP(0xE5)));
+                d = (u16)(((ZP(0x3E) << 8) | B8(rec)) - ((ZP(0xE4) << 8) | ZP(0xE5)));
                 ZP(0x26) = (u8)d; ZP(0x27) = (u8)(d >> 8);
                 if (d < 0x1A0)
                 {
-                    d = (u16)(((ZP(0x3F) << 8) | ss2_bank_byte(8, (u16)(rec + 1))) - ((Z_CAMY_HI << 8) | Z_CAMY_LO));
+                    d = (u16)(((ZP(0x3F) << 8) | B8((u16)(rec + 1))) - ((Z_CAMY_HI << 8) | Z_CAMY_LO));
                     ZP(0x26) = (u8)d; ZP(0x27) = (u8)(d >> 8);
                     if (d < 0x130)
                     {
                         /* $BCD7 */
                         u16 p;
-                        p = (u16)(((ZP(0x3E) << 8) | ss2_bank_byte(8, rec)) - ((ZP(0x4B) << 8) | ZP(0x4C)));
+                        p = (u16)(((ZP(0x3E) << 8) | B8(rec)) - ((ZP(0x4B) << 8) | ZP(0x4C)));
                         ZP(0x40) = (u8)(p >> 8); ZP(0x41) = (u8)p;
-                        p = (u16)(((ZP(0x3F) << 8) | ss2_bank_byte(8, (u16)(rec + 1))) - ((ZP(0x4E) << 8) | ZP(0x4F)));
+                        p = (u16)(((ZP(0x3F) << 8) | B8((u16)(rec + 1))) - ((ZP(0x4E) << 8) | ZP(0x4F)));
                         ZP(0x42) = (u8)(p >> 8); ZP(0x43) = (u8)p;
-                        p = (u16)((ss2_bank_byte(8, (u16)(rec + 5)) << 8) | ss2_bank_byte(8, (u16)(rec + 4)));
+                        p = (u16)((B8((u16)(rec + 5)) << 8) | B8((u16)(rec + 4)));
                         ZP(0x26) = (u8)p; ZP(0x27) = (u8)(p >> 8);
-                        ss2_map6(ss2_bank_byte(8, (u16)(rec + 3)));
+                        ss2_map6(B8((u16)(rec + 3)));
                         if (!ss2_spawn_handler(ss2_mpr6, p)) ss2_unported(p);
+                        ss2_map6(8);        /* (bank 8 is still mapped otherwise) */
                     }
                 }
             }
             rec = (u16)(rec + 6);
-            ss2_map6(8);
         }
         if (++ZP(0xE2) == 3) break;
     }
     ss2_map6(saved);
+#undef B8
 }
 
 /* ---- handler tables ---------------------------------------------------- */

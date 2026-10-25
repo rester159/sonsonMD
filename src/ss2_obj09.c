@@ -13,6 +13,9 @@
 #include "ss2_ram.h"
 #include "ss2_logic.h"
 
+/* field a of slot x through o = &ss2_ram[x] (a fixed displacement) */
+#define OF(a) (o[(u16)((a) - 0x2000)])
+
 static void set_vx(u8 x, u16 v) { O(0x25BA, x) = (u8)(v >> 8); O(0x25DA, x) = (u8)v; }
 static void set_vy(u8 x, u16 v) { O(0x25FA, x) = (u8)(v >> 8); O(0x261A, x) = (u8)v; }
 static void set_script(u8 x, u16 p) { O(0x295A, x) = (u8)p; O(0x293A, x) = (u8)(p >> 8); }
@@ -22,8 +25,9 @@ static void set_hit(u8 x, u16 h) { O(0x291A, x) = (u8)h; O(0x28FA, x) = (u8)(h >
 /* the $2CDA per-spawner palette nibble shared by the spawns */
 static void spawner_nibble(u8 s, u8 x)
 {
-    if (!O(0x2CDA, s)) O(0x2CDA, s) = (u8)(O(0x289A, x) & 0x0F);
-    else O(0x289A, x) = (u8)((O(0x289A, x) & 0xF0) | O(0x2CDA, s));
+    u8 *const o = &ss2_ram[x];
+    if (!O(0x2CDA, s)) O(0x2CDA, s) = (u8)(OF(0x289A) & 0x0F);
+    else OF(0x289A) = (u8)((OF(0x289A) & 0xF0) | O(0x2CDA, s));
 }
 
 /* ---- $DC6F dropper ---------------------------------------------------- */
@@ -82,24 +86,26 @@ static void dropper_spawn(void)
 /* $DD39: wait, then drop 7 px and start falling */
 static void dropper(u8 x)
 {
-    if (--O(0x297A, x)) { ss2_obj_common(x); return; }
+    u8 *const o = &ss2_ram[x];
+    if (--OF(0x297A)) { ss2_obj_common(x); return; }
     {
-        u16 t = (u16)(O(0x24FA, x) + 7);
-        O(0x24FA, x) = (u8)t;
-        O(0x24DA, x) = (u8)(O(0x24DA, x) + (t >> 8));
+        u16 t = (u16)(OF(0x24FA) + 7);
+        OF(0x24FA) = (u8)t;
+        OF(0x24DA) = (u8)(OF(0x24DA) + (t >> 8));
     }
     set_handler(x, 0xDD69);
     set_script(x, 0xDDC2);
-    O(0x267A, x) = 1;
+    OF(0x267A) = 1;
     ss2_obj_common(x);
 }
 
 /* $DD69: fall until something solid is met */
 static void dropper_fall(u8 x)
 {
-    u16 t = (u16)(O(0x261A, x) + 0x30);
-    O(0x261A, x) = (u8)t;
-    O(0x25FA, x) = (u8)(O(0x25FA, x) + (t >> 8));
+    u8 *const o = &ss2_ram[x];
+    u16 t = (u16)(OF(0x261A) + 0x30);
+    OF(0x261A) = (u8)t;
+    OF(0x25FA) = (u8)(OF(0x25FA) + (t >> 8));
     if (ss2_obj_probe(x)) { ss2_obj_die(x); return; }
     ss2_obj_common(x);
 }
@@ -107,15 +113,16 @@ static void dropper_fall(u8 x)
 /* $DD85: hit reaction / death */
 static void dropper_hit(u8 x)
 {
-    if (O(0x245A, x) != 0x40)
+    u8 *const o = &ss2_ram[x];
+    if (OF(0x245A) != 0x40)
     {
-        O(0x245A, x) = 0x80;
+        OF(0x245A) = 0x80;
         ss2_obj_common(x);
         return;
     }
-    O(0x2B5A, O(0x281A, x))--;
+    O(0x2B5A, OF(0x281A))--;
     set_vy(x, 0);
-    O(0x267A, x) = 1;
+    OF(0x267A) = 1;
     set_script(x, 0xDDC7);
     set_hit(x, 0xEE67);
     ss2_obj_common(x);
@@ -146,19 +153,21 @@ static void popper_spawn(void)
 /* $DE33: gravity; switch to the falling script once descending */
 static void popper(u8 x)
 {
-    u16 t = (u16)(O(0x261A, x) + 0x20);
-    O(0x261A, x) = (u8)t;
-    O(0x25FA, x) = (u8)(O(0x25FA, x) + (t >> 8));
-    if ((s8)O(0x25FA, x) >= 0 && O(0x295A, x) < 0x7A) set_script(x, 0xDE7A);
+    u8 *const o = &ss2_ram[x];
+    u16 t = (u16)(OF(0x261A) + 0x20);
+    OF(0x261A) = (u8)t;
+    OF(0x25FA) = (u8)(OF(0x25FA) + (t >> 8));
+    if ((s8)OF(0x25FA) >= 0 && OF(0x295A) < 0x7A) set_script(x, 0xDE7A);
     ss2_obj_common(x);
 }
 
 /* $DE60: every hit scores; it never dies of damage */
 static void popper_hit(u8 x)
 {
-    O(0x245A, x) = 0x80;
-    ss2_score_award(O(0x279A, x));
-    O(0x26DA, x) = 0x64;
+    u8 *const o = &ss2_ram[x];
+    OF(0x245A) = 0x80;
+    ss2_score_award(OF(0x279A));
+    OF(0x26DA) = 0x64;
     ss2_obj_common(x);
 }
 
@@ -196,21 +205,22 @@ static void flyer_spawn(u8 from_right)
  * a 0 entry is a jump to the following pointer */
 static void flyer(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     u16 p;
-    if (--O(0x297A, x)) { ss2_obj_common(x); return; }
+    if (--OF(0x297A)) { ss2_obj_common(x); return; }
     for (;;)
     {
-        p = (u16)((O(0x299A, x) << 8) | O(0x29BA, x));
+        p = (u16)((OF(0x299A) << 8) | OF(0x29BA));
         ZP(0x26) = (u8)p; ZP(0x27) = (u8)(p >> 8);
         if (ss2_rom_byte(p)) break;
-        O(0x29BA, x) = ss2_rom_byte((u16)(p + 1));
-        O(0x299A, x) = ss2_rom_byte((u16)(p + 2));
+        OF(0x29BA) = ss2_rom_byte((u16)(p + 1));
+        OF(0x299A) = ss2_rom_byte((u16)(p + 2));
     }
-    O(0x297A, x) = ss2_rom_byte(p);
-    O(0x25FA, x) = ss2_rom_byte((u16)(p + 1));
+    OF(0x297A) = ss2_rom_byte(p);
+    OF(0x25FA) = ss2_rom_byte((u16)(p + 1));
     p = (u16)(p + 2);
-    O(0x29BA, x) = (u8)p;
-    O(0x299A, x) = (u8)(p >> 8);
+    OF(0x29BA) = (u8)p;
+    OF(0x299A) = (u8)(p >> 8);
     ss2_obj_common(x);
 }
 

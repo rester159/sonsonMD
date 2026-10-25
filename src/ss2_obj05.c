@@ -19,6 +19,9 @@
 #include "ss2_ram.h"
 #include "ss2_logic.h"
 
+/* field a of slot x through o = &ss2_ram[x] (a fixed displacement) */
+#define OF(a) (o[(u16)((a) - 0x2000)])
+
 
 #define OX16(x)     ((u16)((O(0x247A, x) << 8) | O(0x249A, x)))
 #define OY16(x)     ((u16)((O(0x24DA, x) << 8) | O(0x24FA, x)))
@@ -37,27 +40,30 @@ static u8 probe(u8 x, u8 px, u8 py) { probe_at(x, px, py); return ss2_obj_probe(
 
 static void place(u8 x)
 {
-    O(0x247A, x) = ZP(0x40); O(0x249A, x) = ZP(0x41);
-    O(0x24DA, x) = ZP(0x42); O(0x24FA, x) = ZP(0x43);
+    u8 *const o = &ss2_ram[x];
+    OF(0x247A) = ZP(0x40); OF(0x249A) = ZP(0x41);
+    OF(0x24DA) = ZP(0x42); OF(0x24FA) = ZP(0x43);
 }
 
 /* vy += a (8.8, low byte add with carry into the high byte) */
 static void fall(u8 x, u8 a)
 {
-    u16 t = (u16)(O(0x261A, x) + a);
-    O(0x261A, x) = (u8)t;
-    O(0x25FA, x) = (u8)(O(0x25FA, x) + (t >> 8));
+    u8 *const o = &ss2_ram[x];
+    u16 t = (u16)(OF(0x261A) + a);
+    OF(0x261A) = (u8)t;
+    OF(0x25FA) = (u8)(OF(0x25FA) + (t >> 8));
 }
 
 /* common spawn epilogue: spawner link, live count and drop table shared
  * by the spawner ($C079 and copies) */
 static void link_spawner(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     u8 s = ZP(0x44);
-    O(0x281A, x) = s;
+    OF(0x281A) = s;
     O(0x2B5A, s)++;
-    if (!O(0x2CDA, s)) O(0x2CDA, s) = (u8)(O(0x289A, x) & 0x0F);
-    else O(0x289A, x) = (u8)((O(0x289A, x) & 0xF0) | O(0x2CDA, s));
+    if (!O(0x2CDA, s)) O(0x2CDA, s) = (u8)(OF(0x289A) & 0x0F);
+    else OF(0x289A) = (u8)((OF(0x289A) & 0xF0) | O(0x2CDA, s));
 }
 
 /* spawn guard ($C036 and copies): no live object, no respawn delay, off
@@ -92,9 +98,10 @@ static void hit_recover(u8 x)
  * (compares ($247A+1):$249A with $01:$2299) */
 static void face(u8 x)
 {
-    u8 b = O(0x249A, x) < P_XL;
-    u8 a = (u8)(O(0x247A, x) + 1);
-    O(0x277A, x) = a >= (u8)(1 + b);
+    u8 *const o = &ss2_ram[x];
+    u8 b = OF(0x249A) < P_XL;
+    u8 a = (u8)(OF(0x247A) + 1);
+    OF(0x277A) = a >= (u8)(1 + b);
 }
 
 /* "lo + k - px - !carry < lim" proximity test used with x hi = 0 */
@@ -108,21 +115,22 @@ static u8 near_x(u8 x, u8 k, u8 lim)
 /* ---- bank 3 $85E7: 16-way direction from the object to the player ---- */
 static u8 dir_to_player(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     u8 y = 0;
     u16 dx, dy, ox, oy, a2, a3, b2, b3, b4;
     u16 px = (u16)(((u8)(P_XH + 1 + ((u16)(P_XL + 0x10) >> 8)) << 8) | (u8)(P_XL + 0x10));
     u16 py = (u16)(((u8)(P_YH + 1 + ((u16)(P_YL + 0x10) >> 8)) << 8) | (u8)(P_YL + 0x10));
-    if (!(O(0x269A, x) & 0x20))
+    if (!(OF(0x269A) & 0x20))
     {
-        u16 t = (u16)((u8)(((O(0x253A, x) & 1) + 1) << 3) + O(0x249A, x));
-        ox = (u16)(((u8)(1 + O(0x247A, x) + (t >> 8)) << 8) | (u8)t);
-        t = (u16)((u8)(((O(0x253A, x) & 0x30) + 0x10) >> 1) + O(0x24FA, x));
-        oy = (u16)(((u8)(1 + O(0x24DA, x) + (t >> 8)) << 8) | (u8)t);
+        u16 t = (u16)((u8)(((OF(0x253A) & 1) + 1) << 3) + OF(0x249A));
+        ox = (u16)(((u8)(1 + OF(0x247A) + (t >> 8)) << 8) | (u8)t);
+        t = (u16)((u8)(((OF(0x253A) & 0x30) + 0x10) >> 1) + OF(0x24FA));
+        oy = (u16)(((u8)(1 + OF(0x24DA) + (t >> 8)) << 8) | (u8)t);
     }
     else
     {
-        ox = (u16)(((u8)(O(0x247A, x) + 1) << 8) | O(0x249A, x));
-        oy = (u16)(((u8)(O(0x24DA, x) + 1) << 8) | O(0x24FA, x));
+        ox = (u16)(((u8)(OF(0x247A) + 1) << 8) | OF(0x249A));
+        oy = (u16)(((u8)(OF(0x24DA) + 1) << 8) | OF(0x24FA));
     }
     dx = (u16)(px - ox);
     if (px < ox) { dx = (u16)~dx; y = 8; }
@@ -155,12 +163,13 @@ static u8 dir_to_player(u8 x)
 /* bank 2 $7BEA: velocity for 16-way direction $277A from table $27FA */
 static void dir_velocity(u8 x)
 {
-    u8 t = O(0x27FA, x), y = (u8)(O(0x277A, x) << 2);
+    u8 *const o = &ss2_ram[x];
+    u8 t = OF(0x27FA), y = (u8)(OF(0x277A) << 2);
     u16 p = (u16)(ss2_rom_byte((u16)(0x7C1B + t)) | (ss2_rom_byte((u16)(0x7C1B + (u8)(t + 1))) << 8));
-    O(0x25DA, x) = ss2_rom_byte((u16)(p + y));
-    O(0x25BA, x) = ss2_rom_byte((u16)(p + (u8)(y + 1)));
-    O(0x261A, x) = ss2_rom_byte((u16)(p + (u8)(y + 2)));
-    O(0x25FA, x) = ss2_rom_byte((u16)(p + (u8)(y + 3)));
+    OF(0x25DA) = ss2_rom_byte((u16)(p + y));
+    OF(0x25BA) = ss2_rom_byte((u16)(p + (u8)(y + 1)));
+    OF(0x261A) = ss2_rom_byte((u16)(p + (u8)(y + 2)));
+    OF(0x25FA) = ss2_rom_byte((u16)(p + (u8)(y + 3)));
 }
 
 /* ======================================================================
@@ -207,20 +216,21 @@ static void dropper_split(u8 x);
 /* $C1C0: fall to the ground, then walk (or split for kind 1) */
 static void dropper_fall(u8 x)
 {
-    if (O(0x25FA, x) != 1) fall(x, 0x10);
+    u8 *const o = &ss2_ram[x];
+    if (OF(0x25FA) != 1) fall(x, 0x10);
     if (!probe(x, 0x08, 0x10)) { ss2_obj_common(x); return; }
     ss2_obj_snap_y(x);
     set_vy(x, 0);
-    O(0x269A, x) = 0x08;
-    if (O(0x297A, x) != 1)
+    OF(0x269A) = 0x08;
+    if (OF(0x297A) != 1)
     {
         set_handler(x, 0xC294);
         dropper_walk(x);
         return;
     }
-    O(0x29BA, x) = 0x3C;
-    O(0x29DA, x) = 0;
-    O(0x29FA, x) = 4;
+    OF(0x29BA) = 0x3C;
+    OF(0x29DA) = 0;
+    OF(0x29FA) = 4;
     set_handler(x, 0xC222);
     dropper_split(x);
 }
@@ -257,21 +267,22 @@ static void dropper_child(u8 p)
 /* $C222: splits up to 4 times at random intervals */
 static void dropper_split(u8 x)
 {
-    if (O(0x29DA, x)) { dropper_jitter(x); return; }
-    if (--O(0x29BA, x)) { dropper_walk(x); return; }
-    if (!--O(0x29FA, x))
+    u8 *const o = &ss2_ram[x];
+    if (OF(0x29DA)) { dropper_jitter(x); return; }
+    if (--OF(0x29BA)) { dropper_walk(x); return; }
+    if (!--OF(0x29FA))
     {
         set_handler(x, 0xC294);
         dropper_walk(x);
         return;
     }
     ss2_random();
-    O(0x29BA, x) = (u8)(ZP(0x8D) | 0x80);
-    O(0x29DA, x) = 0x50;
-    O(0x299A, x) = 1;
+    OF(0x29BA) = (u8)(ZP(0x8D) | 0x80);
+    OF(0x29DA) = 0x50;
+    OF(0x299A) = 1;
     set_vx(x, 0xFFE0);
     set_script(x, 0xC3FA);
-    O(0x267A, x) = 1;
+    OF(0x267A) = 1;
     dropper_child(x);
     dropper_jitter(x);
 }
@@ -291,17 +302,18 @@ static void dropper_jitter(u8 x)
 /* $C294: turn toward the player every $3C frames */
 static void dropper_walk(u8 x)
 {
-    if (!--O(0x299A, x))
+    u8 *const o = &ss2_ram[x];
+    if (!--OF(0x299A))
     {
         u16 t, a, b;
-        O(0x299A, x) = 0x3C;
-        t = (u16)(O(0x249A, x) + 8);
-        a = (u16)(((u8)(O(0x247A, x) + 1 + (t >> 8)) << 8) | (u8)t);
+        OF(0x299A) = 0x3C;
+        t = (u16)(OF(0x249A) + 8);
+        a = (u16)(((u8)(OF(0x247A) + 1 + (t >> 8)) << 8) | (u8)t);
         t = (u16)(P_XL + 0x10);
         b = (u16)(((u8)(P_XH + 1 + (t >> 8)) << 8) | (u8)t);
         if (a >= b) { set_script(x, 0xC3FA); set_vx(x, 0xFF80); }
         else { set_script(x, 0xC401); set_vx(x, 0x0080); }
-        O(0x267A, x) = 1;
+        OF(0x267A) = 1;
     }
     dropper_edge(x);
 }
@@ -319,34 +331,35 @@ static void dropper_edge(u8 x)
  * vine */
 static void climber(u8 x)
 {
-    if (!--O(0x299A, x))
+    u8 *const o = &ss2_ram[x];
+    if (!--OF(0x299A))
     {
         u16 t, a, b;
-        O(0x299A, x) = 0x3C;
-        t = (u16)(O(0x24FA, x) + 8);
-        a = (u16)(((u8)(O(0x24DA, x) + 1 + (t >> 8)) << 8) | (u8)t);
+        OF(0x299A) = 0x3C;
+        t = (u16)(OF(0x24FA) + 8);
+        a = (u16)(((u8)(OF(0x24DA) + 1 + (t >> 8)) << 8) | (u8)t);
         t = (u16)(P_YL + 0x10);
         b = (u16)(((u8)(P_YH + 1 + (t >> 8)) << 8) | (u8)t);
         if (a >= b)
         {
             set_script(x, 0xC3FA);
             set_vy(x, 0xFFA0);
-            O(0x265A, x) = 0x0F;
+            OF(0x265A) = 0x0F;
         }
         else
         {
             set_script(x, 0xC401);
             set_vy(x, 0x0060);
-            O(0x265A, x) = 0x12;
-            O(0x267A, x) = 1;
+            OF(0x265A) = 0x12;
+            OF(0x267A) = 1;
         }
     }
-    O(0x263A, x) = 0x08;                /* $C399 */
+    OF(0x263A) = 0x08;                /* $C399 */
     ss2_obj_probe(x);
     if (!Z_HIT_VINE)
     {
         set_vy(x, (u16)(0 - get_vy(x)));
-        O(0x299A, x) = 0x3C;
+        OF(0x299A) = 0x3C;
     }
     ss2_obj_common(x);
 }
@@ -354,15 +367,16 @@ static void climber(u8 x)
 /* $C3BC */
 static void dropper_hit(u8 x)
 {
-    if (O(0x245A, x) == 0x40)
+    u8 *const o = &ss2_ram[x];
+    if (OF(0x245A) == 0x40)
     {
-        u8 s = O(0x281A, x);
-        if (O(0x297A, x) == 4) O(0x2B5A, s) = 0xFF;
+        u8 s = OF(0x281A);
+        if (OF(0x297A) == 4) O(0x2B5A, s) = 0xFF;
         else if (!--O(0x2B5A, s)) O(0x2C1A, s) = 0x64;
         ss2_obj_death(x);
         return;
     }
-    O(0x245A, x) = 0x80;
+    OF(0x245A) = 0x80;
     ss2_obj_common(x);
 }
 
@@ -400,17 +414,18 @@ static void spawn_bat(u8 strong)
 /* $C4C8: hang and bob until the player is near */
 static void bat_wait(u8 x)
 {
-    if (!O(0x247A, x) && near_x(x, 0x60, 0xC0))
+    u8 *const o = &ss2_ram[x];
+    if (!OF(0x247A) && near_x(x, 0x60, 0xC0))
     {
         set_handler(x, 0xC50B);
-        O(0x299A, x) = 1;
+        OF(0x299A) = 1;
         ss2_obj_common(x);
         return;
     }
     /* $C4EC */
-    if (!--O(0x299A, x))
+    if (!--OF(0x299A))
     {
-        O(0x299A, x) = 0x14;
+        OF(0x299A) = 0x14;
         set_vy(x, (u16)(0 - get_vy(x)));
     }
     ss2_obj_common(x);
@@ -419,16 +434,17 @@ static void bat_wait(u8 x)
 /* $C50B: every $18 frames pick a direction near the one to the player */
 static void bat_fly(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     u16 tab;
     u8 v;
-    if (--O(0x299A, x)) { ss2_obj_common(x); return; }
-    O(0x277A, x) = dir_to_player(x);
+    if (--OF(0x299A)) { ss2_obj_common(x); return; }
+    OF(0x277A) = dir_to_player(x);
     ss2_random();
-    tab = O(0x297A, x) ? 0xC5B7 : 0xC5A7;
+    tab = OF(0x297A) ? 0xC5B7 : 0xC5A7;
     v = ss2_rom_byte((u16)(tab + (ZP(0x8D) & 0x0F)));
     if (v != 0xFF)
     {
-        O(0x277A, x) = (u8)((v + O(0x277A, x)) & 0x0F);
+        OF(0x277A) = (u8)((v + OF(0x277A)) & 0x0F);
         dir_velocity(x);
     }
     else
@@ -437,8 +453,8 @@ static void bat_fly(u8 x)
         set_vy(x, 0);
     }
     /* $C555 */
-    set_script(x, P_XL >= O(0x249A, x) ? 0xC599 : 0xC5A0);
-    O(0x299A, x) = 0x18;
+    set_script(x, P_XL >= OF(0x249A) ? 0xC599 : 0xC5A0);
+    OF(0x299A) = 0x18;
     ss2_obj_common(x);
 }
 
@@ -492,27 +508,28 @@ static void hopper_burn(u8 x)
 /* $C68E: small hops in place until the player is within $5A px */
 static void hopper_idle(u8 x)
 {
-    if (!O(0x299A, x))
+    u8 *const o = &ss2_ram[x];
+    if (!OF(0x299A))
     {
-        if ((s8)O(0x25FA, x) < 0 || !probe(x, 0x10, 0x20)) { hopper_gravity(x); return; }
-        if (!O(0x297A, x))
+        if ((s8)OF(0x25FA) < 0 || !probe(x, 0x10, 0x20)) { hopper_gravity(x); return; }
+        if (!OF(0x297A))
         {
-            O(0x297A, x)++;
+            OF(0x297A)++;
             set_vy(x, 0xFE00);
             hopper_gravity(x);
             return;
         }
-        O(0x299A, x) = 0x15;
+        OF(0x299A) = 0x15;
         set_vy(x, 0);
-        O(0x297A, x) = 0;
+        OF(0x297A) = 0;
     }
     /* $C6D0 */
-    if (!--O(0x299A, x)) { set_vy(x, 0xFB00); ss2_obj_common(x); return; }
-    if (!O(0x247A, x) && near_x(x, 0x5A, 0xB4))
+    if (!--OF(0x299A)) { set_vy(x, 0xFB00); ss2_obj_common(x); return; }
+    if (!OF(0x247A) && near_x(x, 0x5A, 0xB4))
     {
         set_handler(x, 0xC70C);
-        O(0x299A, x) = 1;
-        O(0x297A, x) = 0;
+        OF(0x299A) = 1;
+        OF(0x297A) = 0;
     }
     ss2_obj_common(x);
 }
@@ -522,24 +539,25 @@ static void hopper_chase(u8 x);
 /* $C711: airborne step of the chase */
 static void hopper_air(u8 x)
 {
-    probe_at(x, O(0x277A, x) ? 0x00 : 0x20, 0x10);
+    u8 *const o = &ss2_ram[x];
+    probe_at(x, OF(0x277A) ? 0x00 : 0x20, 0x10);
     if (ss2_obj_probe(x)) set_vx(x, 0);
-    probe_at(x, 0x10, (s8)O(0x25FA, x) < 0 ? 0x08 : 0x20);
+    probe_at(x, 0x10, (s8)OF(0x25FA) < 0 ? 0x08 : 0x20);
     if (!ss2_obj_probe(x)) { hopper_gravity(x); return; }
     if (Z_HIT_HURT) { hopper_burn(x); return; }
-    if (!(O(0x297A, x) | O(0x29DA, x)))
+    if (!(OF(0x297A) | OF(0x29DA)))
     {
-        if ((s8)O(0x25FA, x) < 0) { set_vy(x, 0); hopper_gravity(x); return; }
-        O(0x297A, x)++;
+        if ((s8)OF(0x25FA) < 0) { set_vy(x, 0); hopper_gravity(x); return; }
+        OF(0x297A)++;
         set_vx(x, 0);
         set_vy(x, 0xFD00);
         hopper_gravity(x);
         return;
     }
     /* $C77D */
-    O(0x299A, x) = 0x0D;
+    OF(0x299A) = 0x0D;
     set_vy(x, 0);
-    O(0x297A, x) = 0;
+    OF(0x297A) = 0;
     hopper_chase(x);
 }
 
@@ -553,28 +571,29 @@ static void hopper_chase_entry(u8 x)
 /* $C78B */
 static void hopper_chase(u8 x)
 {
-    if (O(0x29BA, x) >= O(0x26DA, x))
+    u8 *const o = &ss2_ram[x];
+    if (OF(0x29BA) >= OF(0x26DA))
     {
         /* $C7DD */
         set_handler(x, 0xC810);
         set_script(x, 0xC8FE);
         set_vx(x, 0x0140);
         face(x);
-        if (O(0x277A, x)) set_vx(x, 0xFEC0);
+        if (OF(0x277A)) set_vx(x, 0xFEC0);
         ss2_obj_common(x);
         return;
     }
-    if (--O(0x299A, x))
+    if (--OF(0x299A))
     {
         set_script(x, 0xC8F4);
         face(x);
-        if (O(0x277A, x)) set_script(x, 0xC8F9);
+        if (OF(0x277A)) set_script(x, 0xC8F9);
         ss2_obj_common(x);
         return;
     }
     /* $C7B7 */
     set_vx(x, 0x0140);
-    if (O(0x277A, x)) set_vx(x, 0xFEC0);
+    if (OF(0x277A)) set_vx(x, 0xFEC0);
     set_vy(x, 0xFB00);
     hopper_air(x);
 }
@@ -582,34 +601,35 @@ static void hopper_chase(u8 x)
 /* $C810: flee: run, hopping over walls */
 static void hopper_flee(u8 x)
 {
-    if (!O(0x297A, x))
+    u8 *const o = &ss2_ram[x];
+    if (!OF(0x297A))
     {
         if (!probe(x, 0x10, 0x20))
         {
             /* $C891 */
             set_handler(x, 0xC70C);
-            O(0x299A, x) = 0;
-            O(0x29DA, x)++;
+            OF(0x299A) = 0;
+            OF(0x29DA)++;
             ss2_obj_common(x);
             return;
         }
         if (Z_HIT_HURT) { hopper_burn(x); return; }
-        probe_at(x, O(0x277A, x) ? 0x00 : 0x20, 0x10);
+        probe_at(x, OF(0x277A) ? 0x00 : 0x20, 0x10);
         if (!ss2_obj_probe(x)) { ss2_obj_common(x); return; }
-        if (!O(0x297A, x))
+        if (!OF(0x297A))
         {
-            O(0x297A, x)++;
+            OF(0x297A)++;
             set_vy(x, 0xFD00);
-            O(0x277A, x) = (u8)((O(0x277A, x) + 1) & 1);
+            OF(0x277A) = (u8)((OF(0x277A) + 1) & 1);
             set_vx(x, (u16)(0 - get_vx(x)));
             hopper_gravity(x);
             return;
         }
     }
     /* $C871 */
-    if ((s8)O(0x25FA, x) < 0 || !probe(x, 0x10, 0x20)) { hopper_gravity(x); return; }
+    if ((s8)OF(0x25FA) < 0 || !probe(x, 0x10, 0x20)) { hopper_gravity(x); return; }
     set_vy(x, 0);
-    O(0x297A, x) = 0;
+    OF(0x297A) = 0;
     ss2_obj_common(x);
 }
 
@@ -668,35 +688,36 @@ static void thrower_move(u8 x);
 /* $C9B0 */
 static void thrower(u8 x)
 {
-    if (!--O(0x29DA, x))
+    u8 *const o = &ss2_ram[x];
+    if (!--OF(0x29DA))
     {
-        O(0x29DA, x) = 0x1E;
+        OF(0x29DA) = 0x1E;
         ss2_random();
         if ((ZP(0x8D) & 0x0F) < 0x0C) throw_rock(x);
     }
-    if (--O(0x29BA, x)) { thrower_move(x); return; }
-    O(0x29BA, x) = 0x18;
+    if (--OF(0x29BA)) { thrower_move(x); return; }
+    OF(0x29BA) = 0x18;
     {
-        u8 a = (u8)(O(0x247A, x) + 1), b = (u8)(P_XH + 1);
-        u8 lo = O(0x249A, x), bo = lo < P_XL;
+        u8 a = (u8)(OF(0x247A) + 1), b = (u8)(P_XH + 1);
+        u8 lo = OF(0x249A), bo = lo < P_XL;
         u16 d = (u16)((((u8)(a - b - bo)) << 8) | (u8)(lo - P_XL));
         u8 right = (u16)((a << 8) | lo) < (u16)((b << 8) | P_XL);
         u8 approach;
         ZP(0x28) = (u8)d; ZP(0x29) = (u8)(d >> 8);
-        O(0x297A, x) = right;
+        OF(0x297A) = right;
         if ((u16)(d + 0x60) >= 0xC0) approach = 1;          /* far: $CA2F */
         else if ((u16)(d + 0x40) >= 0x80)
             approach = !!(ss2_random(), (ZP(0x8D) & 0x80));
         else approach = 0;                                  /* near: $CA36 */
-        if (approach ? O(0x297A, x) : !O(0x297A, x)) set_vx(x, 0x0120);
+        if (approach ? OF(0x297A) : !OF(0x297A)) set_vx(x, 0x0120);
         else set_vx(x, 0xFEE0);
     }
     /* $CA53 */
-    if (O(0x297A, x) != O(0x299A, x))
+    if (OF(0x297A) != OF(0x299A))
     {
-        O(0x299A, x) = O(0x297A, x);
-        set_script(x, O(0x297A, x) ? 0xCB10 : 0xCB09);
-        O(0x267A, x) = 1;
+        OF(0x299A) = OF(0x297A);
+        set_script(x, OF(0x297A) ? 0xCB10 : 0xCB09);
+        OF(0x267A) = 1;
     }
     thrower_move(x);
 }
@@ -712,16 +733,17 @@ static void thrower_move(u8 x)
 /* $CAAE: knocked back for 6 frames */
 static void thrower_hit(u8 x)
 {
-    if (O(0x245A, x) == 0x40) { die_respawn(x); return; }
-    if (!O(0x29FA, x))
+    u8 *const o = &ss2_ram[x];
+    if (OF(0x245A) == 0x40) { die_respawn(x); return; }
+    if (!OF(0x29FA))
     {
-        O(0x29FA, x) = 6;
+        OF(0x29FA) = 6;
         set_vx(x, OX16(x) >= PX16 ? 0x0380 : 0xFC80);
     }
-    else if (!--O(0x29FA, x))
+    else if (!--OF(0x29FA))
     {
-        O(0x245A, x) = 0x80;
-        O(0x29BA, x) = 1;
+        OF(0x245A) = 0x80;
+        OF(0x29BA) = 1;
     }
     thrower_move(x);
 }
@@ -729,7 +751,8 @@ static void thrower_hit(u8 x)
 /* $CBC6: rock */
 static void rock(u8 x)
 {
-    if (O(0x297A, x) && !--O(0x297A, x)) O(0x269A, x) = 0x18;
+    u8 *const o = &ss2_ram[x];
+    if (OF(0x297A) && !--OF(0x297A)) OF(0x269A) = 0x18;
     if (ss2_obj_probe(x)) { ss2_obj_die(x); return; }
     fall(x, 0x30);
     ss2_obj_common(x);
@@ -738,8 +761,9 @@ static void rock(u8 x)
 /* $CBB4 */
 static void rock_hit(u8 x)
 {
-    if (O(0x245A, x) != 0x20) { O(0x245A, x) = 0; return; }
-    O(0x245A, x) = 0x80;
+    u8 *const o = &ss2_ram[x];
+    if (OF(0x245A) != 0x20) { OF(0x245A) = 0; return; }
+    OF(0x245A) = 0x80;
     rock(x);
 }
 
@@ -785,33 +809,35 @@ static void pouncer_drop(u8 x)
 /* $CD3C */
 static void pouncer_stop(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     set_vx(x, 0);
-    O(0x299A, x) = 0x26;
+    OF(0x299A) = 0x26;
     set_handler(x, 0xCD5F);
-    O(0x267A, x) = 1;
-    O(0x297A, x) = 1;
-    O(0x29BA, x) = 1;
+    OF(0x267A) = 1;
+    OF(0x297A) = 1;
+    OF(0x29BA) = 1;
     ss2_obj_common(x);
 }
 
 /* $CCBD: walk toward the player, re-aiming every $1E frames */
 static void pouncer_walk(u8 x)
 {
-    if (!--O(0x297A, x))
+    u8 *const o = &ss2_ram[x];
+    if (!--OF(0x297A))
     {
         set_vx(x, 0x0140);
         set_script(x, 0xCF1C);
         face(x);
-        if (O(0x277A, x)) { set_vx(x, 0xFEC0); set_script(x, 0xCF23); }
-        O(0x297A, x) = 0x1E;
-        O(0x267A, x) = 1;
+        if (OF(0x277A)) { set_vx(x, 0xFEC0); set_script(x, 0xCF23); }
+        OF(0x297A) = 0x1E;
+        OF(0x267A) = 1;
         ss2_obj_common(x);
         return;
     }
     /* $CCFF */
-    if (!O(0x247A, x) && near_x(x, 0x50, 0xA0)) { pouncer_stop(x); return; }
+    if (!OF(0x247A) && near_x(x, 0x50, 0xA0)) { pouncer_stop(x); return; }
     if (!probe(x, 0x08, 0x10)) { pouncer_stop(x); return; }
-    probe_at(x, O(0x277A, x) ? 0x00 : 0x10, 0x08);
+    probe_at(x, OF(0x277A) ? 0x00 : 0x10, 0x08);
     if (ss2_obj_probe(x)) { pouncer_stop(x); return; }
     ss2_obj_common(x);
 }
@@ -819,13 +845,14 @@ static void pouncer_walk(u8 x)
 /* $CEAF */
 static void pouncer_crouch(u8 x)
 {
-    O(0x267A, x) = 1;
-    O(0x297A, x) = 1;
+    u8 *const o = &ss2_ram[x];
+    OF(0x267A) = 1;
+    OF(0x297A) = 1;
     set_vx(x, 0);
     set_vy(x, 0);
-    O(0x299A, x) = 0x26;
-    O(0x255A, x) = (u8)((O(0x255A, x) & 0xF0) | 5);
-    O(0x29BA, x) = 0;
+    OF(0x299A) = 0x26;
+    OF(0x255A) = (u8)((OF(0x255A) & 0xF0) | 5);
+    OF(0x29BA) = 0;
 }
 
 /* $CE6B */
@@ -839,25 +866,26 @@ static void pouncer_rewalk(u8 x)
 /* $CD5F: crouch (flashing), then leap at the player */
 static void pouncer_aim(u8 x)
 {
-    if (!O(0x29BA, x))
+    u8 *const o = &ss2_ram[x];
+    if (!OF(0x29BA))
     {
-        if (O(0x247A, x) || !near_x(x, 0x50, 0xA0)) { pouncer_rewalk(x); return; }
+        if (OF(0x247A) || !near_x(x, 0x50, 0xA0)) { pouncer_rewalk(x); return; }
     }
     /* $CD7C */
-    if (!--O(0x297A, x))
+    if (!--OF(0x297A))
     {
         set_script(x, 0xCF2A);
         face(x);
-        if (O(0x277A, x)) set_script(x, 0xCF2F);
-        O(0x297A, x) = 0x14;
-        O(0x267A, x) = 1;
+        if (OF(0x277A)) set_script(x, 0xCF2F);
+        OF(0x297A) = 0x14;
+        OF(0x267A) = 1;
     }
     /* $CDA7 */
-    if (O(0x299A, x))
+    if (OF(0x299A))
     {
-        u8 t = O(0x299A, x)--;
-        if (t == 0x1E) O(0x255A, x) = (u8)((O(0x255A, x) & 0xF0) | 1);
-        else if (t == 0x14) O(0x255A, x) = (u8)((O(0x255A, x) & 0xF0) | 6);
+        u8 t = OF(0x299A)--;
+        if (t == 0x1E) OF(0x255A) = (u8)((OF(0x255A) & 0xF0) | 1);
+        else if (t == 0x14) OF(0x255A) = (u8)((OF(0x255A) & 0xF0) | 6);
         ss2_obj_common(x);
         return;
     }
@@ -866,8 +894,8 @@ static void pouncer_aim(u8 x)
     set_vy(x, 0xFB80);
     set_script(x, 0xCF34);
     set_vx(x, 0x0240);
-    if (O(0x277A, x)) { set_script(x, 0xCF39); set_vx(x, 0xFDC0); }
-    O(0x267A, x) = 1;
+    if (OF(0x277A)) { set_script(x, 0xCF39); set_vx(x, 0xFDC0); }
+    OF(0x267A) = 1;
     set_handler(x, 0xCE20);
     ss2_obj_common(x);
 }
@@ -875,19 +903,20 @@ static void pouncer_aim(u8 x)
 /* $CE20: leap */
 static void pouncer_leap(u8 x)
 {
-    probe_at(x, (s8)O(0x25BA, x) < 0 ? 0x00 : 0x10, 0x08);
+    u8 *const o = &ss2_ram[x];
+    probe_at(x, (s8)OF(0x25BA) < 0 ? 0x00 : 0x10, 0x08);
     if (ss2_obj_probe(x))
     {
         /* $CE7A: hit a wall: drop */
         pouncer_crouch(x);
         ss2_obj_snap_y(x);
         set_vy(x, 0x0100);
-        set_script(x, O(0x277A, x) ? 0xCF17 : 0xCF12);
+        set_script(x, OF(0x277A) ? 0xCF17 : 0xCF12);
         set_handler(x, 0xCC91);
         ss2_obj_common(x);
         return;
     }
-    if ((s8)O(0x25FA, x) >= 0 && probe(x, 0x08, 0x10))
+    if ((s8)OF(0x25FA) >= 0 && probe(x, 0x08, 0x10))
     {
         if (Z_HIT_HURT) { pouncer_burn(x); return; }
         ss2_obj_snap_y(x);              /* $CE68 */
@@ -941,18 +970,19 @@ static void spawn_boss(u8 kind)
 /* $CFE9: wait for the boss to scroll in, then lock the arena */
 static void boss_enter(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     if (OX16(x) >= 0xD0) { ss2_obj_common(x); return; }
-    if (!(O(0x297A, x) & 1))
+    if (!(OF(0x297A) & 1))
     {
         ZP(0x8F) = 0x06;
         ZP(0x91) = 0x0A;
         ZP(0x93) = 0xB9; ZP(0x94) = 0x57;
-        if (O(0x297A, x) >= 2) { ZP(0x93) = 0xEE; ZP(0x94) = 0x57; }
+        if (OF(0x297A) >= 2) { ZP(0x93) = 0xEE; ZP(0x94) = 0x57; }
         ss2_message();                  /* bank 2 $6984: boss speech */
     }
     Z_HSCROLL = 1;
     Z_INLOCK1 = 0;
-    if (O(0x297A, x) == 2 && (P_FLAGSC1 & 0x08))
+    if (OF(0x297A) == 2 && (P_FLAGSC1 & 0x08))
     {
         P_CLOUDREQ = 0x08;
         ZP(0x26) = 0xA1; ZP(0x27) = 0x4E;
@@ -977,60 +1007,61 @@ static void boss_shot(u8 p);
 /* $D11F: run the current action */
 static void boss_action(u8 x)
 {
-    switch (O(0x299A, x))               /* JMP ($D128,X) */
+    u8 *const o = &ss2_ram[x];
+    switch (OF(0x299A))               /* JMP ($D128,X) */
     {
         case 0:                         /* $D132: walk toward the player */
         case 1:                         /* $D19A: walk away */
         {
-            u8 away = O(0x299A, x), toward_right = O(0x277A, x);
+            u8 away = OF(0x299A), toward_right = OF(0x277A);
             if (away) toward_right = !toward_right;
-            if (!O(0x29BA, x))
+            if (!OF(0x29BA))
             {
                 set_vx(x, toward_right ? 0x0100 : 0xFF00);
-                set_script(x, O(0x277A, x) ? 0xD5B4 : 0xD653);
-                O(0x267A, x) = 1;
-                O(0x29BA, x) = 0x24;
+                set_script(x, OF(0x277A) ? 0xD5B4 : 0xD653);
+                OF(0x267A) = 1;
+                OF(0x29BA) = 0x24;
             }
-            O(0x265A, x) = 0;
-            O(0x263A, x) = toward_right ? 0x20 : 0xE0;
+            OF(0x265A) = 0;
+            OF(0x263A) = toward_right ? 0x20 : 0xE0;
             if (ss2_obj_probe(x))
             {
                 set_vx(x, 0);
                 set_vy(x, 0);
-                O(0x29BA, x) = 1;
+                OF(0x29BA) = 1;
             }
             ss2_obj_common(x);
             return;
         }
         case 2:                         /* $D202: stand */
-            if (!O(0x29BA, x))
+            if (!OF(0x29BA))
             {
-                set_script(x, O(0x277A, x) ? 0xD50A : 0xD55F);
-                O(0x267A, x) = 1;
+                set_script(x, OF(0x277A) ? 0xD50A : 0xD55F);
+                OF(0x267A) = 1;
                 set_vx(x, 0);
                 set_vy(x, 0);
-                O(0x29BA, x) = 0x3C;
+                OF(0x29BA) = 0x3C;
             }
             ss2_obj_common(x);
             return;
         case 3:                         /* $D23A: shoot high */
         case 4:                         /* $D240: shoot low */
-            ZP(0x35) = O(0x299A, x) == 3 ? 0xE8 : 0x04;
-            if (O(0x29BA, x)) { ss2_obj_common(x); return; }
-            if (O(0x29DA, x) >= 2) { O(0x29BA, x) = 1; ss2_obj_common(x); return; }
+            ZP(0x35) = OF(0x299A) == 3 ? 0xE8 : 0x04;
+            if (OF(0x29BA)) { ss2_obj_common(x); return; }
+            if (OF(0x29DA) >= 2) { OF(0x29BA) = 1; ss2_obj_common(x); return; }
             {
                 u8 a = ZP(0x35);
                 boss_shot(x);
                 ZP(0x35) = a;
             }
-            O(0x29DA, x)++;
-            if (O(0x277A, x))
+            OF(0x29DA)++;
+            if (OF(0x277A))
                 set_script(x, (ZP(0x35) & 0x80) ? 0xD6F2 : 0xD7A4);
             else
                 set_script(x, (ZP(0x35) & 0x80) ? 0xD74B : 0xD7FD);
             set_vx(x, 0);
-            O(0x267A, x) = 1;
-            O(0x29BA, x) = 0x14;
+            OF(0x267A) = 1;
+            OF(0x29BA) = 0x14;
             ss2_obj_common(x);
             return;
     }
@@ -1040,22 +1071,23 @@ static void boss_action(u8 x)
 /* $D064: pick a weighted random action every time the timer runs out */
 static void boss(u8 x)
 {
-    if (--O(0x29BA, x)) { boss_action(x); return; }
+    u8 *const o = &ss2_ram[x];
+    if (--OF(0x29BA)) { boss_action(x); return; }
     {
-        u16 tab = O(0x297A, x) >= 2 ? 0xD4F6 : 0xD4E2;
+        u16 tab = OF(0x297A) >= 2 ? 0xD4F6 : 0xD4E2;
         u16 a, b, d;
         u8 y, n, v;
         ZP(0x2E) = (u8)tab; ZP(0x2F) = (u8)(tab >> 8);
-        a = (u16)(((u8)(O(0x247A, x) + 1) << 8) | O(0x249A, x));
+        a = (u16)(((u8)(OF(0x247A) + 1) << 8) | OF(0x249A));
         {
             u16 t = (u16)(P_XL + 0x10);
             b = (u16)(((u8)(P_XH + 1 + (t >> 8)) << 8) | (u8)t);
         }
         d = (u16)(a - b);
-        O(0x277A, x) = 0;
+        OF(0x277A) = 0;
         if (a < b)
         {
-            O(0x277A, x)++;
+            OF(0x277A)++;
             d = (u16)(0 - d);
         }
         ZP(0x26) = (u8)d; ZP(0x27) = (u8)(d >> 8);
@@ -1063,7 +1095,7 @@ static void boss(u8 x)
         if (!(d >> 8))
         {
             u8 r = 0, lo = (u8)d;
-            if (O(0x297A, x) >= 2)
+            if (OF(0x297A) >= 2)
             {
                 if (lo >= 0x50) { r++; if (lo >= 0x80) r++; }
             }
@@ -1088,7 +1120,7 @@ static void boss(u8 x)
             }
         }
         ZP(0x30) = n;
-        O(0x299A, x) = n;
+        OF(0x299A) = n;
     }
     boss_action(x);
 }
@@ -1137,9 +1169,10 @@ static void boss_shot(u8 p)
 /* $D359: boss struck */
 static void boss_hit(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     u8 y;
-    if (O(0x245A, x) != 0x40) { O(0x245A, x) = 0x80; ss2_obj_common(x); return; }
-    y = (u8)(O(0x297A, x) << 1);
+    if (OF(0x245A) != 0x40) { OF(0x245A) = 0x80; ss2_obj_common(x); return; }
+    y = (u8)(OF(0x297A) << 1);
     ZP(0x26) = ss2_rom_byte((u16)(0xD4B0 + y));
     ZP(0x27) = ss2_rom_byte((u16)(0xD4B1 + y));
     ss2_unported(0x6F40);               /* bank 2: boss defeat sequence */
@@ -1148,35 +1181,36 @@ static void boss_hit(u8 x)
 /* $D37A: boomerang shot: slows down, returns to the boss */
 static void boss_boomerang(u8 x)
 {
-    if (!O(0x299A, x))
+    u8 *const o = &ss2_ram[x];
+    if (!OF(0x299A))
     {
-        if (O(0x29BA, x)) { O(0x29BA, x)--; ss2_obj_common(x); return; }
-        if (!(O(0x25DA, x) | O(0x25BA, x))) { O(0x299A, x) = 1; ss2_obj_common(x); return; }
-        set_vx(x, (u16)(get_vx(x) + (O(0x297A, x) ? 0x0020 : 0xFFE0)));
+        if (OF(0x29BA)) { OF(0x29BA)--; ss2_obj_common(x); return; }
+        if (!(OF(0x25DA) | OF(0x25BA))) { OF(0x299A) = 1; ss2_obj_common(x); return; }
+        set_vx(x, (u16)(get_vx(x) + (OF(0x297A) ? 0x0020 : 0xFFE0)));
         ss2_obj_common(x);
         return;
     }
     /* $D3C7: fly back */
-    if (!O(0x297A, x))
+    if (!OF(0x297A))
     {
         set_vx(x, (u16)(get_vx(x) + 0xFFE0));
-        if (O(0x25BA, x) == 0xFD) set_vx(x, 0xFE00);
+        if (OF(0x25BA) == 0xFD) set_vx(x, 0xFE00);
     }
     else
     {
         set_vx(x, (u16)(get_vx(x) + 0x0020));
-        if (O(0x25BA, x) == 0x02) set_vx(x, 0x0200);
+        if (OF(0x25BA) == 0x02) set_vx(x, 0x0200);
     }
     /* $D40C: caught by the boss */
     {
-        u8 p = O(0x29DA, x);
-        u16 t = (u16)(O(0x249A, x) + 0x10);
-        u16 a = (u16)(((u8)(O(0x247A, x) + 1 + (t >> 8)) << 8) | (u8)t);
+        u8 p = OF(0x29DA);
+        u16 t = (u16)(OF(0x249A) + 0x10);
+        u16 a = (u16)(((u8)(OF(0x247A) + 1 + (t >> 8)) << 8) | (u8)t);
         u16 b = (u16)(((u8)(O(0x247A, p) + 1) << 8) | O(0x249A, p));
         u16 d = (u16)(a - b);
         ZP(0x2A) = (u8)d; ZP(0x2B) = (u8)(d >> 8);
         if ((d >> 8) || (u8)d >= 0x20) { ss2_obj_common(x); return; }
-        O(0x245A, x) = 0;
+        OF(0x245A) = 0;
         O(0x29DA, p)--;
     }
 }
@@ -1184,8 +1218,9 @@ static void boss_boomerang(u8 x)
 /* $D452 */
 static void boss_boomerang_hit(u8 x)
 {
-    if (O(0x245A, x) != 0x40) { O(0x245A, x) = 0x80; ss2_obj_common(x); return; }
-    O(0x269A, x) &= 0xDF;
+    u8 *const o = &ss2_ram[x];
+    if (OF(0x245A) != 0x40) { OF(0x245A) = 0x80; ss2_obj_common(x); return; }
+    OF(0x269A) &= 0xDF;
     ss2_obj_death(x);
 }
 
@@ -1249,27 +1284,28 @@ static void boss2_action(u8 x);
 /* $D967 */
 static void boss2(u8 x)
 {
-    if (!--O(0x29DA, x))
+    u8 *const o = &ss2_ram[x];
+    if (!--OF(0x29DA))
     {
-        if (O(0x2A1A, x) || O(0x247A, x))
+        if (OF(0x2A1A) || OF(0x247A))
         {
-            O(0x299A, x) = 6;
-            O(0x29DA, x) = 0;
+            OF(0x299A) = 6;
+            OF(0x29DA) = 0;
         }
         else
         {
             u16 t, a, b;
             u8 r;
-            O(0x29FA, x) = 0;
-            a = (u16)(((u8)(O(0x247A, x) + 1) << 8) | O(0x249A, x));
+            OF(0x29FA) = 0;
+            a = (u16)(((u8)(OF(0x247A) + 1) << 8) | OF(0x249A));
             t = (u16)(P_XL + 0x10);
             b = (u16)(((u8)(P_XH + 1 + (t >> 8)) << 8) | (u8)t);
-            O(0x277A, x) = a < b;
+            OF(0x277A) = a < b;
             ss2_random();
             r = 0;
             if ((ZP(0x8D) & 0x0F) >= 4) { r++; if ((ZP(0x8D) & 0x0F) >= 0x0B) r++; }
             ZP(0x30) = r;
-            O(0x299A, x) = (u8)(r << 1);
+            OF(0x299A) = (u8)(r << 1);
         }
     }
     boss2_action(x);
@@ -1278,72 +1314,73 @@ static void boss2(u8 x)
 /* $D9CD: JMP ($D9D5,X) */
 static void boss2_action(u8 x)
 {
-    switch (O(0x299A, x))
+    u8 *const o = &ss2_ram[x];
+    switch (OF(0x299A))
     {
         case 0:                         /* $D9DD: stand */
-            if (!O(0x29DA, x))
+            if (!OF(0x29DA))
             {
-                O(0x29DA, x) = 0x28;
-                O(0x267A, x) = 1;
-                O(0x271A, x) = 0x0A;
-                O(0x273A, x) = 0x28;
-                set_script(x, O(0x277A, x) ? 0xDD20 : 0xDD45);
+                OF(0x29DA) = 0x28;
+                OF(0x267A) = 1;
+                OF(0x271A) = 0x0A;
+                OF(0x273A) = 0x28;
+                set_script(x, OF(0x277A) ? 0xDD20 : 0xDD45);
             }
             ss2_obj_common(x);
             return;
         case 2:                         /* $DA13: throw */
         case 4:
-            if (!O(0x29DA, x))
+            if (!OF(0x29DA))
             {
-                O(0x29DA, x) = 0x36;
-                O(0x267A, x) = 1;
-                O(0x271A, x) = 0x0A;
-                O(0x273A, x) = 0x28;
-                O(0x29FA, x)++;
-                set_script(x, O(0x277A, x) ? 0xDD6A : 0xDDE7);
+                OF(0x29DA) = 0x36;
+                OF(0x267A) = 1;
+                OF(0x271A) = 0x0A;
+                OF(0x273A) = 0x28;
+                OF(0x29FA)++;
+                set_script(x, OF(0x277A) ? 0xDD6A : 0xDDE7);
             }
-            else if (O(0x29DA, x) == 0x1E)
+            else if (OF(0x29DA) == 0x1E)
             {
-                O(0x271A, x) = 0x20;
-                O(0x273A, x) = 0x0A;
+                OF(0x271A) = 0x20;
+                OF(0x273A) = 0x0A;
                 boss2_spawn_shot(x);
             }
             ss2_obj_common(x);
             return;
         case 6:                         /* $DB0C: sink and reappear */
-            if (!O(0x29DA, x))
+            if (!OF(0x29DA))
             {
-                O(0x29DA, x) = 0x5A;
-                O(0x267A, x) = 1;
-                O(0x269A, x) = 0x27;
-                O(0x29BA, x) = 0;
-                O(0x271A, x) = 0x0A;
-                O(0x273A, x) = 0x28;
-                O(0x2A1A, x) = 0;
-                set_script(x, O(0x277A, x) ? 0xDE64 : 0xDE8F);
+                OF(0x29DA) = 0x5A;
+                OF(0x267A) = 1;
+                OF(0x269A) = 0x27;
+                OF(0x29BA) = 0;
+                OF(0x271A) = 0x0A;
+                OF(0x273A) = 0x28;
+                OF(0x2A1A) = 0;
+                set_script(x, OF(0x277A) ? 0xDE64 : 0xDE8F);
             }
-            else if (!O(0x29BA, x))
+            else if (!OF(0x29BA))
             {
-                if (O(0x29DA, x) == 0x1E)
+                if (OF(0x29DA) == 0x1E)
                 {
                     /* $DB58: pick a free spot on the floor */
                     for (;;)
                     {
-                        O(0x29BA, x) = 1;
+                        OF(0x29BA) = 1;
                         ss2_random();
-                        O(0x249A, x) = ss2_rom_byte((u16)(0xDB9D + (ZP(0x8D) & 7)));
-                        O(0x247A, x) = 0;
+                        OF(0x249A) = ss2_rom_byte((u16)(0xDB9D + (ZP(0x8D) & 7)));
+                        OF(0x247A) = 0;
                         if (probe(x, 0xF0, 0x00)) continue;
                         if (probe(x, 0x10, 0x00)) continue;
                         break;
                     }
                 }
             }
-            else if ((u8)(O(0x29DA, x) - 1) == 0)
+            else if ((u8)(OF(0x29DA) - 1) == 0)
             {
-                O(0x29BA, x) = 0;
-                O(0x29DA, x) = 1;
-                O(0x269A, x) = 0x20;
+                OF(0x29BA) = 0;
+                OF(0x29DA) = 1;
+                OF(0x269A) = 0x20;
             }
             ss2_obj_common(x);
             return;
@@ -1382,22 +1419,23 @@ static void boss2_spawn_shot(u8 p)
 /* $DBA5: boss struck */
 static void boss2_hit(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     u8 y;
-    if (O(0x245A, x) != 0x40)
+    if (OF(0x245A) != 0x40)
     {
-        O(0x245A, x) = 0x80;
-        if (O(0x29FA, x))
+        OF(0x245A) = 0x80;
+        if (OF(0x29FA))
         {
-            O(0x2A1A, x) = O(0x29FA, x);
+            OF(0x2A1A) = OF(0x29FA);
             boss2(x);
             return;
         }
-        O(0x299A, x) = 6;
-        O(0x29DA, x) = 0;
+        OF(0x299A) = 6;
+        OF(0x29DA) = 0;
         boss2_action(x);
         return;
     }
-    y = (u8)(O(0x297A, x) << 1);
+    y = (u8)(OF(0x297A) << 1);
     ZP(0x26) = ss2_rom_byte((u16)(0xDD02 + y));
     ZP(0x27) = ss2_rom_byte((u16)(0xDD03 + y));
     ss2_unported(0x6F40);               /* bank 2: boss defeat sequence */

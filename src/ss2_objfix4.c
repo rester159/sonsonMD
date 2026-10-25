@@ -11,6 +11,9 @@
 #include "ss2_ram.h"
 #include "ss2_logic.h"
 
+/* field a of slot x through o = &ss2_ram[x] (a fixed displacement) */
+#define OF(a) (o[(u16)((a) - 0x2000)])
+
 #define OX16(x)     ((u16)((O(0x247A, x) << 8) | O(0x249A, x)))
 #define OY16(x)     ((u16)((O(0x24DA, x) << 8) | O(0x24FA, x)))
 
@@ -34,57 +37,58 @@ static void anim_strike(u8 x) { anim(x, 0xAD41, 0xAD46); }
 /* $AAD7: run the body, then lay out the weapon pieces */
 static void finish(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     u16 o1, o2, o3;
     u8 a, i;
     ss2_obj_common(x);
-    if (!O(0x245A, x))
+    if (!OF(0x245A))
     {
         for (i = 1; i < 4; i++) O(0x245A, x + i) = 0;
         ss2_obj_next = (u8)(x + 3);
         return;
     }
-    if ((u8)(O(0x245B, x) | O(0x245C, x) | O(0x245D, x)) != 0x80)
+    if ((u8)(OF(0x245B) | OF(0x245C) | OF(0x245D)) != 0x80)
     {
-        O(0x245B, x) = 0x80;
-        O(0x245C, x) = 0x80;
-        O(0x245D, x) = 0x80;
-        O(0x2A3A, x) = 0;
+        OF(0x245B) = 0x80;
+        OF(0x245C) = 0x80;
+        OF(0x245D) = 0x80;
+        OF(0x2A3A) = 0;
     }
-    a = O(0x2A3A, x);
+    a = OF(0x2A3A);
     if (!a)
     {
         /* $AB1B: weapon down: pieces parked at y 0 */
-        if (O(0x297A, x) == 3) anim_stand(x);
+        if (OF(0x297A) == 3) anim_stand(x);
         for (i = 1; i < 4; i++) set_y16((u8)(x + i), 0);
         o1 = 0;
     }
     else
     {
         u16 y8 = (u16)(OY16(x) + 8);
-        O(0x2A3A, x)--;
+        OF(0x2A3A)--;
         if (a == 6)
         {
             set_y16((u8)(x + 1), y8);
             set_y16((u8)(x + 2), 0);
             set_y16((u8)(x + 3), 0);
-            o1 = O(0x29BA, x) ? 0x0020 : 0xFFF0;
+            o1 = OF(0x29BA) ? 0x0020 : 0xFFF0;
         }
         else if (a == 5)
         {
             set_y16((u8)(x + 1), y8);
             set_y16((u8)(x + 3), y8);
             set_y16((u8)(x + 2), 0);
-            o1 = O(0x29BA, x) ? 0x0030 : 0xFFE0;
+            o1 = OF(0x29BA) ? 0x0030 : 0xFFE0;
         }
         else
         {
             for (i = 1; i < 4; i++) set_y16((u8)(x + i), y8);
-            o1 = O(0x29BA, x) ? 0x0040 : 0xFFD0;
+            o1 = OF(0x29BA) ? 0x0040 : 0xFFD0;
         }
     }
     /* $ABDF */
-    O(0x267B, x) = 1;
-    if (!O(0x29BA, x)) { set_script((u8)(x + 1), 0xAD4B); o2 = 0xFFE0; o3 = 0xFFF0; }
+    OF(0x267B) = 1;
+    if (!OF(0x29BA)) { set_script((u8)(x + 1), 0xAD4B); o2 = 0xFFE0; o3 = 0xFFF0; }
     else { set_script((u8)(x + 1), 0xAD50); o2 = 0x0030; o3 = 0x0020; }
     set_x16((u8)(x + 1), (u16)(OX16(x) + o1));
     set_x16((u8)(x + 2), (u16)(OX16(x) + o2));
@@ -98,16 +102,17 @@ static void finish(u8 x)
 /* $AA96: walking: turn at ledges, stop at walls */
 static void walk(u8 x)
 {
-    O(0x263A, x) = (O(0x25BA, x) & 0x80) ? 0x06 : 0x19;
-    O(0x265A, x) = 0x20;
+    u8 *const o = &ss2_ram[x];
+    OF(0x263A) = (OF(0x25BA) & 0x80) ? 0x06 : 0x19;
+    OF(0x265A) = 0x20;
     if (!ss2_obj_probe(x))
     {
-        set_vx(x, (u16)(0 - (u16)((O(0x25BA, x) << 8) | O(0x25DA, x))));
-        O(0x29DA, x) = 0x12;
+        set_vx(x, (u16)(0 - (u16)((OF(0x25BA) << 8) | OF(0x25DA))));
+        OF(0x29DA) = 0x12;
     }
     else
     {
-        O(0x265A, x) = 0x1F;
+        OF(0x265A) = 0x1F;
         if (ss2_obj_probe(x)) set_vx(x, 0);
     }
     finish(x);
@@ -116,45 +121,47 @@ static void walk(u8 x)
 /* $AA58: one strike */
 static void strike(u8 x)
 {
-    O(0x2A1A, x)--;
-    O(0x29FA, x) = 0x0A;
+    u8 *const o = &ss2_ram[x];
+    OF(0x2A1A)--;
+    OF(0x29FA) = 0x0A;
     anim_strike(x);
-    O(0x2A3A, x) = 6;
+    OF(0x2A3A) = 6;
     finish(x);
 }
 
 /* $A9B4 */
 static void think(u8 x)
 {
-    u16 d = (u16)(((u8)(O(0x247A, x) + 1) << 8 | O(0x249A, x)) - (((u8)(P_XH + 1) << 8) | P_XL));
-    O(0x299A, x) = 0;
-    if ((u16)(((u8)(O(0x247A, x) + 1) << 8) | O(0x249A, x)) < (u16)(((u8)(P_XH + 1) << 8) | P_XL))
+    u8 *const o = &ss2_ram[x];
+    u16 d = (u16)(((u8)(OF(0x247A) + 1) << 8 | OF(0x249A)) - (((u8)(P_XH + 1) << 8) | P_XL));
+    OF(0x299A) = 0;
+    if ((u16)(((u8)(OF(0x247A) + 1) << 8) | OF(0x249A)) < (u16)(((u8)(P_XH + 1) << 8) | P_XL))
     {
-        O(0x299A, x)++;
+        OF(0x299A)++;
         d = (u16)(0 - d);
     }
-    if (O(0x29DA, x))
+    if (OF(0x29DA))
     {
-        O(0x29DA, x)--;
-        if (O(0x297A, x) == 3)
+        OF(0x29DA)--;
+        if (OF(0x297A) == 3)
         {
             /* $AA4E */
-            if (!O(0x2A1A, x) || --O(0x29FA, x)) { finish(x); return; }
+            if (!OF(0x2A1A) || --OF(0x29FA)) { finish(x); return; }
             strike(x);
             return;
         }
-        if (O(0x297A, x) == 1) { walk(x); return; }
+        if (OF(0x297A) == 1) { walk(x); return; }
         finish(x);
         return;
     }
     if (d < 0x60)
     {
         /* $AA31: close: three strikes */
-        O(0x297A, x) = 3;
-        O(0x29DA, x) = 0x78;
+        OF(0x297A) = 3;
+        OF(0x29DA) = 0x78;
         set_vx(x, 0);
-        O(0x29BA, x) = O(0x299A, x);
-        O(0x2A1A, x) = 3;
+        OF(0x29BA) = OF(0x299A);
+        OF(0x2A1A) = 3;
         strike(x);
         return;
     }
@@ -162,18 +169,18 @@ static void think(u8 x)
     if (!(ZP(0x8D) & 0x80))
     {
         /* $AA6B: walk toward the player */
-        O(0x29BA, x) = O(0x299A, x);
-        set_vx(x, O(0x299A, x) ? 0x01C0 : 0xFE40);
+        OF(0x29BA) = OF(0x299A);
+        set_vx(x, OF(0x299A) ? 0x01C0 : 0xFE40);
         anim_walk(x);
-        O(0x297A, x) = 1;
-        O(0x29DA, x) = 0x12;
+        OF(0x297A) = 1;
+        OF(0x29DA) = 0x12;
         walk(x);
         return;
     }
-    O(0x297A, x) = 2;
-    O(0x29DA, x) = 0x3C;
+    OF(0x297A) = 2;
+    OF(0x29DA) = 0x3C;
     set_vx(x, 0);
-    O(0x29BA, x) = O(0x299A, x);
+    OF(0x29BA) = OF(0x299A);
     anim_stand(x);
     finish(x);
 }
@@ -227,15 +234,16 @@ static void spawn(u16 rec)
 /* $AC5E */
 static void hit(u8 x)
 {
-    if (O(0x245A, x) == 0x40)
+    u8 *const o = &ss2_ram[x];
+    if (OF(0x245A) == 0x40)
     {
-        u8 s = O(0x281A, x);
+        u8 s = OF(0x281A);
         O(0x2B5A, s)--;
         O(0x2C1A, s) = 0x64;
         ss2_obj_death(x);
         return;
     }
-    O(0x245A, x) = 0x80;
+    OF(0x245A) = 0x80;
     think(x);
 }
 

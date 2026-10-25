@@ -11,6 +11,9 @@
 #include "ss2_ram.h"
 #include "ss2_logic.h"
 
+/* field a of slot x through o = &ss2_ram[x] (a fixed displacement) */
+#define OF(a) (o[(u16)((a) - 0x2000)])
+
 #define OX16(x)     ((u16)((O(0x247A, x) << 8) | O(0x249A, x)))
 #define OY16(x)     ((u16)((O(0x24DA, x) << 8) | O(0x24FA, x)))
 
@@ -20,29 +23,30 @@ static void set_oy16(u8 x, u16 v) { O(0x24DA, x) = (u8)(v >> 8); O(0x24FA, x) = 
 /* $9125/$94DB: item kind setup from the bank 3 tables */
 static void item_kind(u8 x, u8 kind)
 {
-    O(0x2A1A, x) = (u8)(kind & 0x80);
+    u8 *const o = &ss2_ram[x];
+    OF(0x2A1A) = (u8)(kind & 0x80);
     kind &= 0x7F;
-    O(0x26BA, x) = kind;
+    OF(0x26BA) = kind;
     if (kind < 0x0A)
     {
         u8 i = (u8)(kind - 3), t = (u8)(i * 6);
         ZP(0x35) = (u8)(i << 1);
-        O(0x295A, x) = ss2_rom_byte((u16)(0x921A + t));
-        O(0x293A, x) = ss2_rom_byte((u16)(0x921B + t));
-        O(0x29BA, x) = ss2_rom_byte((u16)(0x921C + t));
-        O(0x299A, x) = ss2_rom_byte((u16)(0x921D + t));
-        O(0x29FA, x) = ss2_rom_byte((u16)(0x921E + t));
-        O(0x29DA, x) = ss2_rom_byte((u16)(0x921F + t));
-        O(0x255A, x) |= ss2_rom_byte((u16)(0x9244 + i));
+        OF(0x295A) = ss2_rom_byte((u16)(0x921A + t));
+        OF(0x293A) = ss2_rom_byte((u16)(0x921B + t));
+        OF(0x29BA) = ss2_rom_byte((u16)(0x921C + t));
+        OF(0x299A) = ss2_rom_byte((u16)(0x921D + t));
+        OF(0x29FA) = ss2_rom_byte((u16)(0x921E + t));
+        OF(0x29DA) = ss2_rom_byte((u16)(0x921F + t));
+        OF(0x255A) |= ss2_rom_byte((u16)(0x9244 + i));
     }
     else
     {
         u8 i = (u8)(kind - 0x0A), t = (u8)(i << 2);
-        O(0x295A, x) = ss2_rom_byte((u16)(0x95CA + t));
-        O(0x293A, x) = ss2_rom_byte((u16)(0x95CB + t));
-        O(0x29FA, x) = ss2_rom_byte((u16)(0x95CC + t));
-        O(0x29DA, x) = ss2_rom_byte((u16)(0x95CD + t));
-        O(0x255A, x) |= ss2_rom_byte((u16)(0x9616 + i));
+        OF(0x295A) = ss2_rom_byte((u16)(0x95CA + t));
+        OF(0x293A) = ss2_rom_byte((u16)(0x95CB + t));
+        OF(0x29FA) = ss2_rom_byte((u16)(0x95CC + t));
+        OF(0x29DA) = ss2_rom_byte((u16)(0x95CD + t));
+        OF(0x255A) |= ss2_rom_byte((u16)(0x9616 + i));
     }
 }
 
@@ -70,23 +74,24 @@ u8 ss2_drop_item(u8 p)
 /* bank 2 $6E47: become the explosion and roll the drop */
 void ss2_obj_death(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     u8 g, t;
-    if (!(O(0x253A, x) & 1)) set_ox16(x, (u16)(OX16(x) - 8));
-    set_oy16(x, (u16)(OY16(x) + ((O(0x253A, x) & 0x30) >> 1)));
+    if (!(OF(0x253A) & 1)) set_ox16(x, (u16)(OX16(x) - 8));
+    set_oy16(x, (u16)(OY16(x) + ((OF(0x253A) & 0x30) >> 1)));
     set_oy16(x, (u16)(OY16(x) - 8));
-    O(0x25DA, x) = 0; O(0x25BA, x) = 0;
-    O(0x261A, x) = 0; O(0x25FA, x) = 0;
-    O(0x255A, x) = 0x84;
-    O(0x253A, x) = 0x11;
-    O(0x267A, x) = 1;
-    O(0x295A, x) = 0x39; O(0x293A, x) = 0x6F;
-    O(0x27DA, x) = 0xB2; O(0x27BA, x) = 0x2D;
-    O(0x291A, x) = 0x67; O(0x28FA, x) = 0xEE;
-    g = (u8)(O(0x289A, x) & 0xF0);
+    OF(0x25DA) = 0; OF(0x25BA) = 0;
+    OF(0x261A) = 0; OF(0x25FA) = 0;
+    OF(0x255A) = 0x84;
+    OF(0x253A) = 0x11;
+    OF(0x267A) = 1;
+    OF(0x295A) = 0x39; OF(0x293A) = 0x6F;
+    OF(0x27DA) = 0xB2; OF(0x27BA) = 0x2D;
+    OF(0x291A) = 0x67; OF(0x28FA) = 0xEE;
+    g = (u8)(OF(0x289A) & 0xF0);
     if (g)
     {
         ZP(0x30) = (u8)((u8)(g - 0x10) >> 1);
-        t = (u8)(O(0x289A, x) & 0x0F);
+        t = (u8)(OF(0x289A) & 0x0F);
         if (t)
         {
             u16 tab, i;
@@ -113,7 +118,7 @@ void ss2_obj_death(u8 x)
                 ZP(0x35) = kind;
                 n = ss2_drop_item(x);
                 if (n != 0x20) O(0x281A, n) = 0xBF;
-                s = O(0x281A, x);
+                s = OF(0x281A);
                 t = (u8)(O(0x2CDA, s) & 0x0F);
                 if (t && t != 1) O(0x2CDA, s)--;
             }
@@ -126,33 +131,34 @@ void ss2_obj_death(u8 x)
 /* $9173: falling item: bounce once, then switch to its landing script */
 static void item_fall(u8 x)
 {
-    O(0x263A, x) = 0x08;
-    O(0x265A, x) = (s8)O(0x25FA, x) < 0 ? 0x00 : 0x10;
+    u8 *const o = &ss2_ram[x];
+    OF(0x263A) = 0x08;
+    OF(0x265A) = (s8)OF(0x25FA) < 0 ? 0x00 : 0x10;
     if (!ss2_obj_probe(x))
     {
-        u16 t = (u16)(O(0x261A, x) + 0x40);
-        O(0x261A, x) = (u8)t;
-        O(0x25FA, x) = (u8)(O(0x25FA, x) + (t >> 8));
+        u16 t = (u16)(OF(0x261A) + 0x40);
+        OF(0x261A) = (u8)t;
+        OF(0x25FA) = (u8)(OF(0x25FA) + (t >> 8));
     }
-    else if ((s8)O(0x25FA, x) < 0)
+    else if ((s8)OF(0x25FA) < 0)
     {
-        O(0x25FA, x) = 0; O(0x261A, x) = 0;
+        OF(0x25FA) = 0; OF(0x261A) = 0;
     }
-    else if (!O(0x297A, x))
+    else if (!OF(0x297A))
     {
-        O(0x261A, x) = 0; O(0x25FA, x) = 0xFC;
-        O(0x297A, x) = 1;
+        OF(0x261A) = 0; OF(0x25FA) = 0xFC;
+        OF(0x297A) = 1;
     }
     else
     {
-        O(0x25FA, x) = 0; O(0x261A, x) = 0;
-        if (!O(0x2A1A, x))
+        OF(0x25FA) = 0; OF(0x261A) = 0;
+        if (!OF(0x2A1A))
         {
-            O(0x267A, x) = 1;
-            O(0x293A, x) = O(0x29DA, x);
-            O(0x295A, x) = O(0x29FA, x);
+            OF(0x267A) = 1;
+            OF(0x293A) = OF(0x29DA);
+            OF(0x295A) = OF(0x29FA);
         }
-        O(0x28DA, x) = 0x67; O(0x28BA, x) = 0xEE;
+        OF(0x28DA) = 0x67; OF(0x28BA) = 0xEE;
     }
     ss2_obj_common(x);
 }
@@ -160,24 +166,25 @@ static void item_fall(u8 x)
 /* $98B3: breakable container: first hit opens it, then it drops its item */
 static void container_hit(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     u8 s, a, n;
-    if (!O(0x297A, x))
+    if (!OF(0x297A))
     {
-        O(0x245A, x) = 0x80;
-        O(0x295A, x) = 0x7A; O(0x293A, x) = 0x99;
-        O(0x297A, x) = 1;
-        O(0x267A, x) = 1;
-        O(0x26DA, x) = 1;
+        OF(0x245A) = 0x80;
+        OF(0x295A) = 0x7A; OF(0x293A) = 0x99;
+        OF(0x297A) = 1;
+        OF(0x267A) = 1;
+        OF(0x26DA) = 1;
         ss2_obj_common(x);
         return;
     }
-    s = O(0x281A, x);
+    s = OF(0x281A);
     O(0x2C1A, s) = 1;
     a = R(0x2223 + s);
     if (a & 0x80) { ss2_unported(0x9907); return; }
     ZP(0x35) = (u8)(a | 0x80);
     n = ss2_drop_item(x);
-    if (n != 0x20) O(0x281A, n) = O(0x281A, x);
+    if (n != 0x20) O(0x281A, n) = OF(0x281A);
     ss2_obj_death(x);
 }
 
@@ -248,25 +255,27 @@ u8 ss2_item_spawn_handler(u16 addr)
 /* $8289: common: pickup sound, switch to the item's collected handler */
 static void collected(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     ss2_sfx(0x28);
-    O(0x267A, x) = 1;
-    O(0x28DA, x) = O(0x291A, x);
-    O(0x28BA, x) = O(0x28FA, x);
+    OF(0x267A) = 1;
+    OF(0x28DA) = OF(0x291A);
+    OF(0x28BA) = OF(0x28FA);
 }
 
 /* $80C8: money bag: award, then float up with its collected script.
  * Returns 1: the source drops collide's return and re-enters $EE67. */
 static u8 money(u8 x, u8 award)
 {
+    u8 *const o = &ss2_ram[x];
     ss2_score_award(award);
     ss2_sfx(0x28);
-    O(0x269A, x) |= 0x24;
-    O(0x267A, x) = 1;
-    O(0x293A, x) = O(0x299A, x);
-    O(0x295A, x) = O(0x29BA, x);
-    O(0x28DA, x) = 0x67; O(0x28BA, x) = 0xEE;
-    O(0x25FA, x) = 0xFF; O(0x261A, x) = 0;
-    O(0x25BA, x) = 0; O(0x25DA, x) = 0;
+    OF(0x269A) |= 0x24;
+    OF(0x267A) = 1;
+    OF(0x293A) = OF(0x299A);
+    OF(0x295A) = OF(0x29BA);
+    OF(0x28DA) = 0x67; OF(0x28BA) = 0xEE;
+    OF(0x25FA) = 0xFF; OF(0x261A) = 0;
+    OF(0x25BA) = 0; OF(0x25DA) = 0;
     return 1;
 }
 
@@ -323,21 +332,22 @@ static void trap(u8 x)
 /* $7F74: an item the player can stand on (kind 2): land on its top */
 static void stand_on(u8 x)
 {
+    u8 *const o = &ss2_ram[x];
     u8 a;
     if (R(0x22A4) & 0x80) return;
     if (R(0x22B1) && R(0x22C6) < 8) return;
-    if (O(0x299A, x) == 0x88)
+    if (OF(0x299A) == 0x88)
     {
         if (ss2_probe(0x14, 0x20)) return;
         if (ss2_probe(0x0C, 0x20)) return;
     }
-    a = (u8)(R(0x229C) + 0x20 - O(0x24FA, x));
+    a = (u8)(R(0x229C) + 0x20 - OF(0x24FA));
     if (a >= 8) return;
     ZP(0x35) = a;
     R(0x229C) = (u8)(R(0x229C) - a);
     R(0x22B0) = 1;
     R(0x22C5) = (u8)(x + 1);
-    O(0x251A, x) = ZP(0x4A);
+    OF(0x251A) = ZP(0x4A);
 }
 
 /* bank 2 $7FD8: the object the player stands on ($22C5, from $7F74)
