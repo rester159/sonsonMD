@@ -1052,7 +1052,10 @@ static void draw_sprites(void)
     /* per-frame invariants of the static-table test below */
     const u8 *spr_line = gfx->spr_line;
     const u16 *spr_lut = gfx->spr_lut;
-    u8 no_static = (u8)(scene_cmap() != 0), intro = (u8)(ss2_pal_intro != 0);
+    /* the intro (ss2_pal_intro): every sprite from its recorded HuCard
+     * cells. The stage's static tables were baked from VRAM after the intro,
+     * when some cells (e.g. $14C: Son Son during the intro) hold other art */
+    u8 no_static = (u8)(scene_cmap() != 0 || ss2_pal_intro), intro = (u8)(ss2_pal_intro != 0);
     u8 hi = ss2_sat_hi, last = 0;
     {
         static u8 m_static = 0xFF, m_intro = 0xFF, m_p13 = 0xFE;
