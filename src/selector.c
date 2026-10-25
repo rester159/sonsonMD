@@ -12,7 +12,7 @@
 
 /* The exact credit string the owner shipped (home.c, owner request 2026-06-12).
  * Kept verbatim -- this is the load-bearing presentation requirement. */
-#define CREDIT_STR  "RESTER159, 2026"
+#define CREDIT_STR  "RESTER159   2026"
 
 #define ROW_ARCADE  18
 #define ROW_HOME    20
@@ -116,8 +116,7 @@ u8 selector_run(void)
 
     draw_center(26, CREDIT_STR, PAL_WHITE);
     VDP_setTextPalette(PAL_WHITE);
-    /* under the credit's end, as with the longer credit (cols 27-30) */
-    VDP_drawTextBG(BG_A, "v1.0", (u16)((COLS - (sizeof CREDIT_STR - 1)) / 2 + (sizeof CREDIT_STR - 1) - 5), 27);
+    VDP_drawTextBG(BG_A, "v1.1", 28, 26);          /* bottom right, on the credit row (row 27 is clipped) */
     edges_rearm();
     draw_choices(sel);
 

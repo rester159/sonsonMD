@@ -6,7 +6,7 @@
  * 6809 globals, no port_present_frame). The two logo splashes reuse the owner's
  * verified kits verbatim (sega_logo.{c,h}, capcom_logo.{c,h}); the selector is
  * a clean native re-creation that keeps the SONSON title look + the exact
- * "RESTER159, 2026" credit string.
+ * "RESTER159   2026" credit string.
  *
  * Boot order (main.c): sega_splash_run() -> capcom_splash_run() ->
  * game_select_run() -> (SONSON) mode = selector_run() -> game_init() + the
