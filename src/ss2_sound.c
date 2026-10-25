@@ -20,8 +20,8 @@
 #include "ss2_sound_seq.h"
 #include "ss2_sound_data.h"
 
-#define K_NTSC 4404020UL     /* (3579545/32) * 2^21 / (7670453/144) */
-#define K_PAL  4444559UL     /* same with the PAL YM clock 7600489 */
+/* K = (3579545/32) * 2^21 / (7670453/144) = 4404020 (NTSC), 4444559 with the
+ * PAL YM clock 7600489: the fnum tables' constants (gen_fnum.py) */
 
 typedef struct
 {
@@ -39,7 +39,6 @@ typedef struct
     u8 pan;
     u8 patch;
     u8 keyed;
-    u16 wper, wword;    /* period the block|fnum word was computed for */
     u16 akey;           /* volume | balance << 8 the attenuation is for */
     u8 amain, aval;     /* ... and main volume; the attenuation */
 } FmCache;
@@ -50,7 +49,8 @@ static FmCache fc[6];
 static u8 noise_on, noise_att;
 static u16 noise_n;
 static u8 ready, pal_phase;
-static u32 kfreq;
+extern const u16 ss2_fnum_ntsc[4096], ss2_fnum_pal[4096];
+static const u16 *fnum_tab = ss2_fnum_ntsc;
 
 static const u8 op_off[4] = { 0, 4, 8, 12 };
 
@@ -208,7 +208,7 @@ static void ym_voice_init(u8 ch)
     ym_key(ch, 0);
     fc[ch].freq = 0xFFFF; fc[ch].att = 0xFF; fc[ch].pan = 0xC0;
     fc[ch].patch = 0xFF; fc[ch].keyed = 0;
-    fc[ch].wper = 0; fc[ch].akey = 0xFFFF;
+    fc[ch].akey = 0xFFFF;
 }
 
 static u8 max_nib(u8 b)
@@ -271,17 +271,9 @@ static void render_fm(u8 ch)
     }
     {
         u16 w;
-        if (v->per != c->wper)
-        {
-            /* a 32-bit division: only when the period changes */
-            u32 q = kfreq / v->per;
-            u16 blk = 0;
-            while (q > 2047 && blk < 7) { q >>= 1; blk++; }
-            if (q > 2047) q = 2047;
-            c->wper = v->per;
-            c->wword = (u16)((blk << 11) | (u16)q);
-        }
-        w = c->wword;
+        /* block|fnum for the 12-bit period: K / per halved into a block,
+         * precomputed (src/ss2_sound_fnum.c, tools/ss2/sound/gen_fnum.py) */
+        w = fnum_tab[v->per];
         if (w != c->freq)
         {
             ym(ch, 0xA4, (u8)(w >> 8));
@@ -360,7 +352,7 @@ void ss2_sound_init(void)
     vsel = 0; vmain = 0;
     chips_silent();
     ss2_snd_seq_reset();
-    kfreq = SYS_isPAL() ? K_PAL : K_NTSC;
+    fnum_tab = SYS_isPAL() ? ss2_fnum_pal : ss2_fnum_ntsc;
     pal_phase = 0;
     ready = 1;
 }
