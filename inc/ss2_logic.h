@@ -108,6 +108,9 @@ void ss2_msg_close(void);                    /* $6C1F                     */
 void ss2_msg_continue(u16 addr, u8 y);       /* $6C12: JMP ($28) after a choice */
 void ss2_hud_text(u16 ptr);                  /* bank 4 $BADE              */
 void ss2_hud_put(u16 a, u16 w);              /* one HUD BAT word          */
+void ss2_bat_put(u8 x, u8 y, u16 w);         /* one BAT word at a world tile */
+extern u8 ss2_shop_screen, ss2_shop_type;    /* shop scene up; shopkeeper type */
+extern u16 ss2_shop_goods;                   /* its goods table ($A666..)   */
 void ss2_weapon_box(void);                   /* bank 0 $FE5A              */
 void ss2_shots_update(void);                 /* bank 9 $D03D (ss2_shots.c) */
 u8   ss2_npc_continue(u16 addr, u8 y);       /* src/ss2_npc.c (1 = handled) */

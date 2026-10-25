@@ -274,6 +274,12 @@ void ss2_message(void)
     ss2_map6(b);
 }
 
+/* a BAT word at world tile (x, y) (full-screen scenes: camera at 0) */
+void ss2_bat_put(u8 x, u8 y, u16 w)
+{
+    bat_op(SS2_BAT_PUT, x, y, w);
+}
+
 /* a single HUD BAT word at absolute BAT address a (e.g. bank 0 $FE95) */
 void ss2_hud_put(u16 a, u16 w)
 {

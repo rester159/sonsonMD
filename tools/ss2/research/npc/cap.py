@@ -35,6 +35,11 @@ pokes = [tuple(int(v, 16) for v in p.split('=')) for p in sys.argv[8:]]
 PRE = int(os.environ.get('PRE', 8))
 SETTLE = int(os.environ.get('SETTLE', 0))
 PROBE = bool(os.environ.get('PROBE'))
+# SHOTS=f1,f2 SHOTDIR=dir: PNG renders of the research model at script frames
+SHOTS = {int(v) for v in os.environ.get('SHOTS', '').split(',') if v}
+SHOTDIR = os.environ.get('SHOTDIR', '.')
+# SAVE=f SAVEPKL=path: pickle the research machine after script frame f
+SAVE = int(os.environ['SAVE']) if os.environ.get('SAVE') else None
 ROMB = open(snapshot.ROM, 'rb').read()
 m = snapshot.stage_start(k)
 pairs, pend, hits = [], [None], []
@@ -144,6 +149,15 @@ f0 = m.frame
 for f in range(frames):
     m.pad = sum(b for a, z, b in ev if a <= f <= z)
     m.run_frame()
+    if SAVE is not None and f == SAVE:
+        import pickle
+        tr_saved, m.cpu.trace = m.cpu.trace, None
+        ovb, m.vblank = m.vblank, ovbl
+        pickle.dump(m, open(os.environ['SAVEPKL'], 'wb'))
+        m.cpu.trace, m.vblank = tr_saved, ovb
+    if SHOTS and f in SHOTS:
+        import render
+        render.render(m).save(os.path.join(SHOTDIR, 'pce-%d.png' % f))
     if PROBE and f % 20 == 19:
         r = m.ram
         cx = (r[0x45] << 8 | r[0x46]); cy = (r[0x48] << 8 | r[0x49])

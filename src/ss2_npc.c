@@ -23,7 +23,8 @@
 #include "ss2_logic.h"
 #include "ss2_task.h"
 
-u8 ss2_shop_screen;
+u8 ss2_shop_screen, ss2_shop_type;
+u16 ss2_shop_goods;
 
 static u8 npc_bank;                          /* $8E pushed at $999B */
 
@@ -151,11 +152,35 @@ static u16 goods(void)
     return p;
 }
 
-/* $A5FA: the four prices drawn (presentation) */
+/* $A5FA: the four prices: digits 3-7 of each price, leading zeros
+ * skipped, from the BAT address in $A863 (PCE tile $1B0+d, palette 15) */
 static void draw_prices(void)
 {
-    goods();
+    u16 g = goods();
+    u8 i;
+    for (i = 0; i < 4; i++)
+    {
+        u16 a = (u16)(ss2_rom_byte((u16)(0xA863 + i * 2)) | (ss2_rom_byte((u16)(0xA864 + i * 2)) << 8));
+        u16 p = (u16)(ss2_rom_byte((u16)(g + i * 4 + 2)) | (ss2_rom_byte((u16)(g + i * 4 + 3)) << 8));
+        u8 y = 3, x = (u8)(a & 63);
+        while (y < 8 && !ss2_rom_byte((u16)(p + y))) y++;
+        for (; y < 8; y++, x++)
+            ss2_bat_put(x, (u8)(a >> 6), (u16)(0xF1B0 + ss2_rom_byte((u16)(p + y))));
+    }
     vdc();
+}
+
+/* $9F89: an item of kind 0 (the staff) shows the next staff level */
+static void staff_digit(void)
+{
+    u16 g = goods();
+    u8 i;
+    for (i = 0; i < 4; i++)
+        if (!ss2_rom_byte((u16)(g + i * 4 + 1)))
+        {
+            ss2_bat_put(0x05, 0x17, (u16)(0xF1B0 + (u8)(ss2_rom_byte((u16)(0x4CA4 + Z_STAGE)) + 1)));
+            return;
+        }
 }
 
 /* $A43E: enough money for the price at ($2A)? Else PLA PLA, "not enough"
@@ -346,8 +371,11 @@ static void shop(void)
     s = O(0x281A, x);
     O(0x2B5A, s) = 0;
     O(0x2C1A, s) = 0xE1;
-    /* $9EF0-$9FA9: shopkeeper sprite and goods icons (presentation) */
-    goods();
+    /* $9EF0-$9FA9: shopkeeper sprite and goods icons (renderer, from
+     * ss2_shop_type / ss2_shop_goods) */
+    ss2_shop_type = O(0x297A, x);
+    ss2_shop_goods = goods();
+    staff_digit();
     draw_prices();                           /* $A5FA */
     ss2_sfx(0x01);                           /* shop music */
     ss2_fade_in_alt();                       /* $71F4 */

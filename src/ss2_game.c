@@ -168,9 +168,38 @@ static void sat_banks(void)
                 ss2_map6(O(0x275A, x));
 }
 
+/* the shop scene's sprites (bank 3 $9EF0-$9F87, bank 4 $A514-$A5F9):
+ * shopkeeper, the four goods icons and the cursor's four corners */
+static void build_shop_sat(void)
+{
+    u16 b = (u16)((R(0x2D9C) << 8) | R(0x2D9D)), g = ss2_shop_goods, cy, cx, cp;
+    u8 i, t = ss2_shop_type;
+    sat_i = 0;
+    sat_put(0x0098, 0x0060, (u16)(((R(0x2DB6) << 8) | R(0x2DB7)) + (u8)(t << 3)),
+            (u16)(0x1100 | ss2_rom_byte((u16)(0xA842 + t))));
+    for (i = 0; i < 4; i++)
+    {
+        u16 a = (u16)(0xA853 + i * 4);
+        sat_put((u16)(ss2_rom_byte(a) | (ss2_rom_byte((u16)(a + 1)) << 8)),
+                (u16)(ss2_rom_byte((u16)(a + 2)) | (ss2_rom_byte((u16)(a + 3)) << 8)),
+                (u16)(b + ss2_rom_byte((u16)(g + i * 4))),
+                ss2_rom_byte((u16)(0xA845 + ss2_rom_byte((u16)(g + i * 4 + 1)))));
+    }
+    i = (u8)(ZP(0xB9) << 2);
+    cy = (u16)(ss2_rom_byte((u16)(0xA86B + i)) | (ss2_rom_byte((u16)(0xA86C + i)) << 8));
+    cx = (u16)(ss2_rom_byte((u16)(0xA86D + i)) | (ss2_rom_byte((u16)(0xA86E + i)) << 8));
+    cp = (u16)(b + 0x3A);
+    sat_put(cy, cx, cp, 0x0086);
+    sat_put(cy, (u16)(cx + 0x10), cp, 0x0886);
+    sat_put((u16)(cy + 0x10), cx, cp, 0x8086);
+    sat_put((u16)(cy + 0x10), (u16)(cx + 0x10), cp, 0x8886);
+    while (sat_i < 64) sat_put(0, 0, 0, 0);
+}
+
 static void build_sat(void)
 {
     u8 x, bank = ZP(0x8E);
+    if (ss2_shop_screen) { build_shop_sat(); return; }
     /* entry 0: staff spark */
     sat_i = 0;
     if (R(0x2455))
@@ -193,6 +222,26 @@ static void build_sat(void)
                     (u16)((u16)(P_XL + ((R(0x23E2 + x) << 8) | R(0x23E7 + x))) + 0x20),
                     (u16)((R(0x240A + x) << 8) | R(0x240F + x)),
                     (u16)((R(0x2400 + x) << 8) | R(0x2405 + x)));
+    }
+    /* entry 1: the cloud ($87BA-$8815; left as it was while $23C5 = 0) */
+    if (R(0x23C5))
+    {
+        sat_i = 1;
+        sat_put((u16)(((R(0x23C9) << 8) | R(0x23CA)) + 0x40), (u16)(((R(0x23C6) << 8) | R(0x23C7)) + 0x20),
+                (u16)((R(0x23CE) << 8) | R(0x23CF)), (u16)((R(0x23CC) << 8) | R(0x23CD)));
+    }
+    /* entries 7-13: shot slots ($D03D at $101C + 4x; while paused only the
+     * shield slots 4-6 are refreshed) */
+    for (x = ZP(0x6B) ? 4 : 0; x < 7; x++)
+    {
+        sat_i = (u8)(7 + x);
+        if (R(0x22E5 + x))
+            sat_put((u16)(((R(0x2301 + x) << 8) | R(0x2308 + x)) + 0x40),
+                    (u16)(((R(0x22EC + x) << 8) | R(0x22F3 + x)) + 0x20),
+                    (u16)((R(0x2324 + x) << 8) | R(0x232B + x)),
+                    (u16)((R(0x2316 + x) << 8) | R(0x231D + x)));
+        else
+            sat_put(0, 0, 0, 0);
     }
     /* entries 16+: front objects, player, rear objects */
     sat_i = 16;

@@ -13,6 +13,7 @@
 #include <genesis.h>
 #include "ss2.h"
 #include "ss2_data.h"
+#include "ss2_shop_data.h"
 #include "ss2_ram.h"
 #include "ss2_logic.h"
 #include "ss2_sound.h"
@@ -141,6 +142,8 @@ static u16 bat_key(u16 w)
 static u16 bat_word(u16 w)
 {
     u16 k;
+    if (ss2_shop_screen && w >= 0xF1B0 && w <= 0xF1B9)      /* shop price digits */
+        return (u16)(ss2_shop_digit[w - 0xF1B0] + BG_TILE);
     if (w >= 0x1180 && w < 0x1180 + NGLYPH)
     {
         k = (u16)(w - 0x1180);
@@ -227,6 +230,7 @@ static void bat_drain(void)
  * faded ranges). */
 static u16 hud_keep[2];
 static u8 shown_bg, shown_sp;
+static u8 shop_shown;                       /* shop scene drawn (shop_scene) */
 static u16 fade_pal[64];
 
 static void hud_mark(u16 w)
@@ -280,13 +284,36 @@ static void apply_fade(void)
     shown_c100 = c100;
     for (i = 0; i < 64; i++)
     {
-        u16 w = gfx->palette[i];
+        u16 w = (i < 32 && shop_shown) ? ss2_shop_palette[i] : gfx->palette[i];
         if (i < 32) w = (cr & 0x80) ? fade_colour(w, shown_bg) : c100;
         else if (!(hud_keep[(i >> 4) - 2] & (1 << (i & 15)))) w = fade_colour(w, shown_sp);
         fade_pal[i] = w;
     }
     if (!(cr & 0x80)) fade_pal[0] = c100;           /* backdrop */
     PAL_setColors(0, fade_pal, 64, DMA_QUEUE);
+}
+
+/* ---- the shop scene (bank 3 $9E7B): its picture replaces the stage BG
+ * (tiles and CRAM lines 0-1) while ss2_shop_screen is set; the camera is
+ * at 0, so world tiles are the PCE BAT cells (tools/ss2/gen_shop.py) */
+static void shop_scene(void)
+{
+    u16 r, c;
+    if (ss2_shop_screen == shop_shown) return;
+    shop_shown = ss2_shop_screen;
+    if (shop_shown)
+    {
+        VDP_loadTileData(ss2_shop_tiles, BG_TILE, SS2_SHOP_NTILES, CPU);
+        for (r = 0; r < SS2_SHOP_ROWS; r++)
+        {
+            for (c = 0; c < 32; c++)
+                linebuf[c] = (u16)(ss2_shop_map[r * 32 + c] + BG_TILE);
+            VDP_setTileMapDataRow(BG_A, linebuf, (u16)((SS2_SHOP_ROW0 + r) & 31), 0, 32, CPU);
+        }
+    }
+    else
+        VDP_loadTileData(gfx->bg_tiles, BG_TILE, gfx->bg_ntiles, CPU);
+    shown_bg = 0xFF;                            /* palette lines 0-1 change */
 }
 
 static void video_init(void)
@@ -311,6 +338,8 @@ static void video_init(void)
     shown_bg = shown_sp = 7;
     shown_cr = 0xC0;
     shown_c100 = 0;
+    shop_shown = 0;
+    ss2_shop_screen = 0;
     ss2_fade_bg = ss2_fade_sp = 7;
     VDP_loadTileData(gfx->bg_tiles, BG_TILE, gfx->bg_ntiles, CPU);
     VDP_loadTileData(gfx->hud_tiles, HUD_TILE, gfx->hud_ntiles, CPU);
@@ -507,17 +536,18 @@ static void draw_sprites(void)
         {
             u16 c = (u16)(cell + r * 2), t;
             s16 y;
-            if (key >= 16 || cell_dirty((u16)(c & 0x1FE)))
-            {
-                t = cache_tile((u16)(c & 0x1FE), key, &line);
-                if (!t) { ss2_sprite_misses++; continue; }
-            }
+            u16 cc = (u16)(c & 0x3FE);
+            line = gfx->spr_line[pal];
+            t = (cc >= 0x200 || key >= 16 || cell_dirty(cc)) ? 0 : gfx->spr_lut[pal * 256 + (cc >> 1)];
+            if (t && line <= 3)
+                t = (u16)(SPR_TILE + t - 1);
             else
             {
-                line = gfx->spr_line[pal];
-                t = gfx->spr_lut[pal * 256 + (c >> 1)];
-                if (!t || line > 3) { ss2_sprite_misses++; continue; }
-                t = (u16)(SPR_TILE + t - 1);
+                /* reloaded cells, interior palettes, and cells the static
+                 * tables never saw (magic, shop): convert from the HuCard */
+                if (cc >= 0x200 || !ss2_cell_bank[cc]) { ss2_sprite_misses++; continue; }
+                t = cache_tile(cc, key, &line);
+                if (!t) { ss2_sprite_misses++; continue; }
             }
             y = (s16)(sy + ((attr & 0x8000) ? (ch - 1 - r) : r) * 16);
             if (cw == 2)
@@ -686,6 +716,53 @@ static void load_bootstrap(void)
     ss2_page[6] = ss2_banks[9];
 }
 
+#ifdef SS2_DBG_NPC_X
+/* diagnostic builds: research/npc/cap.py's two-phase warp to a townsperson
+ * record (SS2_DBG_NPC_X/Y, world px): the camera first puts it just past the
+ * right edge so it spawns, 8 frames later the player is placed at
+ * SS2_DBG_P2X/Y (world px) and live objects keep their world places */
+static void dbg_camera(u16 cx, u16 cy)
+{
+    u8 i;
+    ZP(0x45) = (u8)(cx >> 8); ZP(0x46) = (u8)cx; ZP(0x47) = 0;
+    ZP(0x48) = (u8)(cy >> 8); ZP(0x49) = (u8)cy; ZP(0x4A) = 0;
+    for (i = 0; i < 6; i++) ZP(0x4B + i) = ZP(0x45 + i);
+    R(0x2298) = 0; R(0x2299) = 0x80; R(0x229A) = 0;
+    R(0x229B) = 0; R(0x229C) = 0xA0; R(0x229D) = 0;
+    R(0x22A2) = R(0x22A3) = R(0x22A4) = R(0x22A5) = 0;
+}
+
+static void dbg_npc_phase1(void)
+{
+    u8 x;
+    for (x = 0; x < 0x20; x++)
+        if (O(0x245A, x))
+        {
+            u8 s = O(0x281A, x);
+            if (s != 0xBF && R(0x2B5A + s) && R(0x2B5A + s) != 0xFF) R(0x2B5A + s)--;
+            O(0x245A, x) = 0;
+        }
+    dbg_camera((u16)((SS2_DBG_NPC_X - 0x120) & 0x7FF), (u16)((SS2_DBG_NPC_Y - 0xA0) & 0x7FF));
+}
+
+static void dbg_npc_phase2(void)
+{
+    u16 ocx = (u16)((ZP(0x45) << 8) | ZP(0x46)), ocy = (u16)((ZP(0x48) << 8) | ZP(0x49));
+    u16 cx = (u16)((SS2_DBG_P2X - 0x80) & 0x7FF), cy = (u16)((SS2_DBG_P2Y - 0xA0) & 0x7FF);
+    s16 dx = (s16)(((cx - ocx + 0x400) & 0x7FF) - 0x400), dy = (s16)(((cy - ocy + 0x400) & 0x7FF) - 0x400);
+    u8 x;
+    for (x = 0; x < 0x20; x++)
+        if (O(0x245A, x))
+        {
+            u16 v = (u16)(((O(0x247A, x) << 8) | O(0x249A, x)) - dx);
+            O(0x247A, x) = (u8)(v >> 8); O(0x249A, x) = (u8)v;
+            v = (u16)(((O(0x24DA, x) << 8) | O(0x24FA, x)) - dy);
+            O(0x24DA, x) = (u8)(v >> 8); O(0x24FA, x) = (u8)v;
+        }
+    dbg_camera(cx, cy);
+}
+#endif
+
 void ss2_run(void)
 {
 #ifdef SS2_DBG_STAGE
@@ -712,6 +789,24 @@ void ss2_run_stage(u8 k)
     memcpy(def_bank, ss2_cell_bank, sizeof def_bank);
     memcpy(def_src, ss2_cell_src, sizeof def_src);
     load_bootstrap();
+#ifdef SS2_DBG_NPC_X
+    dbg_npc_phase1();
+#endif
+#ifdef SS2_DBG_MAGIC
+    /* diagnostic builds: every magic owned, full magic, magic SS2_DBG_MAGIC
+     * selected (1 fireball, 2 freeze, 3 pillar, 4 shield, 5 sweep) */
+    R(0x22BF) = 0x3F;
+    R(0x22BC) = 0x18;
+    P_MAGIC = 0x18;
+    R(0x22BD) = 0x18;
+    R(0x22C0) = SS2_DBG_MAGIC;
+#endif
+#ifdef SS2_DBG_KEY
+    R(0x22C1) |= 0x01;                      /* the boss-door key */
+#endif
+#ifdef SS2_DBG_CLOUD
+    P_CLOUDREQ = 0x08;                      /* the cloud the stage-2 boss gives */
+#endif
 #ifdef SS2_DBG_WX
     /* diagnostic builds (-D SS2_DBG_WX=.. -D SS2_DBG_WY=..): start with the
      * player at a world position, objects cleared (capture_vbl.py's
@@ -779,14 +874,21 @@ void ss2_run_stage(u8 k)
 #endif
         if ((pad & (BUTTON_START | BUTTON_A)) == (BUTTON_START | BUTTON_A))
             break;                              /* RUN+SELECT: the PCE reset combo */
+#ifdef SS2_DBG_NPC_X
+        {
+            static u16 dbg_n;
+            if (++dbg_n == 9) dbg_npc_phase2();
+        }
+#endif
         ss2_game_vblank(pce_pad(pad));
         PROF(0);
         sound_irq();
         PROF(0);
         ss2_game_frame();
         camera_from_state();
+        shop_scene();
         if (ss2_redraw_request) { ss2_redraw_request = 0; redraw_view(); }   /* $EBE1 */
-        else stream_view();
+        else if (!shop_shown) stream_view();
         bat_drain();
         apply_scroll();
         apply_fade();
