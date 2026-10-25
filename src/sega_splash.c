@@ -88,6 +88,11 @@ void sega_splash_run(void)
     SND_PCM_stopPlay();
     SND_PCM_unloadDriver();
     YM2612_reset();
+    /* SGDK's PCM unload does nothing: the driver would keep running (idle,
+     * reading its null sample through the 68k bus) and the CAPCOM stage would
+     * halt it mid-stream when it takes the Z80 bus. Put the Z80 in SGDK's
+     * idle driver first (real-hardware boot: Genesis Model 3 report). */
+    Z80_init();
     VDP_clearPlane(BG_A, TRUE);
     VDP_clearPlane(BG_B, TRUE);
 }

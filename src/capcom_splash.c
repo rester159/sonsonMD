@@ -28,6 +28,15 @@
 /* palette_black is provided by SGDK (pal.h) -- a const pointer to 16 zero
  * color words = a fully black palette line. */
 
+/* -D BOOT_DIAG: the backdrop colour marks each step, so a hang on real
+ * hardware shows where it stopped (red: Z80 bus request, yellow: YM setup,
+ * green: logo upload, grey: frame loop, magenta: YM reset, cyan: Z80 init) */
+#ifdef BOOT_DIAG
+#define DIAG(c) PAL_setColor(0, (c))
+#else
+#define DIAG(c)
+#endif
+
 void capcom_splash_run(void)
 {
     if (g_splash_skipped) return;      /* START pressed during the SEGA splash */
@@ -39,14 +48,19 @@ void capcom_splash_run(void)
     PAL_setColors(0, palette_black, 16, CPU);
     VDP_setBackgroundColor(0);
 
+    DIAG(0x00E);
     Z80_requestBus(TRUE);              /* REQUIRED for 68k->YM (kit README) */
+    DIAG(0x0EE);
     capcom_intro_reset();              /* YM patch snapshot + t=0 palette   */
     PAL_setColors(0, capcom_logo_cram, 16, CPU);
+    DIAG(0x0E0);
     capcom_logo_draw(TILE_USER_INDEX, 14, 12);   /* centered on H40        */
+    DIAG(0x444);
 
     while (capcom_intro_step()) {      /* jingle + fade-in/glint/fade-out  */
         VDP_waitVSync();
         PAL_setColors(0, capcom_logo_cram, 16, CPU);
+        DIAG(0x444);
         if (splash_skip_check()) break;    /* START: skip the rest           */
     }
 
@@ -57,8 +71,10 @@ void capcom_splash_run(void)
      * stalls against that bad state (measured: in-game service ratio collapsed
      * to a flat 0.46). Z80_init() resets the Z80 to SGDK's clean boot/halt
      * state so the per-frame handshake is instant again. */
+    DIAG(0xE0E);
     YM2612_reset();
     Z80_releaseBus();
+    DIAG(0xEE0);
     Z80_init();
     PAL_setColors(0, palette_black, 16, CPU);
     VDP_clearPlane(BG_A, TRUE);

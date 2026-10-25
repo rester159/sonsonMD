@@ -351,6 +351,21 @@ static const u8 jingle_ev[3824] = {
 #define JINGLE_N 956
 
 u16 capcom_logo_cram[16];
+
+/* YM2612 register write with a bounded busy wait (the 68k owns the Z80 bus
+ * here): SGDK's register write spins on the busy flag without a limit, so
+ * a chip that never reports ready would hang the boot on a black screen.
+ * ~1000 polls is far beyond any real busy period (a few dozen cycles). */
+static void ym_write(u16 part, u8 reg, u8 val)
+{
+    vs8 *pb = (s8 *) YM2612_BASEPORT;
+    u16 port = (u16)((part << 1) & 2), n = 1000;
+    while (*pb < 0 && --n) { }
+    pb[port + 0] = (s8)reg;
+    __asm__ volatile ("nop");
+    pb[port + 1] = (s8)val;
+    __asm__ volatile ("nop\n\tnop\n\tnop\n\tnop\n\tnop");
+}
 static u16 seq_t;
 static u16 ev_i;
 
@@ -381,7 +396,7 @@ void capcom_intro_reset(void)
     seq_t = 0; ev_i = 0;
     /* restore the original driver's YM state (instrument patches etc.) */
     for (u16 i = 0; i < SETUP_N; i++)
-        YM2612_writeReg(jingle_setup[i*3], jingle_setup[i*3 + 1],
+        ym_write(jingle_setup[i*3], jingle_setup[i*3 + 1],
                         jingle_setup[i*3 + 2]);
 }
 
@@ -390,7 +405,7 @@ u16 capcom_intro_step(void)
     seq_t++;
     /* jingle: write this frame's FM events */
     while (ev_i < JINGLE_N && jingle_ev[ev_i * 4] == seq_t - 1) {
-        YM2612_writeReg(jingle_ev[ev_i*4 + 1], jingle_ev[ev_i*4 + 2],
+        ym_write(jingle_ev[ev_i*4 + 1], jingle_ev[ev_i*4 + 2],
                         jingle_ev[ev_i*4 + 3]);
         ev_i++;
     }
