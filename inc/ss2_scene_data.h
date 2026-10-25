@@ -3,7 +3,8 @@
 #define SS2_SCENE_DATA_H
 #include <genesis.h>
 
-/* a picture scene: tiles keyed by BAT word, CRAM lines 0-1 */
+/* a picture scene: tiles keyed by BAT word, CRAM lines 0-1; optionally its
+ * own sprite lines (CRAM 2-3) and sprite colour map */
 typedef struct
 {
     const u16 *palette;         /* 32 words */
@@ -11,9 +12,15 @@ typedef struct
     const u32 *tiles;
     const u8 *line;             /* CRAM line 0/1 per key */
     u16 nkeys;
+    const u16 *spr_palette;     /* 32 words or 0 (the stage's) */
+    const u8 *cmap;             /* sprite palette, colour -> (line-2) << 7 | index, or 0 */
 } Ss2SceneBg;
 
 #define SS2_SCENE_BG_FIRST 2    /* ss2_scene_bg[id - 2] */
 extern const Ss2SceneBg ss2_scene_bg[2];
+
+/* the ending credits font (VRAM $1C0-$1DF, palette 5) at rest */
+extern const u32 ss2_end_font[32 * 8];
+extern const u8 ss2_end_font_line;
 
 #endif

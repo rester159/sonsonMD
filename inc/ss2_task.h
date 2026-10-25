@@ -12,6 +12,8 @@ void ss2_task_exit(void);                       /* $E212 */
 void ss2_busy(u8 frames);                       /* CPU-bound across VBlanks */
 void ss2_task_restart(ss2_task_fn fn);          /* LDX #$xx / TXS restarts */
 u8   ss2_task_current(void);
+void ss2_tasks_alloc(void);                     /* stacks: while SS2 runs */
+void ss2_tasks_free(void);
 
 void ss2_sched_vblank(void);                    /* $E14B countdown (IRQ) */
 void ss2_sched_run(void);                       /* $E1A5 idle loop       */
