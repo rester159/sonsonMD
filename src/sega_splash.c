@@ -24,6 +24,26 @@
 #include "sega_logo_shinobi.h"             /* the Shinobi SEGA screen (visual)   */
 #include "sega_logo.h"                     /* sega_chant_pcm only (audio)        */
 
+/* START skips the boot splashes (both, from the SEGA one). A press must be
+ * seen on 3 consecutive reads, and the first 8 splash frames are
+ * ignored: the selectors' guard against the 6-button TH-detect phantom
+ * presses. Called once per splash frame (the engine is off: we read pads). */
+bool g_splash_skipped;
+
+bool splash_skip_check(void)
+{
+    static u16 frames;
+    static u8 held;
+    JOY_update();
+    if (frames < 8) { frames++; return FALSE; }
+    if ((JOY_readJoypad(JOY_1) | JOY_readJoypad(JOY_2)) & BUTTON_START)
+    {
+        if (++held >= 3) g_splash_skipped = TRUE;
+    }
+    else held = 0;
+    return g_splash_skipped;
+}
+
 void sega_splash_run(void)
 {
     u16 i;
@@ -57,6 +77,7 @@ void sega_splash_run(void)
         VDP_waitVSync();
         if (shinobi_palroll_step())        /* TRUE every 4th frame -> push CRAM  */
             PAL_setColors(0, shinobi_logo_cram, 16, CPU);
+        if (splash_skip_check()) break;    /* START: skip the intro            */
     }
 
     /* Cut to black + teardown: leave the VDP + sound hardware pristine for the

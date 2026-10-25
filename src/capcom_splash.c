@@ -30,6 +30,8 @@
 
 void capcom_splash_run(void)
 {
+    if (g_splash_skipped) return;      /* START pressed during the SEGA splash */
+
     /* Stage dark before drawing (same anti-flash discipline as the SEGA
      * splash): the kit's reset() leaves capcom_logo_cram at the black pre-fade
      * state, but zero line 0 first so the tile upload is invisible even for a
@@ -45,6 +47,7 @@ void capcom_splash_run(void)
     while (capcom_intro_step()) {      /* jingle + fade-in/glint/fade-out  */
         VDP_waitVSync();
         PAL_setColors(0, capcom_logo_cram, 16, CPU);
+        if (splash_skip_check()) break;    /* START: skip the rest           */
     }
 
     /* teardown: silence + black, leave the VDP pristine for game_init.

@@ -40,6 +40,11 @@ void sega_splash_run(void);
  * clean halt state. */
 void capcom_splash_run(void);
 
+/* START skips the boot splashes (sega_splash.c): polled once per splash
+ * frame; g_splash_skipped stays set once skipped */
+extern bool g_splash_skipped;
+bool splash_skip_check(void);
+
 /* SELECT GAME screen: the SONSON and SON SON II logos side by side (same
  * size), arcade-font "SELECT GAME" header. Blocks until the player picks;
  * returns GAME_SONSON or GAME_SONSON2. */
