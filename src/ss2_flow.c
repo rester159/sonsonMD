@@ -198,7 +198,7 @@ static u8 title_menu(void)
 
 static void options_screen(void)
 {
-    u8 sel = 0, track = 0;
+    u8 sel = 0, track = 0, lang = ss2_language;   /* sel: 0 MUSIC, 1 LANGUAGE, 2 EXIT */
     menu_blank_rows();
     menu_text(10, 0x14, "OPTIONS", 7);
     for (;;)
@@ -216,15 +216,24 @@ static void options_screen(void)
         while (*n && i < 23) buf[i++] = *n++;
         buf[i] = 0;
         menu_text(4, 0x17, buf, 24);
-        menu_text(4, 0x19, sel ? "/ EXIT" : "  EXIT", 6);
+        menu_text(4, 0x19, sel == 1 ? "/ LANGUAGE " : "  LANGUAGE ", 11);
+        menu_text(15, 0x19, lang == SS2_LANG_JAPANESE ? "JAPANESE" : "ENGLISH", 8);
+        menu_text(4, 0x1B, sel == 2 ? "/ EXIT" : "  EXIT", 6);
         do ss2_wait(1); while (!Z_PRESS);
-        if (pressed(0x50)) sel ^= 1;                 /* Up / Down */
+        if (pressed(0x10)) sel = (u8)(sel ? sel - 1 : 2);            /* Up */
+        if (pressed(0x40)) sel = (u8)(sel == 2 ? 0 : sel + 1);       /* Down */
+        if (sel == 1 && pressed(0xA3)) lang ^= 1;                    /* Left, Right, B, C */
         if (!sel && pressed(0x20)) track = (u8)(track == 0x14 ? 0 : track + 1);   /* Right */
         if (!sel && pressed(0x80)) track = (u8)(track ? track - 1 : 0x14);        /* Left */
         if (!sel && pressed(0x03)) { ss2_sfx(0xF0); ss2_sfx(track); }             /* B, C: play */
         if (!sel && pressed(0x04)) ss2_sfx(0xF0);                                 /* A: stop */
-        if ((sel && pressed(0x0B)) || (!sel && pressed(0x08)))                    /* leave */
+        if ((sel == 2 && pressed(0x0B)) || (sel != 2 && pressed(0x08)))          /* leave */
             break;
+    }
+    if (lang != ss2_language)
+    {
+        ss2_language = lang;
+        ss2_options_save();                  /* cartridge SRAM */
     }
     ss2_sfx(0xF0);
     menu_blank_rows();

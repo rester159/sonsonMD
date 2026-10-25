@@ -981,6 +981,7 @@ void ss2_run(void)
     ss2_sound_init();
     ss2_scene = SS2_SCENE_PLAY;
     ss2_stage_request = 0;
+    ss2_options_load();
     ss2_power_on();
     video_init();
     camera_from_state();

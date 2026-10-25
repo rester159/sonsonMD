@@ -150,7 +150,24 @@ int main(int argc, char **argv)
     fclose(f);
     struct Game g = { argv[2], data, (size_t)n, NULL };
     if (!retro_load_game(&g)) return 3;
+    FN(size_t, retro_get_memory_size, (unsigned));
+    if (getenv("SS2_SRAM"))
+    {
+        /* cartridge SRAM (RETRO_MEMORY_SAVE_RAM): loaded before the first
+         * frame, written back at the end, like a frontend's .srm */
+        FILE *sf = fopen(getenv("SS2_SRAM"), "rb");
+        u8 *sram = (u8 *)retro_get_memory_data(0);
+        if (sf && sram) { fread(sram, 1, retro_get_memory_size(0), sf); }
+        if (sf) fclose(sf);
+    }
     for (frame = 0; frame < frames; frame++) retro_run();
+    if (getenv("SS2_SRAM"))
+    {
+        FILE *sf = fopen(getenv("SS2_SRAM"), "wb");
+        u8 *sram = (u8 *)retro_get_memory_data(0);
+        if (sf && sram) fwrite(sram, 1, retro_get_memory_size(0), sf);
+        if (sf) fclose(sf);
+    }
     if (getenv("SS2_RAMDUMP"))
     {
         /* 68000 work RAM (64 KiB, byte-swapped words in this core) */

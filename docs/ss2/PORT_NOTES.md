@@ -166,7 +166,7 @@ runs after each link; keep load and store separate (empty asm barrier).
 | Item kind 11 (`$81A6`) | wired to the shots system's `$D86A` |
 | Pause magic select `$FE0C`, weapon box `$FE5A`, freeze flash `$EDB7`, sweep BG `$EDA0` | ported (shots traces m2 exact) |
 | Power-on, title, attract demo, intro, new game, stage start (`src/ss2_flow.c`) | exact on power-on traces (`capture_boot.py`): title->Start->intro->stage 1 1672/1699, title->demo->title 7466/7499 (the rest: CPU-bound loads' in-progress bytes, map streamer `$8E`) |
-| Genesis additions | "PUSH START BUTTON"; after START a GAME START / OPTIONS menu; OPTIONS has a music selector (`$00`-`$14`) and EXIT; the title does not roll into the demo while the menu is up |
+| Genesis additions | "PUSH START BUTTON"; after START a GAME START / OPTIONS menu; OPTIONS has a music selector (`$00`-`$14`) and EXIT; the title does not roll into the demo while the menu is up; OPTIONS LANGUAGE (ENGLISH/JAPANESE) saved in cartridge SRAM at `$400` (`src/ss2_options.c`: "S2", version, language, check byte; SonSon's slots are `$000-$3FF`), verified across a headless power cycle (`SS2_SRAM=file.srm shot.py ...`). Japanese text needs the unpatched HuCard (pending) |
 | Stage clear (`$F617`: bonus tally, next stage) | injected trace (`capture_inject.py`, task 0 = `$F617`) 1087/1099 exact; on target: tally, score, stage 2 loads |
 | Death `$F884`: game over (no charm), continue (charm `$22C1` bit 2: revive picture `$7ADE`/`$FBB1`, goddess messages, YES/NO) | injected traces: game over 494/499, continue 1085/1099 (the rest: `$71F4` palette step in progress, object-list order for a few frames after the stage restart); on target: both message chains, title return, revive into the stage |
 | Ending | in progress |

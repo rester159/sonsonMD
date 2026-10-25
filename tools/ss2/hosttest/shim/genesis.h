@@ -11,4 +11,11 @@ typedef volatile uint8_t vu8; typedef volatile uint16_t vu16; typedef volatile u
 #define FALSE 0
 #endif
 typedef u8 bool_;
+/* cartridge SRAM: blank (as a fresh cartridge) in host runs */
+static u8 host_sram[0x8000];
+static inline void SRAM_enable(void) {}
+static inline void SRAM_enableRO(void) {}
+static inline void SRAM_disable(void) {}
+static inline u8 SRAM_readByte(u32 a) { return host_sram[a & 0x7FFF]; }
+static inline void SRAM_writeByte(u32 a, u8 v) { host_sram[a & 0x7FFF] = v; }
 #endif

@@ -113,6 +113,13 @@ void ss2_death_task(void);                   /* slot 0 $F884: miss/demo end */
 void ss2_stage_clear_start(void);            /* task 0 = $F617             */
 void ss2_ending_task(void);                  /* slot 0 bank 4 $AD5A (ss2_ending.c) */
 void ss2_title_return(void);                 /* slot 0 $FB97: back to the title */
+
+/* settings in cartridge SRAM (src/ss2_options.c, Genesis addition) */
+#define SS2_LANG_ENGLISH  0
+#define SS2_LANG_JAPANESE 1
+extern u8 ss2_language;
+void ss2_options_load(void);
+void ss2_options_save(void);
 enum { SS2_SCENE_CONTINUE = 2, SS2_SCENE_ENDING = 3 };   /* more ss2_scene values */
 extern u8 ss2_scene;                         /* SS2_SCENE_* for the renderer */
 extern u8 ss2_pal_intro;                     /* intro sprite palettes 8-15 */
