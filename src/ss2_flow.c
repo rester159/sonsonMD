@@ -188,7 +188,7 @@ static u8 title_menu(void)
         menu_text(9, 0x16, sel ? "/ OPTIONS" : "  OPTIONS", 12);
         do ss2_wait(1); while (!Z_PRESS);
         if (pressed(0x50)) sel ^= 1;                 /* Up / Down */
-        if (pressed(0x0B))                           /* START, I, II */
+        if (pressed(0x0B))                           /* START, A, B */
         {
             if (!sel) return 1;
             return 0;
@@ -222,11 +222,11 @@ static void options_screen(void)
         do ss2_wait(1); while (!Z_PRESS);
         if (pressed(0x10)) sel = (u8)(sel ? sel - 1 : 2);            /* Up */
         if (pressed(0x40)) sel = (u8)(sel == 2 ? 0 : sel + 1);       /* Down */
-        if (sel == 1 && pressed(0xA3)) lang ^= 1;                    /* Left, Right, B, C */
+        if (sel == 1 && pressed(0xA3)) lang ^= 1;                    /* Left, Right, A, B */
         if (!sel && pressed(0x20)) track = (u8)(track == 0x14 ? 0 : track + 1);   /* Right */
         if (!sel && pressed(0x80)) track = (u8)(track ? track - 1 : 0x14);        /* Left */
-        if (!sel && pressed(0x03)) { ss2_sfx(0xF0); ss2_sfx(track); }             /* B, C: play */
-        if (!sel && pressed(0x04)) ss2_sfx(0xF0);                                 /* A: stop */
+        if (!sel && pressed(0x03)) { ss2_sfx(0xF0); ss2_sfx(track); }             /* A, B: play */
+        if (!sel && pressed(0x04)) ss2_sfx(0xF0);                                 /* C: stop */
         if ((sel == 2 && pressed(0x0B)) || (sel != 2 && pressed(0x08)))          /* leave */
             break;
     }

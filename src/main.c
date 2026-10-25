@@ -71,7 +71,7 @@ int main(bool hardReset)
          * SON SON II runs its port and comes back here when it ends. */
         if (game_select_run() == GAME_SONSON2)
         {
-            ss2_run();                    /* returns on START+A */
+            ss2_run();                    /* returns on START+C */
             continue;                     /* loop top restores H40 */
         }
 

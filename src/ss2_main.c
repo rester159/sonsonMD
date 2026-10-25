@@ -799,7 +799,8 @@ static void draw_hud(u8 all)
 }
 
 /* Genesis pad -> PCE $16 layout (L D R U Run Sel II I):
- * C = I (jump), B = II (attack), A = SELECT, START = RUN */
+ * START = RUN, C = SELECT, A = II (attack), B = I (jump): the PCE pad's
+ * II I order left to right on A B */
 static u8 pce_pad(u16 p)
 {
     u8 v = 0;
@@ -808,9 +809,9 @@ static u8 pce_pad(u16 p)
     if (p & BUTTON_RIGHT) v |= 0x20;
     if (p & BUTTON_UP) v |= 0x10;
     if (p & BUTTON_START) v |= 0x08;
-    if (p & BUTTON_A) v |= 0x04;
-    if (p & BUTTON_B) v |= 0x02;
-    if (p & BUTTON_C) v |= 0x01;
+    if (p & BUTTON_C) v |= 0x04;
+    if (p & BUTTON_A) v |= 0x02;
+    if (p & BUTTON_B) v |= 0x01;
     return v;
 }
 
@@ -1064,7 +1065,7 @@ void ss2_run_stage(u8 k)
     run_loop();
 }
 
-/* the frame loop: VBlank, sound, logic, presentation; START+A leaves */
+/* the frame loop: VBlank, sound, logic, presentation; START+C leaves */
 static void run_loop(void)
 {
     u16 pad;
@@ -1091,12 +1092,12 @@ static void run_loop(void)
             static u16 tick;
             if (tick >= 1200) continue;
             pad = BUTTON_RIGHT;
-            if ((tick % 12) < 3) pad |= BUTTON_B;
-            if ((tick % 90) >= 30 && (tick % 90) < 39) pad |= BUTTON_C;
+            if ((tick % 12) < 3) pad |= BUTTON_A;
+            if ((tick % 90) >= 30 && (tick % 90) < 39) pad |= BUTTON_B;
             tick++;
         }
 #endif
-        if ((pad & (BUTTON_START | BUTTON_A)) == (BUTTON_START | BUTTON_A))
+        if ((pad & (BUTTON_START | BUTTON_C)) == (BUTTON_START | BUTTON_C))
             break;                              /* RUN+SELECT: the PCE reset combo */
 #ifdef SS2_DBG_NPC_X
         {
