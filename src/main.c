@@ -16,7 +16,7 @@
  *
  *  The two logo splashes reuse the owner's verified SGDK kits verbatim
  *  (sega_logo / capcom_logo); the selector is a clean native re-creation that
- *  carries the SONSON title + the "PORTED BY RESTER159, 2026" credit and
+ *  carries the SONSON title + the "RESTER159, 2026" credit and
  *  returns the chosen mode (stored in g_mode). See inc/frontend.h, ROADMAP.md
  *  Phase 8, and ../sonson/port/FRONTEND_SPEC.md.
  *
