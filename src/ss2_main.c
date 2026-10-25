@@ -1536,6 +1536,22 @@ void ss2_run_stage(u8 k)
 #ifndef SS2_MAX_SKIP
 #define SS2_MAX_SKIP 2              /* ticks in a row that may go unshown */
 #endif
+/* Pipelining: each pass first presents the state the previous tick left,
+ * then runs the next tick's logic, which touches no VDP port. If a VBlank
+ * comes while that logic runs, the VInt sends the queued picture itself
+ * (pipe_dma), so a tick that overruns no longer costs a displayed frame;
+ * only a sustained overload does. One frame more display latency. */
+static volatile u8 logic_phase, dma_pending, dma_sent;
+static u8 pipe_ok;
+static void pipe_dma(void)
+{
+    if (logic_phase && dma_pending)
+    {
+        DMA_flushQueue();
+        dma_pending = 0;
+        dma_sent = 1;
+    }
+}
 static u8 catchup;                  /* the next tick runs at once, not shown */
 static u8 skip_run;                 /* unshown ticks in a row so far */
 static u32 tick_vt;                 /* VBlank count the current tick belongs to */
@@ -1549,6 +1565,7 @@ static void run_loop(void)
 #ifdef SS2_TPROF_PC
     band_set(1);
 #endif
+    SYS_setVIntCallback(pipe_dma);
     for (;;)
     {
 #ifdef SS2_PROF
@@ -1565,14 +1582,25 @@ static void run_loop(void)
             tick_vt++;                          /* the VBlank this tick stands for */
             JOY_update();                       /* (SYS_doVBlankProcess does it otherwise) */
         }
+        else if (dma_sent)
+        {
+            /* the logic ran past a VBlank and the VInt sent the picture
+             * then: go on at once (waiting would cost the next frame) */
+            dma_sent = 0;
+            JOY_update();
+            tick_vt = vtimer;
+            skip_run = 0;
+        }
         else
         {
             band_idle = 1;
             SYS_doVBlankProcessEx(ON_VBLANK);
             band_idle = 0;
+            dma_pending = 0;
             tick_vt = vtimer;
             skip_run = 0;
         }
+        pipe_ok = (u8)!band_on;                 /* (the ending's raster band: classic order) */
         ss2_loop_n++;
 #ifdef SS2_TPROF
         tp_frame();
@@ -1585,6 +1613,50 @@ static void run_loop(void)
         v0 = (u16)GET_VCOUNTER;
         prof_last = v0;
 #endif
+        /* presentation of the state the previous tick left (drawn first, so
+         * it is queued early in the frame; see pipe_dma) */
+        camera_from_state();
+        scene_update();
+        shop_scene();
+        PROF(9);
+        if (ss2_redraw_request) { ss2_redraw_request = 0; redraw_view(); map_live = 1; }   /* $EBE1 */
+        else if (!shop_shown && map_live && (R(0x2201) & 0x04)) stream_view();
+        PROF(10);
+        bat_drain();
+        if (!skip)
+        {
+            apply_scroll();
+            apply_fade();
+            PROF(11);
+#ifdef SS2_SPRCHECK
+            {
+                /* check build: the memoized rows must equal the full path's */
+                static VDPSprite full[64];
+                u8 n0;
+                u8 conv;
+                spr_nomemo = 1; draw_sprites(); n0 = nspr; conv = conv_n;
+                memcpy(full, vdpSpriteCache, sizeof full);
+                spr_nomemo = 0; draw_sprites();
+                ss2_sprchk[0]++;
+                /* a pass that converted cells: the second call has its own
+                 * conversion budget, so the two can differ without the memo */
+                if (conv | conv_n) ss2_sprchk[2]++;
+                else
+                {
+                    const u8 *a = (const u8 *)full, *b = (const u8 *)vdpSpriteCache;
+                    u16 k, bad = (u16)(n0 != nspr);
+                    for (k = 0; k < (u16)n0 * sizeof(VDPSprite); k++) bad |= (u16)(a[k] != b[k]);
+                    if (bad) ss2_sprchk[1]++;
+                }
+            }
+#else
+            draw_sprites();
+#endif
+            PROF(12);
+            draw_hud(0);
+            ss2_present_n++;
+        }
+        if (!skip) dma_pending = 1;
         pad = JOY_readJoypad(JOY_1);
 #ifdef SS2_PROF
         /* fixed workload by logic tick (not wall time): walk right, attack
@@ -1636,56 +1708,19 @@ static void run_loop(void)
         sound_irq();
 #endif
         PROF(0);
+        logic_phase = pipe_ok;                  /* the VInt may send the queued picture */
         ss2_game_frame();
+        logic_phase = 0;
         PROF(8);
         band_idle = 0;
-        camera_from_state();
-        scene_update();
-        shop_scene();
-        PROF(9);
-        if (ss2_redraw_request) { ss2_redraw_request = 0; redraw_view(); map_live = 1; }   /* $EBE1 */
-        else if (!shop_shown && map_live && (R(0x2201) & 0x04)) stream_view();
-        PROF(10);
-        bat_drain();
-        if (!skip)
-        {
-            apply_scroll();
-            apply_fade();
-            PROF(11);
-#ifdef SS2_SPRCHECK
-            {
-                /* check build: the memoized rows must equal the full path's */
-                static VDPSprite full[64];
-                u8 n0;
-                u8 conv;
-                spr_nomemo = 1; draw_sprites(); n0 = nspr; conv = conv_n;
-                memcpy(full, vdpSpriteCache, sizeof full);
-                spr_nomemo = 0; draw_sprites();
-                ss2_sprchk[0]++;
-                /* a pass that converted cells: the second call has its own
-                 * conversion budget, so the two can differ without the memo */
-                if (conv | conv_n) ss2_sprchk[2]++;
-                else
-                {
-                    const u8 *a = (const u8 *)full, *b = (const u8 *)vdpSpriteCache;
-                    u16 k, bad = (u16)(n0 != nspr);
-                    for (k = 0; k < (u16)n0 * sizeof(VDPSprite); k++) bad |= (u16)(a[k] != b[k]);
-                    if (bad) ss2_sprchk[1]++;
-                }
-            }
-#else
-            draw_sprites();
-#endif
-            PROF(12);
-            draw_hud(0);
-            ss2_present_n++;
-        }
         /* late? A VBlank after this tick's own has gone by (and we are not
          * still inside it, when it would be processed): the next tick runs
          * now, unshown, unless SS2_MAX_SKIP are already in a row */
         {
             u32 late = (u32)(vtimer - tick_vt);
-            if (late && GET_VDP_STATUS(VDP_VBLANK_FLAG)) late--;
+            /* a VBlank that is still going on gets processed, and one at
+             * which the VInt sent the picture (dma_sent) was not lost */
+            if (late && (GET_VDP_STATUS(VDP_VBLANK_FLAG) || dma_sent)) late--;
             catchup = (u8)(late && skip_run < SS2_MAX_SKIP);
         }
 #ifdef SS2_SOUND_LATE
@@ -1699,6 +1734,8 @@ static void run_loop(void)
         prof_end(t0, v0);
 #endif
     }
+    SYS_setVIntCallback(NULL);
+    logic_phase = dma_pending = dma_sent = 0;
     ss2_sound_shutdown();
     video_shutdown();
     ss2_tasks_free();

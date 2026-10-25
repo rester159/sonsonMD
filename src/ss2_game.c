@@ -125,19 +125,33 @@ static void sat_object(u8 x)
             (u16)((OF(0x253A) << 8) | lo));
 }
 
-/* $89D2: composite object: list of (dy, dx, frame, attr hi) */
-static void sat_composite(u8 x)
+/* $89D2: composite object: list of (dy, dx, frame, attr hi). The parts
+ * depend only on the list, the animation base and the ROM mapped at them,
+ * so up to 8 decoded lists are kept (key: both addresses and the page
+ * pointers that resolve them); a list crossing its 8 KiB page or longer
+ * than COMP_MAX parts takes the reference loop (comp_parts_rom). */
+#define COMP_MAX 32
+typedef struct
 {
-    u8 *const o = &ss2_ram[x];
+    const u8 *lp, *ap;          /* pages of list and anim base; lp = 0: free */
     u16 list, an;
-    u8 n, y;
-    if (OF(0x245A) != 0x40 && !OF(0x26BA) && ZP(0x71) && ZP(0x71) < 0x28 && !(ZP(0x71) & 4))
-        return;
-    ss2_map6(OF(0x275A));
-    list = (u16)((OF(0x257A) << 8) | OF(0x259A));
-    n = ss2_rom_byte((u16)(list + 1));
-    if (!n) return;
-    an = (u16)((OF(0x27BA) << 8) | OF(0x27DA));
+    u8 n;
+    s8 dy[COMP_MAX], dx[COMP_MAX];
+    u8 ahi[COMP_MAX];
+    u16 pat[COMP_MAX];
+} CompList;
+static CompList comp_cache[8];
+static u8 comp_next;
+
+static const u8 *rom_page(u16 a)
+{
+    return ss2_page[a >> 13];
+}
+
+/* the source loop ($89D2), parts n.. from list/an */
+static void comp_parts_rom(const u8 *o, u16 list, u16 an, u8 n)
+{
+    u8 y;
     for (y = 2; n; n--)
     {
         u16 sy, sx, pat;
@@ -159,9 +173,103 @@ static void sat_composite(u8 x)
         sat_put(sy, sx, pat, (u16)((ss2_rom_byte((u16)(list + y)) << 8) | lo));
         y++;
         ZP(0x38)++;
-#ifdef SS2_TPROF
-        { extern u16 ss2_tc_now[4]; ss2_tc_now[2]++; }   /* composite parts per pass */
+    }
+}
+
+static const CompList *comp_lookup(u16 list, u16 an, u8 n)
+{
+    const u8 *lp = rom_page(list), *ap = rom_page(an);
+    u8 k;
+    CompList *c;
+    if (n > COMP_MAX || (u16)((list & 0x1FFF) + 2 + 4 * n) > 0x2000 || (an & 0x1FFF) == 0x1FFF)
+        return 0;
+    for (k = 0; k < 8; k++)
+    {
+        c = &comp_cache[k];
+        if (c->lp == lp && c->ap == ap && c->list == list && c->an == an && c->n == n) return c;
+    }
+    c = &comp_cache[comp_next];
+    comp_next = (u8)((comp_next + 1) & 7);
+    c->lp = lp; c->ap = ap; c->list = list; c->an = an; c->n = n;
+    {
+        const u8 *l = lp + (list & 0x1FFF) + 2;
+        u8 a0 = ap[an & 0x1FFF], a1 = ap[(an + 1) & 0x1FFF];
+        for (k = 0; k < n; k++, l += 4)
+        {
+            u8 f = l[2];
+            c->dy[k] = (s8)l[0];
+            c->dx[k] = (s8)l[1];
+            if (f == 0xFF) c->pat[k] = 0x0090;
+            else
+            {
+                u16 t = (u16)(f + a1);
+                c->pat[k] = (u16)((u8)t | ((u8)(a0 + (t >> 8)) << 8));
+            }
+            c->ahi[k] = l[3];
+        }
+    }
+    return c;
+}
+
+#ifdef SS2_COMPCHECK
+__attribute__((used, externally_visible)) volatile u32 ss2_compchk[2];   /* calls, differences */
 #endif
+
+static void sat_composite(u8 x)
+{
+    u8 *const o = &ss2_ram[x];
+    u16 list, an;
+    u8 n;
+    const CompList *c;
+    if (OF(0x245A) != 0x40 && !OF(0x26BA) && ZP(0x71) && ZP(0x71) < 0x28 && !(ZP(0x71) & 4))
+        return;
+    ss2_map6(OF(0x275A));
+    list = (u16)((OF(0x257A) << 8) | OF(0x259A));
+    n = ss2_rom_byte((u16)(list + 1));
+    if (!n) return;
+    an = (u16)((OF(0x27BA) << 8) | OF(0x27DA));
+#ifdef SS2_TPROF
+    { extern u16 ss2_tc_now[4]; ss2_tc_now[2] = (u16)(ss2_tc_now[2] + n); }   /* composite parts per pass */
+#endif
+    c = comp_lookup(list, an, n);
+#ifdef SS2_COMPCHECK
+    {
+        static u16 sat_a[64 * 4];
+        u8 i0 = sat_i, z0 = ZP(0x38), hi0 = ss2_sat_hi, i1, z1, bad = 0;
+        u16 k;
+        comp_parts_rom(o, list, an, n);
+        memcpy(sat_a, ss2_sat, sizeof sat_a);
+        i1 = sat_i; z1 = ZP(0x38);
+        sat_i = i0; ZP(0x38) = z0; ss2_sat_hi = hi0;
+        if (c)
+        {
+            u16 y0 = (u16)(((OF(0x24DA) << 8) | OF(0x24FA)) + 0x40), x0 = (u16)(((OF(0x247A) << 8) | OF(0x249A)) + 0x20);
+            u8 lo = OF(0x255A);
+            if (OF(0x283A)) lo |= 0x0F;
+            for (k = 0; k < n; k++)
+            {
+                sat_put((u16)(y0 + c->dy[k]), (u16)(x0 + c->dx[k]), c->pat[k], (u16)((c->ahi[k] << 8) | lo));
+                ZP(0x38)++;
+            }
+        }
+        else comp_parts_rom(o, list, an, n);
+        for (k = 0; k < 64 * 4; k++) bad |= (u8)(sat_a[k] != ss2_sat[k]);
+        bad |= (u8)(i1 != sat_i) | (u8)(z1 != ZP(0x38));
+        ss2_compchk[0]++;
+        if (bad) ss2_compchk[1]++;
+        return;
+    }
+#endif
+    if (!c) { comp_parts_rom(o, list, an, n); return; }
+    {
+        u16 y0 = (u16)(((OF(0x24DA) << 8) | OF(0x24FA)) + 0x40), x0 = (u16)(((OF(0x247A) << 8) | OF(0x249A)) + 0x20);
+        u8 lo = OF(0x255A), k;
+        if (OF(0x283A)) lo |= 0x0F;
+        for (k = 0; k < n; k++)
+        {
+            sat_put((u16)(y0 + c->dy[k]), (u16)(x0 + c->dx[k]), c->pat[k], (u16)((c->ahi[k] << 8) | lo));
+            ZP(0x38)++;
+        }
     }
 }
 

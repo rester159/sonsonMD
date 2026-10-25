@@ -15,8 +15,11 @@ build() {   # root routine -> binary
     for f in "$root"/src/ss2_*.c; do
         case "$(basename "$f")" in ss2_main.c|ss2_sound*.c|ss2_data.c) ;; *) srcs+=("$f") ;; esac
     done
+    [ -f "$root/src/ss2_rom.c" ] || python3 "$root/tools/ss2/gen_rom.py" \
+        || { echo "$root: no src/ss2_rom.c (needs arcade/ HuCard dumps)"; exit 2; }
     cc -O1 -w -DSS2_HOST -DROUTINE=$r -I"$root/tools/ss2/hosttest/shim" -I"$root/inc" \
-       "$CAND/tools/ss2/hosttest/test_routine.c" "${srcs[@]}" "$root/tools/ss2/hosttest/frame_tick.c" -o "$OUT/$tag-$r"
+       "$CAND/tools/ss2/hosttest/test_routine.c" "${srcs[@]}" "$root/tools/ss2/hosttest/frame_tick.c" -o "$OUT/$tag-$r" \
+        || { echo "BUILD FAILED: $tag $r"; exit 2; }
 }
 fail=0; total=0
 run() {     # routine pairs [env...]
@@ -24,6 +27,7 @@ run() {     # routine pairs [env...]
     [ -f "$p" ] || return
     [ -x "$OUT/base-$r" ] || build "$BASE" $r base
     [ -x "$OUT/cand-$r" ] || build "$CAND" $r cand
+    rm -f "$OUT/a.bin" "$OUT/b.bin"
     env "$@" SS2_IRQ_MASK="${MASK:-$DATA/irq_mask.bin}" SS2_DUMP="$OUT/a.bin" "$OUT/base-$r" "$p" 0 > /dev/null 2>&1
     env "$@" SS2_IRQ_MASK="${MASK:-$DATA/irq_mask.bin}" SS2_DUMP="$OUT/b.bin" "$OUT/cand-$r" "$p" 0 > /dev/null 2>&1
     total=$((total + 1))
