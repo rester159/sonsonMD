@@ -207,6 +207,21 @@ void ss2_fade_out_cont(void)
     }
 }
 
+/* bank 2 $72DD: sprite palettes 1-7 and the alternate 8-15 ($4A6C) in,
+ * levels 1-7, 3 frames a step (the ending) */
+void ss2_fade_in_spr_alt(void)
+{
+    u8 l;
+    for (l = 1; l != 8; l++)
+    {
+        f7350(l);
+        f7382(l);
+        ss2_wait(3);                         /* $B9C0 */
+        up_sp_stage();
+        ss2_fade_sp = l;
+    }
+}
+
 /* Unfaded VCE contents for the current stage (what the stage load sets) */
 void ss2_vce_reset(void)
 {

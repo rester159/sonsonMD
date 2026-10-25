@@ -247,6 +247,7 @@ u8 ss2_objfix4_handler(u16 addr, u8 x)
         case 0xA9B4: think(x); return 1;
         case 0xAC5E: hit(x); return 1;
         case 0xACE1: O(0x245A, x) = 0; return 1;     /* weapon piece */
+        case 0xB3E9: ss2_end_petal(x); return 1;     /* ending petal (ss2_ending.c) */
     }
     return 0;
 }

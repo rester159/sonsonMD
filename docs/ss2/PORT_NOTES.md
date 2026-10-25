@@ -22,6 +22,7 @@ SonSon via the game chooser (`src/game_select.c`).
 | `capture_sprset.py` | Pairs around the sprite-set loaders `$774F/$77A5/$77D0`. |
 | `gen_shop.py` | Shop scene background (from a saved research-model shop screen, `research/npc/cap.py SAVE=240 SAVEPKL=out/ss2/shop_s1.pkl`) -> `src/ss2_shop_data.c`. |
 | `research/bank05,09,17/` | The enemy agents' spawn lists, injected captures and replays. |
+| `research/ending/` | The ending (`cap.py`: injected at a frame start of stage 7 with PC = `$F617`; `runs.sh` A/B captures, S the screen pickles `out/ss2/end_*.pkl`); replay `ss2_frame_vbl_ending`. |
 | `research/npc/` | Townsperson/shop captures (`cap.py`: townspeople spawn only off-screen, so a two-phase warp; `runs.sh` the 38 recorded conversations and shop visits with RAM pokes for money/flags; `rep.sh`, `difsum.py`). Replays use `SS2_MASK_SOUND=1` (the host build has no sound driver). |
 
 ## Architecture decisions
@@ -169,5 +170,5 @@ runs after each link; keep load and store separate (empty asm barrier).
 | Genesis additions | "PUSH START BUTTON"; after START a GAME START / OPTIONS menu; OPTIONS has a music selector (`$00`-`$14`) and EXIT; the title does not roll into the demo while the menu is up; OPTIONS LANGUAGE (ENGLISH/JAPANESE) saved in cartridge SRAM at `$400` (`src/ss2_options.c`: "S2", version, language, check byte; SonSon's slots are `$000-$3FF`), verified across a headless power cycle (`SS2_SRAM=file.srm shot.py ...`). Japanese text needs the unpatched HuCard (pending) |
 | Stage clear (`$F617`: bonus tally, next stage) | injected trace (`capture_inject.py`, task 0 = `$F617`) 1087/1099 exact; on target: tally, score, stage 2 loads |
 | Death `$F884`: game over (no charm), continue (charm `$22C1` bit 2: revive picture `$7ADE`/`$FBB1`, goddess messages, YES/NO) | injected traces: game over 494/499, continue 1085/1099 (the rest: `$71F4` palette step in progress, object-list order for a few frames after the stage restart); on target: both message chains, title return, revive into the stage |
-| Ending | in progress |
+| Ending (bank 4 `$AD5A`-`$B4D2`, bank 2 `$72DD`, `$7A9F`; `src/ss2_ending.c`) | exact on two 9000-pair traces (A: zenny tally, B: `$8A` set) 8992/9000 each; the rest are the `$77D0` load's and the `$EBE1` redraw's in-progress bytes. Renderer: `ss2_ending_part` (1 tally on the stage map, 2 picture, 3 credits), `ss2_scene = SS2_SCENE_ENDING` from `$7A9F`, zp `$6E` = `$88` from the picture on (top band scroll = camera), raster split at RCR `$E0` (band scroll `$51/$52`, `$54/$55`), credits font slide `ss2_end_font_dx` |
 | Cartridge | SELECT GAME -> SS2 -> START+A -> SELECT GAME -> SonSon ARCADE/HOME verified headless |

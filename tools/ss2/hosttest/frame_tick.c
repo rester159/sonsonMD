@@ -79,3 +79,24 @@ void ss2_frame_vbl_inject(void)
     ss2_sched_vblank();
     ss2_sched_run();
 }
+
+/* The ending (research/ending/cap.py): the first pair runs from the
+ * injection at a frame start (task 0 = $F617 with $69 = 6) to the next
+ * VBlank, so the native tasks start there without a VBlank part. */
+void ss2_frame_vbl_ending(void)
+{
+    static int started;
+    if (!started)
+    {
+        u8 a = ZP(0x10), b = ZP(0x11);       /* the trace jumps to $F617: no $E1E2 */
+        ss2_game_start();
+        ss2_stage_clear_start();
+        ZP(0x10) = a; ZP(0x11) = b;
+        ss2_sched_run();
+        started = 1;
+        return;
+    }
+    ss2_game_vblank(ss2_expected_pad);
+    ss2_sched_vblank();
+    ss2_sched_run();
+}
