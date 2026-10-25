@@ -2,6 +2,7 @@
 #include "game.h"
 #include "frontend.h"
 #include "save.h"
+#include "ss2.h"
 
 /* ===========================================================================
  *  SON SON  --  NATIVE Sega Genesis re-implementation
@@ -10,11 +11,12 @@
  *
  *  The native build now ships the full owner presentation before the game:
  *
- *      SEGA splash  ->  CAPCOM logo intro  ->  ARCADE/HOME selector  ->  game
+ *      SEGA splash  ->  CAPCOM logo intro  ->  SELECT GAME  ->
+ *      ARCADE/HOME selector  ->  game
  *
  *  The two logo splashes reuse the owner's verified SGDK kits verbatim
  *  (sega_logo / capcom_logo); the selector is a clean native re-creation that
- *  carries the SONSON title + the "PORTED BY RESTER159, 2026" credit and
+ *  carries the SONSON title + the "RESTER159   2026" credit and
  *  returns the chosen mode (stored in g_mode). See inc/frontend.h, ROADMAP.md
  *  Phase 8, and ../sonson/port/FRONTEND_SPEC.md.
  *
@@ -64,6 +66,14 @@ int main(bool hardReset)
          * (laid out for 40 columns) render exactly as on the first boot. */
         VDP_setScreenWidth320();
         VDP_setPlaneSize(64, 32, TRUE);
+
+        /* SELECT GAME: SONSON goes on to the ARCADE/HOME selector below;
+         * SON SON II runs its port and comes back here when it ends. */
+        if (game_select_run() == GAME_SONSON2)
+        {
+            ss2_run();                    /* returns on START+C */
+            continue;                     /* loop top restores H40 */
+        }
 
         g_mode = selector_run();          /* ARCADE / HOME + RESTER credit     */
 
