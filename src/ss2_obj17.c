@@ -240,7 +240,7 @@ static void walker_hit(u8 x)
     {
         OF(0x2A3A)++;
         OF(0x2A1A) = 8;
-        if ((u16)((P_XH << 8) | P_XL) >= OX16(x))
+        if ((u16)((P_XH << 8) | P_XL) >= ((u16)((OF(0x247A) << 8) | OF(0x249A))))
         {
             OF(0x299A) = 1;
             set_script(x, 0xD25C);
@@ -349,15 +349,15 @@ u8 ss2_o17_aim(u8 x)
     dx = (u16)(((P_XH << 8) | P_XL) + 0x110);
     dy = (u16)(((P_YH << 8) | P_YL) + 0x110);
     if (!(OF(0x269A) & 0x20))
-        a = (u16)(OX16(x) + 0x100 + (u8)(((OF(0x253A) & 1) + 1) << 3));
+        a = (u16)(((u16)((OF(0x247A) << 8) | OF(0x249A))) + 0x100 + (u8)(((OF(0x253A) & 1) + 1) << 3));
     else
-        a = (u16)(OX16(x) + 0x100);
+        a = (u16)(((u16)((OF(0x247A) << 8) | OF(0x249A))) + 0x100);
     if (dx < a) { dx = (u16)~(u16)(dx - a); y = 8; }
     else dx = (u16)(dx - a);
     if (!(OF(0x269A) & 0x20))
-        a = (u16)(OY16(x) + 0x100 + (u8)(((OF(0x253A) & 0x30) + 0x10) >> 1));
+        a = (u16)(((u16)((OF(0x24DA) << 8) | OF(0x24FA))) + 0x100 + (u8)(((OF(0x253A) & 0x30) + 0x10) >> 1));
     else
-        a = (u16)(OY16(x) + 0x100);
+        a = (u16)(((u16)((OF(0x24DA) << 8) | OF(0x24FA))) + 0x100);
     if (dy < a) { dy = (u16)~(u16)(dy - a); y |= 0x10; }
     else dy = (u16)(dy - a);
     dx2 = (u16)(dx << 1); dx3 = (u16)(dx + dx2); dx5 = (u16)(dx3 + dx2);
@@ -1297,7 +1297,7 @@ static void boss_think(u8 x)
         if (!OF(0x297A)) tab = (u16)(ss2_rom_byte((u16)(0xCA37 + ti)) | (ss2_rom_byte((u16)(0xCA38 + ti)) << 8));
         else tab = (u16)(ss2_rom_byte((u16)(0xCA71 + ti)) | (ss2_rom_byte((u16)(0xCA72 + ti)) << 8));
         /* $C3ED: distance class */
-        a = (u16)(OX16(x) + 0x100);
+        a = (u16)(((u16)((OF(0x247A) << 8) | OF(0x249A))) + 0x100);
         b = (u16)(((P_XH << 8) | P_XL) + 0x110);
         d = (u16)(a - b);
         OF(0x277A) = 0;

@@ -48,13 +48,13 @@ u8 ss2_aim_dir(u8 x)
     u8 y = 0;
     if (!(OF(0x269A) & 0x20))
     {
-        ox = (u16)(OX16(x) + 0x100 + (u8)(((OF(0x253A) & 1) + 1) << 3));
-        oy = (u16)(OY16(x) + 0x100 + (u8)(((OF(0x253A) & 0x30) + 0x10) >> 1));
+        ox = (u16)(((u16)((OF(0x247A) << 8) | OF(0x249A))) + 0x100 + (u8)(((OF(0x253A) & 1) + 1) << 3));
+        oy = (u16)(((u16)((OF(0x24DA) << 8) | OF(0x24FA))) + 0x100 + (u8)(((OF(0x253A) & 0x30) + 0x10) >> 1));
     }
     else
     {
-        ox = (u16)(OX16(x) + 0x100);
-        oy = (u16)(OY16(x) + 0x100);
+        ox = (u16)(((u16)((OF(0x247A) << 8) | OF(0x249A))) + 0x100);
+        oy = (u16)(((u16)((OF(0x24DA) << 8) | OF(0x24FA))) + 0x100);
     }
     dx = (u16)((u16)(PX16 + 0x110) - ox);
     if ((u16)(PX16 + 0x110) < ox) { dx = (u16)~dx; y = 8; }
@@ -384,7 +384,7 @@ static void shoot(u8 x)
 static void boss_ai(u8 x)
 {
     u8 *const o = &ss2_ram[x];
-    u16 a = (u16)(OX16(x) + 0x100), p = (u16)(PX16 + 0x110), d = (u16)(a - p);
+    u16 a = (u16)(((u16)((OF(0x247A) << 8) | OF(0x249A))) + 0x100), p = (u16)(PX16 + 0x110), d = (u16)(a - p);
     u8 y, r, k;
     OF(0x299A) = 0;
     if (a < p) { OF(0x299A) = 1; d = (u16)(0 - d); }
@@ -483,7 +483,7 @@ static void knockback(u8 x)
     if (!OF(0x29FA))
     {
         OF(0x29FA)++;
-        if (OX16(x) >= PX16) { OF(0x29BA) = 0; set_vx(x, 0x0380); }
+        if (((u16)((OF(0x247A) << 8) | OF(0x249A))) >= PX16) { OF(0x29BA) = 0; set_vx(x, 0x0380); }
         else { OF(0x29BA) = 1; set_vx(x, 0xFC80); }
         set_vy(x, 0);
         pose_crouch(x);

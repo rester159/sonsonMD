@@ -792,6 +792,8 @@ static const u16 cache_base[] = {
     1968, 1976, 1984, 1992, 2000, 2008, 2016, 2024, 2032, 2040 };  /* $F600- */
 #define NCACHE (sizeof cache_base / sizeof cache_base[0])
 static CacheEnt cache[NCACHE];
+static u16 cache_epoch;         /* moves whenever an entry is (re)assigned */
+static u8 cache_idx;            /* entry cache_tile() last returned */
 static u8 cache_at[0x100];      /* cache_at[pair >> 1]: entry + 1 (the ending: extra.at) */
 static u16 cache_clock;
 static u8 conv_n;
@@ -810,6 +812,7 @@ static void memo_reset(void);
 
 static void cache_reset(void)
 {
+    cache_epoch++;
     pairs_ok = 0;
     spr_gen_bump();
     memset(cache, 0, sizeof cache);
@@ -863,6 +866,7 @@ static u16 cache_tile(u16 c, u8 key, u8 *line)
     u16 s0 = ss2_cell_src[c], s1 = ss2_cell_src[c + 1];
     u8 i, victim = 0xFF, n = ncache();
     u16 age = 0;
+    TCOUNT(0);
     *line = (u8)(2 + (cm[1] >> 7));
     /* the pair's last converted entry first: a hit returns the one entry
      * the search below would find (an entry is only added after a full
@@ -875,6 +879,7 @@ static u16 cache_tile(u16 c, u8 key, u8 *line)
         {
             e->last = cache_clock;
             TCOUNT(1);
+            cache_idx = (u8)(i - 1);
             return e->tile;
         }
     }
@@ -890,6 +895,7 @@ static u16 cache_tile(u16 c, u8 key, u8 *line)
         {
             e->last = cache_clock;
             TCOUNT(1);
+            cache_idx = i;
             return e->tile;
         }
         if (e->last != cache_clock && (victim == 0xFF || (cache_ent(victim)->used && (u16)(cache_clock - e->last) > age)))
@@ -906,6 +912,8 @@ static u16 cache_tile(u16 c, u8 key, u8 *line)
     PROF(13);
     {
         CacheEnt *e = cache_ent(victim);
+        cache_epoch++;
+        cache_idx = victim;
         e->used = 1; e->pair = c; e->key = key; e->b0 = b0; e->b1 = b1; e->s0 = s0; e->s1 = s1;
         e->tile = victim < NCACHE ? cache_base[victim] : (u16)(EXTRA_TILE + (victim - NCACHE) * 8);
         if (ending_cache()) ram_share.extra.at[c >> 1] = (u8)(victim + 1);
@@ -929,11 +937,13 @@ static u8 cell_dirty(u16 c)
 static u8 pair_dirty[0x100];
 
 /* Per SAT entry: the VDP rows its pattern/attribute words gave last time
- * (static-table rows only: tile|attributes, size, y offset). Reused while
+ * (tile|attributes, size, y offset; cidx = the cache entry of a converted
+ * row, refreshed on replay as a cache hit would, 0xFF for a static row);
+ * valid while cache_epoch has not moved either. Reused while
  * the words and spr_gen are unchanged; spr_gen moves whenever an input of
  * that mapping may change (stage graphics, defaults/dirty pairs, cache
  * reset, scene colour map, intro palettes, palette 13 variant). */
-typedef struct { u32 key; u16 gen; u8 n; u8 size[4]; u8 yoff[4]; u16 attr[4]; } SprMemo;
+typedef struct { u32 key; u16 gen, cepoch; u8 n; u8 size[4]; u8 yoff[4]; u8 cidx[4]; u16 attr[4]; } SprMemo;
 static SprMemo spr_memo[64];
 static u16 spr_gen = 1;
 static u8 spr_nomemo;               /* SS2_SPRCHECK: the full path, for comparison */
@@ -1019,13 +1029,11 @@ static void draw_sprites(void)
     {
         const u16 *e = &ss2_sat[i * 4];
         s16 sx, sy;
-        TCOUNT(0);
         u16 attr = e[3], cell = (u16)((e[2] >> 1) & 0x3FF);
-        u8 cw, ch, pal, line, key, memo, ok = 1, rec;
+        u8 cw, ch, pal, line, key, memo, ok = 1, rec, ci;
         SprMemo *mm = 0;
         if (!(e[0] & 0x3FF)) continue;
         last = (u8)(i + 1);
-        TCOUNT(3);
         memo = (u8)(ending && memo_words[i] == (((u32)e[2] << 16) | attr));
         sx = (s16)((e[1] & 0x3FF) - 32);
         sy = (s16)((e[0] & 0x3FF) - 64 - 8);
@@ -1043,11 +1051,11 @@ static void draw_sprites(void)
         if (!ending && !spr_nomemo)
         {
             mm = &spr_memo[i];
-            if (mm->gen == spr_gen && mm->key == (((u32)e[2] << 16) | attr))
+            if (mm->gen == spr_gen && mm->cepoch == cache_epoch && mm->key == (((u32)e[2] << 16) | attr))
             {
                 for (r = 0; r < mm->n; r++)
                 {
-                    TCOUNT(2);
+                    if (mm->cidx[r] != 0xFF) cache_ent(mm->cidx[r])->last = cache_clock;
                     put_sprite(sx, (s16)(sy + mm->yoff[r]), mm->size[r], mm->attr[r]);
                 }
                 continue;
@@ -1087,19 +1095,19 @@ static void draw_sprites(void)
             t = (cc >= 0x200 || key >= 16 || no_static || (intro && key >= 8)
                  || pair_dirty[cc >> 1]) ? 0
                 : spr_lut[pal * 256 + (cc >> 1)];
+            ci = 0xFF;
             if (t && line <= 3)
                 t = (u16)(SPR_TILE + t - 1);
             else
             {
                 /* reloaded cells, interior palettes, and cells the static
                  * tables never saw (magic, shop): convert from the HuCard */
-                rec = 0;                    /* cache blocks can be evicted */
-                if (cc >= 0x200 || !ss2_cell_bank[cc]) { ss2_sprite_misses++; continue; }
+                if (cc >= 0x200 || !ss2_cell_bank[cc]) { ss2_sprite_misses++; rec = 0; continue; }
                 t = cache_tile(cc, key, &line);
-                if (!t) { ss2_sprite_misses++; continue; }
+                if (!t) { ss2_sprite_misses++; rec = 0; continue; }
+                ci = cache_idx;
             }
 put:
-            TCOUNT(2);
             {
                 u8 yo = (u8)(((attr & 0x8000) ? (ch - 1 - r) : r) * 16);
                 u8 sz = cw == 2 ? SPRITE_SIZE(4, 2) : SPRITE_SIZE(2, 2);
@@ -1108,10 +1116,10 @@ put:
                     : TILE_ATTR_FULL(line, 1, (attr & 0x8000) ? 1 : 0, (attr & 0x0800) ? 1 : 0, (u16)(t + (c & 1) * 4));
                 y = (s16)(sy + yo);
                 put_sprite(sx, y, sz, ta);
-                if (rec) { mm->yoff[mm->n] = yo; mm->size[mm->n] = sz; mm->attr[mm->n] = ta; mm->n++; }
+                if (rec) { mm->yoff[mm->n] = yo; mm->size[mm->n] = sz; mm->attr[mm->n] = ta; mm->cidx[mm->n] = ci; mm->n++; }
             }
         }
-        if (rec) { mm->key = ((u32)e[2] << 16) | attr; mm->gen = spr_gen; }
+        if (rec) { mm->key = ((u32)e[2] << 16) | attr; mm->gen = spr_gen; mm->cepoch = cache_epoch; }
         if (ending && !memo) memo_words[i] = ok ? (((u32)e[2] << 16) | attr) : 0;
     }
     ss2_sat_hi = last;
@@ -1553,7 +1561,9 @@ static void run_loop(void)
         band_idle = 1;                          /* the logic touches no VDP port */
         ss2_game_vblank(pce_pad(pad));
         PROF(0);
+#ifndef SS2_SOUND_LATE
         sound_irq();
+#endif
         PROF(0);
         ss2_game_frame();
         PROF(8);
@@ -1595,6 +1605,9 @@ static void run_loop(void)
 #endif
         PROF(12);
         draw_hud(0);
+#ifdef SS2_SOUND_LATE
+        sound_irq();                            /* profiling: sampled lines */
+#endif
 #ifdef SS2_STACKCHK
         { void ss2_stack_check(void); if (!(ss2_loop_n & 15)) ss2_stack_check(); }
 #endif

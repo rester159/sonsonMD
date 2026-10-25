@@ -76,9 +76,9 @@ void ss2_obj_death(u8 x)
 {
     u8 *const o = &ss2_ram[x];
     u8 g, t;
-    if (!(OF(0x253A) & 1)) set_ox16(x, (u16)(OX16(x) - 8));
-    set_oy16(x, (u16)(OY16(x) + ((OF(0x253A) & 0x30) >> 1)));
-    set_oy16(x, (u16)(OY16(x) - 8));
+    if (!(OF(0x253A) & 1)) set_ox16(x, (u16)(((u16)((OF(0x247A) << 8) | OF(0x249A))) - 8));
+    set_oy16(x, (u16)(((u16)((OF(0x24DA) << 8) | OF(0x24FA))) + ((OF(0x253A) & 0x30) >> 1)));
+    set_oy16(x, (u16)(((u16)((OF(0x24DA) << 8) | OF(0x24FA))) - 8));
     OF(0x25DA) = 0; OF(0x25BA) = 0;
     OF(0x261A) = 0; OF(0x25FA) = 0;
     OF(0x255A) = 0x84;

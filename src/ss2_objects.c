@@ -245,18 +245,18 @@ static u8 collide(u8 x)
     if (P_MODE == 0x40) return 0;
     if (!(OF(0x269A) & 0x20))
     {
-        bx = (u16)(OX16(x) + (u8)(((OF(0x253A) & 1) + 1) << 3));
-        by = (u16)(OY16(x) + (u8)(((OF(0x253A) & 0x30) + 0x10) >> 1));
+        bx = (u16)(((u16)((OF(0x247A) << 8) | OF(0x249A))) + (u8)(((OF(0x253A) & 1) + 1) << 3));
+        by = (u16)(((u16)((OF(0x24DA) << 8) | OF(0x24FA))) + (u8)(((OF(0x253A) & 0x30) + 0x10) >> 1));
     }
     else
     {
-        bx = OX16(x);
-        by = OY16(x);
+        bx = ((u16)((OF(0x247A) << 8) | OF(0x249A)));
+        by = ((u16)((OF(0x24DA) << 8) | OF(0x24FA)));
     }
     ZP(0xBB) = (u8)(bx >> 8); ZP(0xBC) = (u8)bx;
     ZP(0xBD) = (u8)(by >> 8); ZP(0xBE) = (u8)by;
-    wx = (u16)(OX16(x) + (s8)OF(0x2ADA));
-    wy = (u16)(OY16(x) + (s8)OF(0x2AFA));
+    wx = (u16)(((u16)((OF(0x247A) << 8) | OF(0x249A))) + (s8)OF(0x2ADA));
+    wy = (u16)(((u16)((OF(0x24DA) << 8) | OF(0x24FA))) + (s8)OF(0x2AFA));
     ZP(0xBF) = (u8)(wx >> 8); ZP(0xC0) = (u8)wx;
     ZP(0xC1) = (u8)(wy >> 8); ZP(0xC2) = (u8)wy;
 
@@ -441,8 +441,8 @@ void ss2_obj_common(u8 x)
     }
     if (OF(0x269A) & 0x08)
     {
-        u16 t = (u16)(OX16(x) + 0x60);
-        if (t >= 0x1A0 || OY16(x) >= 0x130) { kill_spawned(x); return; }
+        u16 t = (u16)(((u16)((OF(0x247A) << 8) | OF(0x249A))) + 0x60);
+        if (t >= 0x1A0 || ((u16)((OF(0x24DA) << 8) | OF(0x24FA))) >= 0x130) { kill_spawned(x); return; }
     }
     if (collide(x)) ss2_obj_common(x);     /* item handler: PLA PLA PLX JMP $EE67 */
 }
@@ -506,6 +506,9 @@ void ss2_objects_update(void)
             /* a handler that ends INX / JMP $EE67 moves the loop on (bank $1F
              * boss body slot) */
             ss2_obj_next = x;
+#ifdef SS2_TPROF
+            { extern u16 ss2_tc_now[4]; ss2_tc_now[3]++; }
+#endif
             ss2_obj_update(x);
             x = ss2_obj_next;
         }

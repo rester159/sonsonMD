@@ -146,14 +146,14 @@ static void fire(u8 x)
         OF(0x2ABA) = 0;
         set_script(x, 0xDDF3);
         set_script((u8)(x + 1), 0xDE41);
-        t = (u16)(OX16(x) + 0xFFF8);
+        t = (u16)(((u16)((OF(0x247A) << 8) | OF(0x249A))) + 0xFFF8);
     }
     else
     {
         OF(0x2ABA) = 1;
         set_script(x, 0xDE1A);
         set_script((u8)(x + 1), 0xDE58);
-        t = (u16)(OX16(x) + 0x0008);
+        t = (u16)(((u16)((OF(0x247A) << 8) | OF(0x249A))) + 0x0008);
     }
     ZP(0x41) = (u8)t;
     ZP(0x40) = (u8)(t >> 8);

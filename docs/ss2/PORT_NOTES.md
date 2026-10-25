@@ -182,7 +182,17 @@ timing changed):
 | | S1 | S2 | S3 | S4 | S5 | S6 | S7 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 41f2bb8 | 59.0 | 32.9 | 60.0 | 55.6 | 35.8 | 46.5 | 41.0 |
-| now     | 59.7 | 35.6 | 60.0 | 57.0 | 36.9 | 54.6 | 43.9 |
+| round 2 | 59.7 | 35.6 | 60.0 | 57.0 | 36.9 | 54.6 | 43.9 |
+| round 3 | 59.7 | 35.4 | 60.0 | 56.9 | 37.2 | 54.5 | 48.2 |
+
+Round 3: the sprite memo also covers rows from the conversion cache
+(`cache_epoch` invalidates it on any cache insert/reset; a replayed row
+refreshes its entry's LRU stamp like the hit it replaces), object
+coordinates through the slot pointer. Heavy scenes per pass (lines):
+stage 2 ~320 (logic alone ~264: objects 122, sound ~55, SAT build 28,
+player 26), stage 5's wall scene ~350 (objects 131, sprites 47), stage 7
+~316 (objects 105). Each live object costs ~5,000-6,700 cycles per frame;
+C-level changes are at diminishing returns.
 
 Round 2 (all output-identical: 62/62 traces, and a -D SS2_SPRCHECK build
 that compares the memoized sprite table with the full path every pass):

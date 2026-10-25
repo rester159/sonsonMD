@@ -64,7 +64,7 @@ static void finish(u8 x)
     }
     else
     {
-        u16 y8 = (u16)(OY16(x) + 8);
+        u16 y8 = (u16)(((u16)((OF(0x24DA) << 8) | OF(0x24FA))) + 8);
         OF(0x2A3A)--;
         if (a == 6)
         {
@@ -90,9 +90,9 @@ static void finish(u8 x)
     OF(0x267B) = 1;
     if (!OF(0x29BA)) { set_script((u8)(x + 1), 0xAD4B); o2 = 0xFFE0; o3 = 0xFFF0; }
     else { set_script((u8)(x + 1), 0xAD50); o2 = 0x0030; o3 = 0x0020; }
-    set_x16((u8)(x + 1), (u16)(OX16(x) + o1));
-    set_x16((u8)(x + 2), (u16)(OX16(x) + o2));
-    set_x16((u8)(x + 3), (u16)(OX16(x) + o3));
+    set_x16((u8)(x + 1), (u16)(((u16)((OF(0x247A) << 8) | OF(0x249A))) + o1));
+    set_x16((u8)(x + 2), (u16)(((u16)((OF(0x247A) << 8) | OF(0x249A))) + o2));
+    set_x16((u8)(x + 3), (u16)(((u16)((OF(0x247A) << 8) | OF(0x249A))) + o3));
     ss2_obj_common((u8)(x + 1));
     ss2_obj_common((u8)(x + 2));
     ss2_obj_common((u8)(x + 3));

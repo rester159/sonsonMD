@@ -738,7 +738,7 @@ static void thrower_hit(u8 x)
     if (!OF(0x29FA))
     {
         OF(0x29FA) = 6;
-        set_vx(x, OX16(x) >= PX16 ? 0x0380 : 0xFC80);
+        set_vx(x, ((u16)((OF(0x247A) << 8) | OF(0x249A))) >= PX16 ? 0x0380 : 0xFC80);
     }
     else if (!--OF(0x29FA))
     {
@@ -971,7 +971,7 @@ static void spawn_boss(u8 kind)
 static void boss_enter(u8 x)
 {
     u8 *const o = &ss2_ram[x];
-    if (OX16(x) >= 0xD0) { ss2_obj_common(x); return; }
+    if (((u16)((OF(0x247A) << 8) | OF(0x249A))) >= 0xD0) { ss2_obj_common(x); return; }
     if (!(OF(0x297A) & 1))
     {
         ZP(0x8F) = 0x06;

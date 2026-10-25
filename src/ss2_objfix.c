@@ -348,14 +348,14 @@ static void block_hit(u8 x)
         O(0x2C1A, s) = 0xFF;
     }
     /* $8E8B: clear the map cell under the block's centre */
-    wx = (u16)(OX16(x) + 0x10 + ((Z_CAMX_HI << 8) | Z_CAMX_LO));
-    wy = (u16)(OY16(x) + 0x10 + ((Z_CAMY_HI << 8) | Z_CAMY_LO));
+    wx = (u16)(((u16)((OF(0x247A) << 8) | OF(0x249A))) + 0x10 + ((Z_CAMX_HI << 8) | Z_CAMX_LO));
+    wy = (u16)(((u16)((OF(0x24DA) << 8) | OF(0x24FA))) + 0x10 + ((Z_CAMY_HI << 8) | Z_CAMY_LO));
     off = (u16)((((wy >> 8) & 7) << 9) | (((wx >> 8) & 7) << 6) | ((wy & 0xE0) >> 2) | ((wx & 0xE0) >> 5));
     R(0x3000 + off) = 0;
     ss2_map_cell_dirty = off;
     /* $8EFA-$8FE1 redraws the 32x32 block in the BAT: presentation */
     /* $8FE2 */
-    set_oy16(x, (u16)(OY16(x) - 8));
+    set_oy16(x, (u16)(((u16)((OF(0x24DA) << 8) | OF(0x24FA))) - 8));
     ss2_obj_common(x);
 }
 
