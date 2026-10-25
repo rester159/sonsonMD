@@ -326,7 +326,10 @@ def c_array(name, ctype, vals, per=16, fmt='0x%04X'):
 # font/frame (bank 2 $6DBA, palette 1 tiles $180-$23F) and the item-box
 # icons of bank 4 $BADE (weapon box $4E07/$4E1E, magic $4DD1-$4DFE, items $4E35-$4EB3: word = tile $180+c, palette)
 def bat_keys():
-    keys = [0x1180 + i for i in range(0xC0)]
+    # the window font (palette 1, $180-$23F), then the palette 5 and 15 fonts
+    # ($1A0-$23F: STAGE card, stage clear tally, $A4CA boxes)
+    keys = [0x1180 + i for i in range(0xC0)] + [0x51A0 + i for i in range(0xA0)] + \
+           [0xF1A0 + i for i in range(0xA0)]
     icons = set()
     for p in [0x4E07, 0x4E1E] + list(range(0x4DD1, 0x4E07, 9)) + list(range(0x4E35, 0x4EB4, 9)):
         hi = level.bank_read(ROM, 1, p + 2) >> 4
@@ -338,6 +341,9 @@ def bat_keys():
             a += 1
     icons |= {0x3200 | (0x21A + n) for n in range(8)}   # staff level digit (bank 0 $FE95)
     return keys + sorted(w for w in icons if w not in keys)
+
+
+NGLYPH = 0x200          # glyph keys before the icons (renderer: glyph cache)
 
 
 BAT_KEYS = None
@@ -390,7 +396,7 @@ def main():
         # temporary bootstrap: stage start work RAM from the research snapshot
         src.append(c_array('ss2_%s_ram' % n, 'u8', list(m.ram), 32, '0x%02X'))
         total = len(st['bank'].tiles) + len(sh['hud_bank'].tiles) + 16 + sh['spr_ntiles']
-        assert len(BAT_KEYS) - 0xC0 <= ICON_SLOTS
+        assert len(BAT_KEYS) - NGLYPH <= ICON_SLOTS
         assert total <= TILE_BUDGET, 'stage %d needs %d VRAM tiles' % (k + 1, total)
         desc.append('    { ss2_%s_palette, ss2_%s_tiles, %d, ss2_%s_meta, ss2_%s_attr, %d,\n'
                     '      ss2_%s_hud_tiles, %d, ss2_%s_hud_map, ss2_%s_hud_digit, ss2_%s_hud_bar,\n'

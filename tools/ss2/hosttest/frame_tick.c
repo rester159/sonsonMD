@@ -38,6 +38,7 @@ void ss2_frame_vbl(void)
  * each pair is a VBlank and the tasks after it. */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 void ss2_frame_vbl_boot(void)
 {
     static int started, n;
@@ -53,4 +54,28 @@ void ss2_frame_vbl_boot(void)
         fwrite(ss2_ram, 1, 0x2000, f);
         fclose(f);
     }
+}
+
+/* capture_inject.py traces: the gameplay tasks, task 0 started at
+ * SS2_TASK0 (F617 stage clear, F884 a miss) as the injection did */
+void ss2_frame_vbl_inject(void)
+{
+    static int started;
+    if (!started)
+    {
+        const char *t = getenv("SS2_TASK0");
+        unsigned char z10 = ss2_ram[0x10], z11 = ss2_ram[0x11], zt[16];
+        int i;
+        memcpy(zt, ss2_ram, 16);             /* the slots' states in the trace */
+        ss2_game_start();
+        for (i = 4; i < 16; i++) ss2_ram[i] = zt[i];   /* only task 0 runs first */
+        if (t && !strcmp(t, "F617")) ss2_stage_clear_start();
+        else if (t && !strcmp(t, "F884")) ss2_task_create(0, ss2_death_task);
+        ss2_ram[0x10] = z10; ss2_ram[0x11] = z11;   /* the injection jumped, no $E1E2 */
+        ss2_sched_run();                    /* it ran before the first VBlank */
+        started = 1;
+    }
+    ss2_game_vblank(ss2_expected_pad);
+    ss2_sched_vblank();
+    ss2_sched_run();
 }

@@ -72,6 +72,16 @@ static void blocks_stage(void)
     ss2_scene = SS2_SCENE_PLAY;
 }
 
+/* bank 2 $7ADE: the revive picture's blocks (bank $1F) */
+static void blocks_continue(void)
+{
+    R(0x2FA0) = 0;
+    ZP(0x8B) = 0x02;
+    ss2_page[6] = ss2_banks[ZP(0x8E) & 0x1F];
+    ss2_mpr6 = ZP(0x8E);
+    ss2_scene = SS2_SCENE_CONTINUE;
+}
+
 /* bank 2 $7B02: the title picture's blocks (bank $1E); MPR6 back to $8E */
 static void blocks_title(void)
 {
@@ -858,9 +868,58 @@ void ss2_death_task(void)
         Z_STAGE = 0;
         ss2_title_return();                      /* JMP $FB97 */
     }
-    /* $F8D8: continue / game over -- not ported yet: back to the title */
-    ss2_unported(0xF8D8);
-    ss2_title_return();
+    if (!(R(0x22C1) & 0x04))
+    {
+        /* $F8D8: no revive charm: the last words, then the title */
+        ss2_sfx(0xF0);
+        ss2_bat_box(0x028A, 0xA7C6);         /* $A4CA */
+        ss2_fade_in_alt();                   /* $71F4 */
+        ZP(0x8F) = 0x0A; ZP(0x91) = 0x0A;
+        ZP(0x93) = 0xF3; ZP(0x94) = 0x58;
+        ss2_msg_text();                      /* $69EE */
+        do ss2_wait(1); while (!(Z_PRESS & 0x01));
+        ss2_title_return();
+    }
+    /* $F917: revived? */
+    blocks_continue();                       /* $7ADE */
+    ss2_bat_picture(0x0296, 0xFC32, 0x06, 0x0E);   /* $FBB1 */
+    ss2_bat_box(0x0286, 0xA7C6);
+    ss2_sfx(0x02);                           /* continue */
+    ss2_fade_late = 1;                       /* (measured: its colours cross a VBlank) */
+    ss2_fade_in_alt();
+    ZP(0x8F) = 0x06; ZP(0x91) = 0x0A;
+    ZP(0x93) = 0x6A; ZP(0x94) = 0x59;
+    ss2_msg_text();                          /* ends in a yes/no choice ($96) */
+    do ss2_wait(1); while (!(Z_PRESS & 0x01));
+    if (ZP(0x96))
+    {
+        ss2_fade_out_alt();                  /* $7211 */
+        ss2_bg_off();
+        ss2_title_return();
+    }
+    {
+        u8 x;                                /* $F979: four white flashes */
+        for (x = 4; x; x--)
+        {
+            ss2_wait(6);                     /* $B9C4 */
+            ss2_vce[0x100] = 0x1FF;
+            ss2_vce_dirty = 1;
+            ss2_bg_off();
+            ss2_spr_off();
+            ss2_wait(6);
+            ss2_vce[0x100] = 0;
+            ss2_bg_on();
+            ss2_spr_on();
+        }
+    }
+    R(0x22C1) &= (u8)~0x04;                  /* the charm is used */
+    ZP(0x77) = R(0x22C1);
+    ZP(0x78) = R(0x22BF);
+    zero(0x2203, 8);
+    ZP(0x7A) &= (u8)~0x30;
+    ss2_fade_out_cont();                     /* $72BA */
+    seconds(1);
+    stage_init();                            /* JMP $F9F0 */
 }
 
 /* ---- power-on (bank 0 $E000 with Y = 0, $E065, $E2D0) ------------------- */

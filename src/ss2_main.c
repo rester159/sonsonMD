@@ -15,6 +15,7 @@
 #include "ss2_data.h"
 #include "ss2_shop_data.h"
 #include "ss2_title_data.h"
+#include "ss2_scene_data.h"
 #include "ss2_ram.h"
 #include "ss2_logic.h"
 #include "ss2_sound.h"
@@ -147,7 +148,7 @@ static void apply_scroll(void)
 #define GLYPH_TILE   1504           /* SS2 VRAM map (gen_ss2.py TILE_BUDGET) */
 #define GLYPH_SLOTS  64
 #define ICON_TILE    1568
-#define NGLYPH       0xC0           /* ss2_bat_keys[0..$BF] = $1180-$123F */
+#define NGLYPH       0x200          /* glyph keys: $1180-$123F, $51A0-$523F, $F1A0-$F23F */
 static u8 glyph_slot[NGLYPH];       /* slot + 1, 0 = not loaded */
 static u8 glyph_next;
 
@@ -181,11 +182,26 @@ static u16 bat_word(u16 w)
             return TILE_ATTR_FULL(ss2_title_line[lo], 0, 0, 0, BG_TILE + lo);
         return 0;
     }
+    if (ss2_scene >= SS2_SCENE_BG_FIRST)                    /* picture scenes */
+    {
+        const Ss2SceneBg *sc = &ss2_scene_bg[ss2_scene - SS2_SCENE_BG_FIRST];
+        u16 lo = 0, hi = sc->nkeys;
+        while (lo < hi)
+        {
+            u16 mid = (u16)((lo + hi) >> 1);
+            if (sc->keys[mid] < w) lo = (u16)(mid + 1); else hi = mid;
+        }
+        if (lo < sc->nkeys && sc->keys[lo] == w)
+            return TILE_ATTR_FULL(sc->line[lo], 0, 0, 0, BG_TILE + lo);
+    }
     if (ss2_shop_screen && w >= 0xF1B0 && w <= 0xF1B9)      /* shop price digits */
         return (u16)(ss2_shop_digit[w - 0xF1B0] + BG_TILE);
-    if (w >= 0x1180 && w < 0x1180 + NGLYPH)
+    if (w >= 0x1180 && w < 0x1240) k = (u16)(w - 0x1180);
+    else if (w >= 0x51A0 && w < 0x5240) k = (u16)(0xC0 + w - 0x51A0);
+    else if (w >= 0xF1A0 && w < 0xF240) k = (u16)(0x160 + w - 0xF1A0);
+    else k = 0xFFFF;
+    if (k != 0xFFFF)
     {
-        k = (u16)(w - 0x1180);
         if (!glyph_slot[k])
         {
             if (glyph_next >= GLYPH_SLOTS) glyph_next = 0;     /* full: reuse */
@@ -273,6 +289,25 @@ static void bat_picture(u16 dst, u16 src, u8 w, u8 h)
     }
 }
 
+/* bank 4 $A4CA box: 8 rows of (character, count) runs, $FF ends a row;
+ * palette 15 font words */
+static void bat_box(u16 dst, u16 src)
+{
+    u8 r;
+    for (r = 0; r < 8; r++, dst = (u16)(dst + 0x40))
+    {
+        u16 a = dst;
+        u8 c;
+        while ((c = ss2_rom_byte(src++)) != 0xFF)
+        {
+            u8 n = ss2_rom_byte(src++);
+            u16 lo = (u16)(c + 0x80);
+            u16 w = (u16)(((0xF1 + (lo >> 8)) << 8) | (lo & 0xFF));
+            while (n--) bat_cell(a++, w);
+        }
+    }
+}
+
 static u8 map_live = 1;                         /* stage map drawn: streaming valid */
 
 static struct { u16 a, ptr; } hud_last[16];   /* table shown per BAT address */
@@ -300,11 +335,14 @@ static void bat_drain(void)
         {
             VDP_clearPlane(BG_A, TRUE);
             map_live = 0;
+            glyphs_reset();
         }
         else if (o->kind == SS2_BAT_PICTURE)
             bat_picture(o->w, o->w2, o->x, o->y);
         else if (o->kind == SS2_BAT_TEXT)
             bat_text(o->w, o->w2);
+        else if (o->kind == SS2_BAT_BOX)
+            bat_box(o->w, o->w2);
         else if (o->kind == SS2_BAT_HUDPUT)
         {
             if (o->y >= 1 && o->y <= HUD_ROWS && o->x < 32)
@@ -400,6 +438,11 @@ static void scene_update(void)
     scene_shown = ss2_scene;
     if (scene_shown == SS2_SCENE_TITLE)
         VDP_loadTileData(ss2_title_tiles, BG_TILE, SS2_TITLE_NKEYS, CPU);
+    else if (scene_shown >= SS2_SCENE_BG_FIRST && ss2_scene_bg[scene_shown - SS2_SCENE_BG_FIRST].nkeys)
+    {
+        const Ss2SceneBg *sc = &ss2_scene_bg[scene_shown - SS2_SCENE_BG_FIRST];
+        VDP_loadTileData(sc->tiles, BG_TILE, sc->nkeys, CPU);
+    }
     else
         VDP_loadTileData(gfx->bg_tiles, BG_TILE, gfx->bg_ntiles, CPU);
     cache_reset();
@@ -419,7 +462,9 @@ static void apply_fade(void)
     for (i = 0; i < 64; i++)
     {
         u8 title = (u8)(scene_shown == SS2_SCENE_TITLE);
-        u16 w = (i < 32 && shop_shown) ? ss2_shop_palette[i] : title ? ss2_title_palette[i] : gfx->palette[i];
+        u8 pic = (u8)(scene_shown >= SS2_SCENE_BG_FIRST && ss2_scene_bg[scene_shown - SS2_SCENE_BG_FIRST].nkeys);
+        u16 w = (i < 32 && shop_shown) ? ss2_shop_palette[i] : title ? ss2_title_palette[i]
+              : (i < 32 && pic) ? ss2_scene_bg[scene_shown - SS2_SCENE_BG_FIRST].palette[i] : gfx->palette[i];
         if (i < 32) w = (cr & 0x80) ? fade_colour(w, shown_bg) : c100;
         else if (title || !(hud_keep[(i >> 4) - 2] & (1 << (i & 15)))) w = fade_colour(w, shown_sp);
         fade_pal[i] = w;
@@ -1056,6 +1101,27 @@ static void run_loop(void)
         {
             static u16 dbg_n;
             if (++dbg_n == 9) dbg_npc_phase2();
+        }
+#endif
+#ifdef SS2_DBG_FLOW
+        /* diagnostic builds: SS2_DBG_FLOW_AT frames after the HUD split is
+         * first up (the stage intro included), start the stage clear (1), or
+         * kill the player without (2) or with (3) the revive charm */
+        {
+#ifndef SS2_DBG_FLOW_AT
+#define SS2_DBG_FLOW_AT 120
+#endif
+            static u16 dbg_n;
+            if ((dbg_n || (R(0x2201) & 0x04)) && ++dbg_n == SS2_DBG_FLOW_AT)
+            {
+                if (SS2_DBG_FLOW == 1) ss2_stage_clear_start();
+                else
+                {
+                    if (SS2_DBG_FLOW == 3) R(0x22C1) |= 0x04;
+                    P_FLAGSC1 &= (u8)~0x02;
+                    P_LIFE = 0; R(0x22BA) = 0; P_DEATH = 0; P_MODE = 0x40;
+                }
+            }
         }
 #endif
         ss2_game_vblank(pce_pad(pad));

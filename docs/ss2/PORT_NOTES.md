@@ -100,7 +100,9 @@ SonSon via the game chooser (`src/game_select.c`).
 * **Diagnostic builds** (`build_native.py -D ...`): `SS2_DBG_STAGE=k`,
   `SS2_DBG_WX/WY` (teleport), `SS2_DBG_NPC_X/Y` + `SS2_DBG_P2X/Y` (two-phase
   warp so off-screen spawners fire), `SS2_DBG_LOCK7F`, `SS2_DBG_KEY`,
-  `SS2_DBG_MAGIC=n`, `SS2_DBG_CLOUD`.
+  `SS2_DBG_MAGIC=n`, `SS2_DBG_CLOUD`. `SS2_DBG_FLOW=1|2|3` (normal boot;
+  `SS2_DBG_FLOW_AT` frames, default 120, after the HUD split first shows:
+  stage clear, kill the player, kill with the revive charm).
 
 ## Tasks (bank 0 $E1A5 scheduler) -- src/ss2_task.c
 
@@ -165,5 +167,7 @@ runs after each link; keep load and store separate (empty asm barrier).
 | Pause magic select `$FE0C`, weapon box `$FE5A`, freeze flash `$EDB7`, sweep BG `$EDA0` | ported (shots traces m2 exact) |
 | Power-on, title, attract demo, intro, new game, stage start (`src/ss2_flow.c`) | exact on power-on traces (`capture_boot.py`): title->Start->intro->stage 1 1672/1699, title->demo->title 7466/7499 (the rest: CPU-bound loads' in-progress bytes, map streamer `$8E`) |
 | Genesis additions | "PUSH START BUTTON"; after START a GAME START / OPTIONS menu; OPTIONS has a music selector (`$00`-`$14`) and EXIT; the title does not roll into the demo while the menu is up |
-| Stage clear (`$F617`), death/continue (`$F8D8`), ending | pending (a miss returns to the title for now) |
+| Stage clear (`$F617`: bonus tally, next stage) | injected trace (`capture_inject.py`, task 0 = `$F617`) 1087/1099 exact; on target: tally, score, stage 2 loads |
+| Death `$F884`: game over (no charm), continue (charm `$22C1` bit 2: revive picture `$7ADE`/`$FBB1`, goddess messages, YES/NO) | injected traces: game over 494/499, continue 1085/1099 (the rest: `$71F4` palette step in progress, object-list order for a few frames after the stage restart); on target: both message chains, title return, revive into the stage |
+| Ending | in progress |
 | Cartridge | SELECT GAME -> SS2 -> START+A -> SELECT GAME -> SonSon ARCADE/HOME verified headless |

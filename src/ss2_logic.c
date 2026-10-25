@@ -1,6 +1,7 @@
 /* SON SON II logic support: RAM image, ROM table mapping, flow hooks. */
 #include "ss2_ram.h"
 #include "ss2_logic.h"
+#include "ss2_task.h"
 
 u8 ss2_ram[0x2000];
 u8 ss2_staff_sprites_hidden;
@@ -29,7 +30,10 @@ void ss2_unported(u16 source_addr)
     ss2_unported_count++;
 }
 
+/* bank 9 $C322: JMP $F884 from inside the main task (outside a task, as in
+ * the per-frame host replay, only the flag) */
 void ss2_player_died(void)
 {
     ss2_died = 1;
+    if (ss2_task_current() != 0xFF) ss2_task_restart(ss2_death_task);
 }

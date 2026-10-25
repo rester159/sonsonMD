@@ -33,7 +33,7 @@ typedef struct
     const u8 *spr_cmap13;       /* [interior variant][colour]: palette 13 after a door */
 } Ss2StageGfx;
 
-#define SS2_BAT_NKEYS 280
+#define SS2_BAT_NKEYS 600
 extern const u16 ss2_bat_keys[SS2_BAT_NKEYS];   /* $1180-$123F glyphs, then icons */
 extern const Ss2StageGfx ss2_stage_gfx[SS2_NSTAGES];
 extern const u8 ss2_player_anim[7 * 6 * 4 * 2];   /* set,state,step -> frame,attr */

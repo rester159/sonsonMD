@@ -47,6 +47,14 @@ void ss2_bat_picture(u16 dst, u16 src, u8 w, u8 h)
     bat_op2(SS2_BAT_PICTURE, w, h, dst, src);
 }
 
+/* bank 4 $A4CA: 8 BAT rows from dst of (character, count) runs, $FF ends
+ * a row; palette 15 font words */
+void ss2_bat_box(u16 dst, u16 src)
+{
+    ZP(0x28) = (u8)(dst + 0x200); ZP(0x29) = (u8)((dst + 0x200) >> 8);
+    bat_op2(SS2_BAT_BOX, 0, 0, dst, src);
+}
+
 /* $BAD9: a BAT text table placed relative to the camera ($BAE5) */
 void ss2_bat_text(u16 ptr)
 {
@@ -329,5 +337,12 @@ void ss2_hud_text(u16 ptr)
  * code (bank 3 $997F-) owns most of them. */
 void ss2_msg_continue(u16 addr, u8 y)
 {
+    if (addr == 0xF9D6)                      /* bank 0: the revive question */
+    {
+        u16 t = ZP(0x96) ? 0x59F0 : 0x59BD;
+        ZP(0x93) = (u8)t; ZP(0x94) = (u8)(t >> 8);
+        ss2_msg_text();                      /* JMP $69EE */
+        return;
+    }
     if (!ss2_npc_continue(addr, y)) ss2_unported(addr);
 }

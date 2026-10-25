@@ -122,7 +122,7 @@ enum { SS2_SCENE_PLAY, SS2_SCENE_TITLE };
 /* dialogue window and HUD icons (src/ss2_msgwin.c): map writes queued
  * for the renderer */
 enum { SS2_BAT_PUT, SS2_BAT_RESTORE, SS2_BAT_HUD, SS2_BAT_HUDPUT,
-       SS2_BAT_CLEAR, SS2_BAT_PICTURE, SS2_BAT_TEXT };
+       SS2_BAT_CLEAR, SS2_BAT_PICTURE, SS2_BAT_TEXT, SS2_BAT_BOX };
 /* RESTORE: w = width<<8|rows; PICTURE ($FBB1): x,y = width bytes, rows,
  * w = BAT address, w2 = source map; TEXT ($BAD9): w = table, w2 = BAT base */
 typedef struct { u8 kind, x, y; u16 w, w2; } Ss2BatOp;
@@ -139,6 +139,7 @@ void ss2_hud_put(u16 a, u16 w);              /* one HUD BAT word          */
 void ss2_bat_clear(void);                    /* $BA91                     */
 void ss2_bat_picture(u16 dst, u16 src, u8 w, u8 h);   /* $FBB1            */
 void ss2_bat_text(u16 ptr);                  /* $BAD9 (camera-relative)   */
+void ss2_bat_box(u16 dst, u16 src);          /* bank 4 $A4CA: 8 RLE rows  */
 void ss2_bat_put(u8 x, u8 y, u16 w);         /* one BAT word at a world tile */
 extern u8 ss2_shop_screen, ss2_shop_type;    /* shop scene up; shopkeeper type */
 extern u16 ss2_shop_goods;                   /* its goods table ($A666..)   */
@@ -175,6 +176,7 @@ void ss2_fade_out_alt(void);                 /* $7211                      */
 void ss2_fade_in_title(void);                /* $722E                      */
 extern u8 ss2_fade_late;                     /* next fade's first step crosses a VBlank */
 void ss2_fade_out_title(void);               /* $7251                      */
+void ss2_fade_out_cont(void);                /* $72BA                      */
 
 /* sprite pattern sets (src/ss2_sprset.c): which ROM cell each PCE sprite
  * cell holds, plus the RAM animation bases the sets write */

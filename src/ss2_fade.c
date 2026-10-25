@@ -187,6 +187,26 @@ void ss2_fade_out_title(void)
     for (l = 6; l != -1; l--) fade_title_step((u8)l);
 }
 
+/* $72BA: every palette out (alternate BG set), before a continue */
+void ss2_fade_out_cont(void)
+{
+    s8 l;
+    for (l = 6; l != -1; l--)
+    {
+        f72F1((u8)l);
+        f7324((u8)l);
+        ss2_wait(2);
+        up_bg();
+        ss2_fade_bg = (u8)l;
+        f733A((u8)l);
+        f7350((u8)l);
+        f7366((u8)l);
+        ss2_wait(1);
+        up_sp();
+        ss2_fade_sp = (u8)l;
+    }
+}
+
 /* Unfaded VCE contents for the current stage (what the stage load sets) */
 void ss2_vce_reset(void)
 {
