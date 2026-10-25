@@ -89,6 +89,7 @@ void ss2_shield_end(void);                   /* $D702 (from $FEAE)         */
 
 /* frame (src/ss2_game.c) */
 extern u16 ss2_sat[64 * 4];                  /* PCE SATB layout            */
+extern u8 ss2_sat_hi;                        /* entries >= this are empty  */
 extern u8 ss2_hud_dirty;                     /* bit0 score, bit1 money     */
 extern u8 ss2_hud_life[2], ss2_hud_magic[2]; /* bar shown/max this frame   */
 void ss2_game_vblank(u8 pad);                /* pad in PCE $16 layout      */

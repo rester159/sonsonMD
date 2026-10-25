@@ -147,6 +147,44 @@ high). Hit: SS2 RAM bootstrap copy, Z80 list copy, SGDK libmd Z80_upload
 (also in SonSon v1.0: SEGA chant PCM driver load). tools/check_autoinc_hazard.py
 runs after each link; keep load and store separate (empty asm barrier).
 
+## Performance (2026-10-24)
+
+Measured headless with Genesis Plus GX (`tools/ss2/gpgx_shot.c`), never MAME.
+
+* **Frame rate**: `SS2_TRACE` + `SS2_TRACE_LOOP` (= `ss2_loop_n`) log the
+  frame-loop counter per refresh; a refresh where it does not move is a
+  missed presentation. `SS2_AUTOPLAY_LOOP=N` plays a fixed pattern (walk
+  right, attack, jump) indexed by the game's own loop counter;
+  `SS2_LIFE=1` refills life so a run stays in gameplay. Stage builds
+  (`-D SS2_DBG_STAGE=k`) start each stage directly.
+* **Section costs**: `-D SS2_TPROF` records scanlines per section per pass
+  (`ss2_prof_mark`, `ss2_tp_last[24]`, `SS2_TRACE_PROF`) and event counts
+  (`ss2_tc_last`, `SS2_TRACE_COUNT`).
+* **PC sampling**: `-D SS2_TPROF -D SS2_TPROF_PC -D PROF_HINT` replaces the
+  raster band with an H-int every 4 lines that stores the interrupted PC
+  (`SS2_TRACE_PCRING`, `SS2_PCOUT`); map with `m68k-elf-addr2line`. Visible
+  lines only: work done during VBlank (sound) is under-sampled.
+* **Logic changes**: `tools/ss2/hosttest/ab.sh BASE_ROOT [DATA]` replays
+  every recorded trace through the old and new logic and requires
+  byte-identical RAM after each frame (62 traces).
+
+Stage frame rates with the player kept alive (autoplay, 7,800 refreshes):
+
+| | S1 | S2 | S3 | S4 | S5 | S6 | S7 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| before | 59.3 | 33.0 | 56.5 | 55.0 | 56.9 | 38.6 | 37.4 |
+| after  | 59.5 | 33.1 | 57.6 | 56.2 | 57.2 | 50.6 | 42.1 |
+
+Work per pass in the heavy stages is 300-350 lines against a 262-line
+frame; objects (stage 2: 133 lines; terrain probes, `ss2_obj_common`,
+`collide`), the SAT build + sprite conversion (45-100) and sound (~50) are
+the remaining costs. Done so far, all output-identical: cache pair index,
+SAT high-water mark and hoisted invariants in `draw_sprites`, per-pair
+dirty table instead of `cell_dirty()` per row, cached FM frequency
+division and attenuation. Scroll registers are now queued for the VBlank
+with the sprite table and palette (they were written mid-screen: tearing,
+and sprites a frame apart from the background).
+
 ## Status
 
 | Subsystem | State |

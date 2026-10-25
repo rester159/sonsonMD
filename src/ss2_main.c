@@ -22,11 +22,25 @@
 #include "ss2_sound.h"
 #include "sound.h"
 
+#if defined(SS2_PROF) || defined(SS2_TPROF)
+void ss2_prof_mark(u8 sec);
+#define PROF(n) ss2_prof_mark(n)
+#else
+#define PROF(n)
+#endif
+#ifdef SS2_TPROF
+extern u16 ss2_tc_now[4];
+#define TCOUNT(n) (ss2_tc_now[n]++)
+#else
+#define TCOUNT(n)
+#endif
+
 /* VRAM tile bases for the current stage (stage_gfx_load) */
 #define BG_TILE      TILE_USER_INDEX
 static u16 HUD_TILE, PLAYER_TILE, SPR_TILE;
 static const Ss2StageGfx *gfx;
 static void cache_reset(void);
+static u8 pairs_ok;               /* pair_dirty[] is current (draw_sprites) */
 /* cell sources of the stage's own sets (what the static sprite tables were
  * made from); the ending, which converts every sprite at run time, uses
  * the same RAM for more sprite cache entries (ss2_main.c cache) */
@@ -40,7 +54,7 @@ static union
 #define def_bank (ram_share.def.bank)
 #define def_src  (ram_share.def.src)
 static void draw_hud(u8 all);
-static void stage_gfx_load(void);
+static void stage_gfx_load(u8 full);
 static u8 shown_frame;
 static u8 scene_shown;
 
@@ -169,8 +183,35 @@ static void band_vblank(void)
     if (band_on) vsram_ab(top_v);
 }
 
+#ifdef SS2_TPROF_PC
+/* PC sampling (-D SS2_TPROF -D SS2_TPROF_PC): an H-int every 4 lines
+ * stores the interrupted PC in a 128-entry ring that the harness drains
+ * each refresh (SS2_TRACE_PCRING). Replaces the raster band. */
+__attribute__((used, externally_visible)) u32 ss2_pc_ring[128];
+__attribute__((used, externally_visible)) volatile u16 ss2_pc_i;
+void tp_hint(void);
+__asm__(".globl tp_hint\n"
+        "tp_hint:\n"
+        "    movem.l %d0/%a0,-(%sp)\n"         /* SR at 8(sp), PC at 10(sp) */
+        "    move.w ss2_pc_i,%d0\n"
+        "    lea ss2_pc_ring,%a0\n"
+        "    move.l 10(%sp),(%a0,%d0.w)\n"
+        "    addq.w #4,%d0\n"
+        "    and.w #0x1FC,%d0\n"
+        "    move.w %d0,ss2_pc_i\n"
+        "    movem.l (%sp)+,%d0/%a0\n"
+        "    rte\n");
+#endif
+
 static void band_set(u8 on)
 {
+#ifdef SS2_TPROF_PC
+    (void)on;
+    SYS_setHIntCallback(tp_hint);
+    VDP_setHIntCounter(3);
+    VDP_setHInterrupt(TRUE);
+    return;
+#endif
     if (on == band_on) return;
     band_on = on;
     if (on)
@@ -204,6 +245,21 @@ static void ending_scroll(void)
     band_set((u8)(ss2_ending_part == 2 && (R(0x2201) & 0x04)));
 }
 
+/* Both planes' scroll, applied in the next VBlank with the sprite table
+ * and palette (DMA queue). Written at once, the registers changed wherever
+ * the beam was when the frame's work ended (usually mid-screen): a tear,
+ * and sprites a frame apart from the background. */
+static void scroll_queue(s16 h, s16 v)
+{
+    static s16 hbuf[2], vbuf[2];        /* read by the DMA at the VBlank */
+    hbuf[0] = hbuf[1] = h;
+    vbuf[0] = vbuf[1] = v;
+    VDP_setHorizontalScrollLine(BG_A, 0, &hbuf[0], 1, DMA_QUEUE);
+    VDP_setHorizontalScrollLine(BG_B, 0, &hbuf[1], 1, DMA_QUEUE);
+    VDP_setVerticalScrollTile(BG_A, 0, &vbuf[0], 1, DMA_QUEUE);
+    VDP_setVerticalScrollTile(BG_B, 0, &vbuf[1], 1, DMA_QUEUE);
+}
+
 static void apply_scroll(void)
 {
     u8 split = (u8)((R(0x2201) & 0x04) != 0);
@@ -214,18 +270,8 @@ static void apply_scroll(void)
         if (split) VDP_setWindowOnTop(HUD_ROWS);
         else VDP_setWindowOff();
     }
-    if (!split)
-    {
-        VDP_setHorizontalScroll(BG_A, 0);
-        VDP_setVerticalScroll(BG_A, 8);
-        VDP_setHorizontalScroll(BG_B, 0);
-        VDP_setVerticalScroll(BG_B, 8);
-        return;
-    }
-    VDP_setHorizontalScroll(BG_A, (s16)-camx);
-    VDP_setVerticalScroll(BG_A, (s16)(camy - VIEW_TOP));
-    VDP_setHorizontalScroll(BG_B, (s16)-camx);
-    VDP_setVerticalScroll(BG_B, (s16)(camy - VIEW_TOP));
+    if (!split) scroll_queue(0, 8);
+    else scroll_queue((s16)-camx, (s16)(camy - VIEW_TOP));
 }
 
 /* ---- dialogue window and HUD icons (ss2_bat_queue) ---------------------
@@ -548,7 +594,8 @@ static void scene_update(void)
         gfx = &ss2_stage_gfx[Z_STAGE < SS2_NSTAGES ? Z_STAGE : 0];
         memcpy(def_bank, ss2_cell_bank, sizeof def_bank);
         memcpy(def_src, ss2_cell_src, sizeof def_src);
-        stage_gfx_load();
+        pairs_ok = 0;
+        stage_gfx_load(0);
         draw_hud(1);
         shown_bg = 0xFF;
     }
@@ -641,7 +688,7 @@ static void video_init(void)
     VDP_setBackgroundColor(0);
     VDP_resetSprites();
     VDP_updateSprites(1, CPU);
-    stage_gfx_load();
+    stage_gfx_load(1);
     ss2_bat_head = ss2_bat_tail = 0;
     VDP_setWindowOnTop(HUD_ROWS);
     split_shown = 1;
@@ -649,20 +696,28 @@ static void video_init(void)
 }
 
 /* the current stage's graphics: tiles, palette, HUD, icons (also when the
- * game flow starts a stage: ss2_stage_request) */
-static void stage_gfx_load(void)
+ * game flow starts a stage: ss2_stage_request). full: power on, the
+ * palette at full brightness; a stage the game flow starts keeps the
+ * brightness its logic left (the intro requests stage 1 after the title has
+ * faded to black and fades it in later: the HuCard never shows it bright
+ * before that), and apply_fade() uploads it at the frame's end. */
+static void stage_gfx_load(u8 full)
 {
     HUD_TILE = (u16)(BG_TILE + gfx->bg_ntiles);
     PLAYER_TILE = (u16)(HUD_TILE + gfx->hud_ntiles);
     SPR_TILE = (u16)(PLAYER_TILE + 16);
-    PAL_setColors(0, gfx->palette, 64, CPU);
+    if (full)
+    {
+        PAL_setColors(0, gfx->palette, 64, CPU);
+        ss2_fade_bg = ss2_fade_sp = 7;
+        shown_bg = shown_sp = 7;
+    }
+    else shown_bg = shown_sp = 0xFF;
     hud_colours();
-    shown_bg = shown_sp = 7;
     shown_cr = 0xC0;
     shown_c100 = 0;
     shop_shown = 0;
     ss2_shop_screen = 0;
-    ss2_fade_bg = ss2_fade_sp = 7;
     VDP_loadTileData(gfx->bg_tiles, BG_TILE, gfx->bg_ntiles, CPU);
     VDP_loadTileData(gfx->hud_tiles, HUD_TILE, gfx->hud_ntiles, CPU);
     VDP_loadTileData(gfx->spr_tiles, SPR_TILE, gfx->spr_ntiles, CPU);
@@ -734,6 +789,7 @@ static const u16 cache_base[] = {
     1968, 1976, 1984, 1992, 2000, 2008, 2016, 2024, 2032, 2040 };  /* $F600- */
 #define NCACHE (sizeof cache_base / sizeof cache_base[0])
 static CacheEnt cache[NCACHE];
+static u8 cache_at[0x100];      /* cache_at[pair >> 1]: entry + 1 (the ending: extra.at) */
 static u16 cache_clock;
 static u8 conv_n;
 static u32 conv_buf[4][64];
@@ -751,6 +807,7 @@ static void memo_reset(void);
 
 static void cache_reset(void)
 {
+    pairs_ok = 0;
     memset(cache, 0, sizeof cache);
     memo_reset();
     if (ending_cache()) memset(&ram_share.extra, 0, sizeof ram_share.extra);
@@ -802,13 +859,19 @@ static u16 cache_tile(u16 c, u8 key, u8 *line)
     u16 s0 = ss2_cell_src[c], s1 = ss2_cell_src[c + 1];
     u8 i, victim = 0xFF, n = ncache();
     u16 age = 0;
+    TCOUNT(0);
     *line = (u8)(2 + (cm[1] >> 7));
-    if (ending_cache() && ram_share.extra.at[c >> 1])
+    /* the pair's last converted entry first: a hit returns the one entry
+     * the search below would find (an entry is only added after a full
+     * miss), without visiting the others */
+    i = ending_cache() ? ram_share.extra.at[c >> 1] : cache_at[c >> 1];
+    if (i)
     {
-        CacheEnt *e = cache_ent(ram_share.extra.at[c >> 1] - 1);
+        CacheEnt *e = cache_ent(i - 1);
         if (e->used && e->pair == c && e->key == key && e->b0 == b0 && e->b1 == b1 && e->s0 == s0 && e->s1 == s1)
         {
             e->last = cache_clock;
+            TCOUNT(1);
             return e->tile;
         }
     }
@@ -823,6 +886,7 @@ static u16 cache_tile(u16 c, u8 key, u8 *line)
         if (e->pair == c && e->key == key && e->b0 == b0 && e->b1 == b1 && e->s0 == s0 && e->s1 == s1)
         {
             e->last = cache_clock;
+            TCOUNT(1);
             return e->tile;
         }
         if (e->last != cache_clock && (victim == 0xFF || (cache_ent(victim)->used && (u16)(cache_clock - e->last) > age)))
@@ -833,13 +897,16 @@ static u16 cache_tile(u16 c, u8 key, u8 *line)
     }
     if (victim == 0xFF || conv_n >= 4) return 0;
     memo_reset();
+    PROF(12);
     conv_cell(b0, s0, cm, conv_buf[conv_n]);
     conv_cell(b1, s1, cm, conv_buf[conv_n] + 32);
+    PROF(13);
     {
         CacheEnt *e = cache_ent(victim);
         e->used = 1; e->pair = c; e->key = key; e->b0 = b0; e->b1 = b1; e->s0 = s0; e->s1 = s1;
         e->tile = victim < NCACHE ? cache_base[victim] : (u16)(EXTRA_TILE + (victim - NCACHE) * 8);
         if (ending_cache()) ram_share.extra.at[c >> 1] = (u8)(victim + 1);
+        else cache_at[c >> 1] = (u8)(victim + 1);
         e->last = cache_clock;
         VDP_loadTileData(conv_buf[conv_n], e->tile, 8, DMA_QUEUE);
         conv_n++;
@@ -851,6 +918,19 @@ static u8 cell_dirty(u16 c)
 {
     return (u8)(ss2_cell_bank[c] != def_bank[c] || ss2_cell_src[c] != def_src[c]
              || ss2_cell_bank[c + 1] != def_bank[c + 1] || ss2_cell_src[c + 1] != def_src[c + 1]);
+}
+
+/* cell_dirty() per pair, rebuilt when the cell or default tables may have
+ * changed: a sprite-set load (ss2_cells_dirty), new defaults, a cache reset,
+ * and the ending (whose cache shares the defaults' RAM) */
+static u8 pair_dirty[0x100];
+static void pairs_update(void)
+{
+    u16 c;
+    if (ss2_cells_dirty) { ss2_cells_dirty = 0; pairs_ok = 0; }
+    if (pairs_ok) return;
+    for (c = 0; c < 0x200; c += 2) pair_dirty[c >> 1] = cell_dirty(c);
+    pairs_ok = 1;
 }
 
 /* the ending's sprites per SAT slot: the pattern/attribute words they were
@@ -898,13 +978,22 @@ static void draw_sprites(void)
     }
     cache_clock++;
     conv_n = 0;
-    for (i = 0; i < 64; i++)
+    /* per-frame invariants of the static-table test below */
+    const u8 *spr_line = gfx->spr_line;
+    const u16 *spr_lut = gfx->spr_lut;
+    u8 no_static = (u8)(scene_cmap() != 0), intro = (u8)(ss2_pal_intro != 0);
+    u8 hi = ss2_sat_hi, last = 0;
+    if (ending) pairs_ok = 0;
+    else pairs_update();
+    for (i = 0; i < hi; i++)
     {
         const u16 *e = &ss2_sat[i * 4];
         s16 sx, sy;
         u16 attr = e[3], cell = (u16)((e[2] >> 1) & 0x3FF);
         u8 cw, ch, pal, line, key, memo, ok = 1;
         if (!(e[0] & 0x3FF)) continue;
+        last = (u8)(i + 1);
+        TCOUNT(3);
         memo = (u8)(ending && memo_words[i] == (((u32)e[2] << 16) | attr));
         sx = (s16)((e[1] & 0x3FF) - 32);
         sy = (s16)((e[0] & 0x3FF) - 64 - 8);
@@ -945,10 +1034,10 @@ static void draw_sprites(void)
                 memo_tile[i][r] = (u16)((line << 14) | t);
                 goto put;
             }
-            line = gfx->spr_line[pal];
-            t = (cc >= 0x200 || key >= 16 || scene_cmap() || (ss2_pal_intro && key >= 8)
-                 || cell_dirty(cc)) ? 0
-                : gfx->spr_lut[pal * 256 + (cc >> 1)];
+            line = spr_line[pal];
+            t = (cc >= 0x200 || key >= 16 || no_static || (intro && key >= 8)
+                 || pair_dirty[cc >> 1]) ? 0
+                : spr_lut[pal * 256 + (cc >> 1)];
             if (t && line <= 3)
                 t = (u16)(SPR_TILE + t - 1);
             else
@@ -960,6 +1049,7 @@ static void draw_sprites(void)
                 if (!t) { ss2_sprite_misses++; continue; }
             }
 put:
+            TCOUNT(2);
             y = (s16)(sy + ((attr & 0x8000) ? (ch - 1 - r) : r) * 16);
             if (cw == 2)
                 put_sprite(sx, y, SPRITE_SIZE(4, 2), TILE_ATTR_FULL(line, 1, (attr & 0x8000) ? 1 : 0, (attr & 0x0800) ? 1 : 0, t));
@@ -968,9 +1058,12 @@ put:
         }
         if (ending && !memo) memo_words[i] = ok ? (((u32)e[2] << 16) | attr) : 0;
     }
+    ss2_sat_hi = last;
     if (!nspr) put_sprite(-128, -128, SPRITE_SIZE(1, 1), 0);
     VDP_setSpriteLink((u16)(nspr - 1), 0);
+    PROF(12);
     VDP_updateSprites(nspr, DMA_QUEUE);
+    PROF(14);
 }
 
 /* ---- HUD (window rows 0-5 = PCE BAT rows 1-6) -------------------------- */
@@ -1060,10 +1153,43 @@ static void camera_from_state(void)
     camy = (s16)(((((Z_CAMY_HI & 7) << 8) | Z_CAMY_LO) + 61) & 2047);
 }
 
-#ifdef SS2_PROF
-#define PROF(n) ss2_prof_mark(n)
-#else
-#define PROF(n)
+
+#ifdef SS2_TPROF
+/* trace-profiling build (-D SS2_TPROF): scanlines spent per section in each
+ * loop pass, read once per refresh by tools/ss2/gpgx_shot.c (SS2_TRACE_PROF).
+ * ss2_prof_mark(n) charges the time since the previous mark to section n.
+ * Time = vtimer (VBlank count) * 262 + lines since VBlank start; NTSC counts
+ * $E5-$EA twice, so a mark there can be up to 6 lines early. No waits and
+ * no drawing: the game's own timing is kept. ss2_tp_last[23] = whole pass. */
+u16 ss2_tp_now[24];
+volatile u16 ss2_tp_last[24];   /* read by the harness only */
+/* event counts per pass (SS2_TRACE_COUNT): 0 cache_tile calls, 1 cache
+ * hits, 2 sprite rows drawn, 3 SAT entries visited */
+u16 ss2_tc_now[4];
+volatile u16 ss2_tc_last[4];
+static u32 tp_prev, tp_start;
+static u32 tp_time(void)
+{
+    u16 v = (u16)GET_VCOUNTER;
+    u32 t = vtimer;
+    t = t * 262 + (v >= 0xE0 ? (u32)(v - 0xE0) : (u32)v + 38);
+    return t < tp_prev ? tp_prev : t;     /* the repeated $E5-$EA lines */
+}
+void ss2_prof_mark(u8 sec)
+{
+    u32 t = tp_time();
+    ss2_tp_now[sec] += (u16)(t - tp_prev);
+    tp_prev = t;
+}
+static void tp_frame(void)
+{
+    u8 k;
+    u32 t = tp_time();
+    ss2_tp_now[23] = (u16)(t - tp_start);
+    for (k = 0; k < 24; k++) { ss2_tp_last[k] = ss2_tp_now[k]; ss2_tp_now[k] = 0; }
+    for (k = 0; k < 4; k++) { ss2_tc_last[k] = ss2_tc_now[k]; ss2_tc_now[k] = 0; }
+    tp_start = tp_prev = t;
+}
 #endif
 
 #ifdef SS2_PROF
@@ -1198,6 +1324,7 @@ void ss2_run(void)
     gfx = &ss2_stage_gfx[0];
     memset(def_bank, 0, sizeof def_bank);
     memset(def_src, 0, sizeof def_src);
+    pairs_ok = 0;
     snd_shutdown();
     ss2_sound_init();
     ss2_scene = SS2_SCENE_PLAY;
@@ -1226,6 +1353,7 @@ void ss2_run_stage(u8 k)
     ss2_staff_art();
     memcpy(def_bank, ss2_cell_bank, sizeof def_bank);
     memcpy(def_src, ss2_cell_src, sizeof def_src);
+    pairs_ok = 0;
     load_bootstrap();
 #ifdef SS2_DBG_NPC_X
     dbg_npc_phase1();
@@ -1289,6 +1417,9 @@ void ss2_run_stage(u8 k)
 static void run_loop(void)
 {
     u16 pad;
+#ifdef SS2_TPROF_PC
+    band_set(1);
+#endif
     for (;;)
     {
 #ifdef SS2_PROF
@@ -1301,6 +1432,9 @@ static void run_loop(void)
         SYS_doVBlankProcessEx(ON_VBLANK);
         band_idle = 0;
         ss2_loop_n++;
+#ifdef SS2_TPROF
+        tp_frame();
+#endif
 #ifdef SS2_PROF
         /* measure inside active display, where the V counter is linear
          * (NTSC VBlank counts $E5-$EA twice) */
@@ -1359,16 +1493,21 @@ static void run_loop(void)
         sound_irq();
         PROF(0);
         ss2_game_frame();
+        PROF(8);
         band_idle = 0;
         camera_from_state();
         scene_update();
         shop_scene();
+        PROF(9);
         if (ss2_redraw_request) { ss2_redraw_request = 0; redraw_view(); map_live = 1; }   /* $EBE1 */
         else if (!shop_shown && map_live && (R(0x2201) & 0x04)) stream_view();
+        PROF(10);
         bat_drain();
         apply_scroll();
         apply_fade();
+        PROF(11);
         draw_sprites();
+        PROF(12);
         draw_hud(0);
         PROF(7);
 #ifdef SS2_PROF

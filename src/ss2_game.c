@@ -16,6 +16,7 @@
 
 /* sprite table in the PCE SATB word layout: y, x, pattern, attribute */
 u16 ss2_sat[64 * 4];
+u8 ss2_sat_hi;          /* entries at and above this are empty (see sat_put) */
 u8 ss2_hud_dirty;
 
 /* $FEDE (player 1 only): held and newly pressed, PCE bit layout */
@@ -100,6 +101,9 @@ static void sat_put(u16 y, u16 x, u16 pat, u16 attr)
     u16 *e = &ss2_sat[(sat_i & 63) * 4];
     e[0] = y; e[1] = x; e[2] = pat; e[3] = attr;
     sat_i++;
+    /* the renderer scans entries below ss2_sat_hi only; it lowers the mark
+     * to the last non-empty entry it saw */
+    if ((y & 0x3FF) && (u8)(((sat_i - 1) & 63) + 1) > ss2_sat_hi) ss2_sat_hi = (u8)(((sat_i - 1) & 63) + 1);
 }
 
 /* $896A: one sprite per object */
@@ -387,7 +391,7 @@ void ss2_game_vblank(u8 pad)
     ZP(0x14) = 0;
 }
 
-#ifdef SS2_PROF
+#if defined(SS2_PROF) || defined(SS2_TPROF)
 void ss2_prof_mark(u8 sec);
 #define PROF(n) ss2_prof_mark(n)
 #else
@@ -438,12 +442,15 @@ static void main_body(void)
     ZP(0x73) = 0;                           /* $ED20 (set by the sweep $D845) */
     trail();
     spark();
+    PROF(18);
     sat_banks();                            /* $ED5E: $8732 bank mapping */
     if (ZP(0x74)) { ss2_map6(9); ss2_magic_sweep(); }   /* $ED61 */
     if (!(Z_FRAME & 0x0F))
         for (i = 0x20; i < 0xBF; i++)
             if (R(0x2C1A + i) && R(0x2C1A + i) != 0xFF) R(0x2C1A + i)--;
+    PROF(19);
     ss2_hud_bars();
+    PROF(20);
 }
 
 /* $FE5A: the weapon/magic box: frame (lit when the selected magic costs
@@ -646,7 +653,9 @@ void ss2_game_frame(void)
 {
     ss2_sched_vblank();
     ss2_sched_run();
+    PROF(16);
     build_sat();
+    PROF(17);
 }
 
 /* Host replay: one main-loop pass plus the score task, as one frame does

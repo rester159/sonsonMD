@@ -39,6 +39,9 @@ typedef struct
     u8 pan;
     u8 patch;
     u8 keyed;
+    u16 wper, wword;    /* period the block|fnum word was computed for */
+    u16 akey;           /* volume | balance << 8 the attenuation is for */
+    u8 amain, aval;     /* ... and main volume; the attenuation */
 } FmCache;
 
 static VPsg vp[6];
@@ -201,6 +204,7 @@ static void ym_voice_init(u8 ch)
     ym_key(ch, 0);
     fc[ch].freq = 0xFFFF; fc[ch].att = 0xFF; fc[ch].pan = 0xC0;
     fc[ch].patch = 0xFF; fc[ch].keyed = 0;
+    fc[ch].wper = 0; fc[ch].akey = 0xFFFF;
 }
 
 static u8 max_nib(u8 b)
@@ -225,7 +229,14 @@ static void render_fm(u8 ch)
     const VPsg *v = &vp[ch];
     FmCache *c = &fc[ch];
     u8 noise = (ch >= 4) && (v->noise & 0x80);
-    u8 att = pce_att(v);
+    u16 akey = (u16)((v->ctrl & 0x1F) | (v->bal << 8));
+    u8 att;
+    /* pce_att() of unchanged inputs (volume envelopes are often static) */
+    if (akey != c->akey || vmain != c->amain)
+    {
+        c->akey = akey; c->amain = vmain; c->aval = pce_att(v);
+    }
+    att = c->aval;
     u8 on = (v->ctrl & 0x80) && !(v->ctrl & 0x40) && !noise && att != 0xFF && v->per;
     u8 o;
     if (!on)
@@ -255,11 +266,18 @@ static void render_fm(u8 ch)
         if (pan != c->pan) { ym(ch, 0xB4, pan); c->pan = pan; }
     }
     {
-        u32 q = kfreq / v->per;
-        u16 blk = 0, w;
-        while (q > 2047 && blk < 7) { q >>= 1; blk++; }
-        if (q > 2047) q = 2047;
-        w = (u16)((blk << 11) | (u16)q);
+        u16 w;
+        if (v->per != c->wper)
+        {
+            /* a 32-bit division: only when the period changes */
+            u32 q = kfreq / v->per;
+            u16 blk = 0;
+            while (q > 2047 && blk < 7) { q >>= 1; blk++; }
+            if (q > 2047) q = 2047;
+            c->wper = v->per;
+            c->wword = (u16)((blk << 11) | (u16)q);
+        }
+        w = c->wword;
         if (w != c->freq)
         {
             ym(ch, 0xA4, (u8)(w >> 8));
@@ -353,7 +371,7 @@ void ss2_sound_set_hold(u8 v)
     ss2_snd_seq_set_hold(v);
 }
 
-#ifdef SS2_PROF
+#if defined(SS2_PROF) || defined(SS2_TPROF)
 void ss2_prof_mark(u8 sec);
 #define PROF(n) ss2_prof_mark(n)
 #else

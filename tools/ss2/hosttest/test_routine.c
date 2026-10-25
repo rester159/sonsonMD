@@ -70,6 +70,13 @@ int main(int argc, char **argv)
             if (unported_frames <= 4) printf("frame %u: unported $%04X (bank $%02X at $C000)\n", fr, ss2_unported_last, ss2_unported_bank);
             continue;
         }
+        /* SS2_DUMP = file: every frame's native result (A/B comparisons of
+         * logic changes, independent of the trace's own agreement) */
+        {
+            static FILE *dump; static int opened;
+            if (!opened) { opened = 1; if (getenv("SS2_DUMP")) dump = fopen(getenv("SS2_DUMP"), "wb"); }
+            if (dump) fwrite(ss2_ram, 1, 0x2000, dump);
+        }
         for (a = 0; a < 0x2000; a++)
             if (!masked(a) && ss2_ram[a] != post[a])
             {

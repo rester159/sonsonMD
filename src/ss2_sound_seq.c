@@ -602,7 +602,7 @@ static void sfx_tick(void)                  /* $8718 */
 }
 
 /* ---- public ------------------------------------------------------------- */
-#ifdef SS2_PROF
+#if defined(SS2_PROF) || defined(SS2_TPROF)
 void ss2_prof_mark(u8 sec);
 #define PROF(n) ss2_prof_mark(n)
 #else

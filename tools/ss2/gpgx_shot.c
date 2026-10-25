@@ -17,6 +17,12 @@ struct Game { const char *path; const void *data; size_t size; const char *meta;
 struct Variable { const char *key, *value; };
 
 static unsigned pixel_format, frame;
+/* SS2_AUTOPLAY_LOOP: the play pattern indexed by the game's own loop
+ * counter (pass about to read the pad), so builds with different timing
+ * see the same input on the same logic frame */
+static long apl_start = -1;
+static unsigned apl_t;
+static int apl_on;
 static const char *outdir, *script;
 static unsigned shots[256], nshots;
 
@@ -84,8 +90,20 @@ static int key_id(char k)
 static int16_t input(unsigned port, unsigned device, unsigned index, unsigned id)
 {
     const char *p = script;
+    static long autoplay = -2;
     (void)device; (void)index;
     if (port || !p) return 0;
+    /* env SS2_AUTOPLAY = first frame of a fixed play pattern after the
+     * script: walk right, attack (II) every 12 frames, jump (I) every 90 */
+    if (autoplay == -2) autoplay = getenv("SS2_AUTOPLAY") ? atol(getenv("SS2_AUTOPLAY")) : -1;
+    if (apl_on || (autoplay >= 0 && frame >= (unsigned)autoplay))
+    {
+        unsigned t = apl_on ? apl_t : frame - (unsigned)autoplay;
+        if (id == 7) return 1;
+        if (id == 1) return (t % 12) < 3;
+        if (id == 0) return (t % 90) >= 30 && (t % 90) < 39;
+        return 0;
+    }
     while (*p)
     {
         unsigned a = 0, b = 0;
@@ -160,7 +178,82 @@ int main(int argc, char **argv)
         if (sf && sram) { fread(sram, 1, retro_get_memory_size(0), sf); }
         if (sf) fclose(sf);
     }
-    for (frame = 0; frame < frames; frame++) retro_run();
+    /* optional per-refresh trace (env SS2_TRACE = path): the frame-loop
+     * counter (SS2_TRACE_LOOP, u16 address from out/symbol.txt) and ss2_ram
+     * (SS2_TRACE_RAM): a refresh where the loop counter did not move is a
+     * presentation the game missed */
+    FILE *tf = getenv("SS2_TRACE") ? fopen(getenv("SS2_TRACE"), "w") : NULL;
+    unsigned loop_a = getenv("SS2_TRACE_LOOP") ? (unsigned)strtoul(getenv("SS2_TRACE_LOOP"), NULL, 16) & 0xFFFF : 0;
+    unsigned ram_a = getenv("SS2_TRACE_RAM") ? (unsigned)strtoul(getenv("SS2_TRACE_RAM"), NULL, 16) & 0xFFFF : 0;
+    unsigned count_a = getenv("SS2_TRACE_COUNT") ? (unsigned)strtoul(getenv("SS2_TRACE_COUNT"), NULL, 16) & 0xFFFF : 0;
+    unsigned prof_a = getenv("SS2_TRACE_PROF") ? (unsigned)strtoul(getenv("SS2_TRACE_PROF"), NULL, 16) & 0xFFFF : 0;
+    const u8 *wram = (const u8 *)retro_get_memory_data(2);
+    FILE *hf_ram = getenv("SS2_RAMHASH") ? fopen(getenv("SS2_RAMHASH"), "w") : NULL;
+    if (tf) fputs(prof_a ? "frame,loop,zframe,camx,stage,s0,s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12,s13,s14,s15,s16,s17,s18,s19,s20,s21,s22,total,c0,c1,c2,c3\n"
+                         : "frame,loop,zframe,camx,stage\n", tf);
+#define WB(a) (wram[((a) & 0xFFFF) ^ 1])
+    /* PC samples (SS2_TRACE_PCRING = ring,index addresses, SS2_PCOUT = file):
+     * "frame pc" per sample drained from the ROM's ring each refresh */
+    unsigned ring_a = 0, ridx_a = 0, rlast = 0;
+    FILE *pf = NULL;
+    if (getenv("SS2_TRACE_PCRING") && getenv("SS2_PCOUT"))
+    {
+        sscanf(getenv("SS2_TRACE_PCRING"), "%x,%x", &ring_a, &ridx_a);
+        ring_a &= 0xFFFF; ridx_a &= 0xFFFF;
+        pf = fopen(getenv("SS2_PCOUT"), "w");
+    }
+    if (getenv("SS2_AUTOPLAY_LOOP")) apl_start = atol(getenv("SS2_AUTOPLAY_LOOP"));
+    unsigned hlast = 0xFFFFFFFF;
+    for (frame = 0; frame < frames; frame++)
+    {
+        if (apl_start >= 0 && wram && loop_a)
+        {
+            /* from refresh apl_start on: t = passes since then */
+            static unsigned l0; static int got;
+            unsigned l = (WB(loop_a) << 8) | WB(loop_a + 1);
+            if (frame >= (unsigned)apl_start) { if (!got) { l0 = l; got = 1; } apl_on = 1; apl_t = (l + 1 - l0) & 0xFFFF; }
+        }
+        /* SS2_LIFE (profiling): refill life ($22B8) to its maximum ($22B9) */
+        if (getenv("SS2_LIFE") && wram && ram_a)
+            ((u8 *)wram)[((ram_a + 0x2B8) & 0xFFFF) ^ 1] = WB(ram_a + 0x2B9);
+        retro_run();
+        if (hf_ram && wram && loop_a)
+        {
+            /* SS2_RAMHASH: FNV-1a of ss2_ram (8 KiB) once per loop pass */
+            unsigned l = (WB(loop_a) << 8) | WB(loop_a + 1), h = 2166136261u, k;
+            if (l != hlast)
+            {
+                for (k = 0; k < 0x2000; k++) h = (h ^ WB(ram_a + k)) * 16777619u;
+                fprintf(hf_ram, "%u %u %08x\n", frame, l, h);
+                hlast = l;
+            }
+        }
+        if (pf && wram)
+        {
+            unsigned ri = ((WB(ridx_a) << 8) | WB(ridx_a + 1)) & 0x1FC;
+            while (rlast != ri)
+            {
+                unsigned q = ring_a + rlast;
+                fprintf(pf, "%u %x\n", frame, (WB(q) << 24) | (WB(q + 1) << 16) | (WB(q + 2) << 8) | WB(q + 3));
+                rlast = (rlast + 4) & 0x1FC;
+            }
+        }
+        if (tf && wram)
+            fprintf(tf, "%u,%u,%u,%u,%u\n", frame, (WB(loop_a) << 8) | WB(loop_a + 1),
+                    WB(ram_a + 0x12), ((WB(ram_a + 0x45) & 7) << 8) | WB(ram_a + 0x46), WB(ram_a + 0x69));
+        if (tf && wram && prof_a)
+        {
+            /* ss2_tp_last[24] (SS2_TPROF builds): the last finished pass */
+            unsigned k;
+            fseek(tf, -1, SEEK_CUR);
+            for (k = 0; k < 24; k++) fprintf(tf, ",%u", (WB(prof_a + 2 * k) << 8) | WB(prof_a + 2 * k + 1));
+            for (k = 0; count_a && k < 4; k++) fprintf(tf, ",%u", (WB(count_a + 2 * k) << 8) | WB(count_a + 2 * k + 1));
+            fputc('\n', tf);
+        }
+    }
+    if (tf) fclose(tf);
+    if (pf) fclose(pf);
+    if (hf_ram) fclose(hf_ram);
     if (getenv("SS2_SRAM"))
     {
         FILE *sf = fopen(getenv("SS2_SRAM"), "wb");
