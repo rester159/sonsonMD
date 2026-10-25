@@ -92,6 +92,11 @@ SonSon via the game chooser (`src/game_select.c`).
   all shops; camera 0, BAT rows 7-29 = world tiles) replaces plane A and
   CRAM lines 0-1; prices and the staff digit are ported BAT writes; the
   shopkeeper, goods icons and cursor are built into the sprite table.
+* **Boot path**: normal builds power on into the native title
+  (`ss2_power_on`); `-D SS2_DBG_*` builds start a stage from its research
+  bootstrap. The title scene (`gen_title.py`: tile table keyed by BAT word,
+  4 CRAM lines, sprite colour maps; intro sprite palettes `$4A6C`) shows the
+  BAT full screen while `$2201` bit 2 (raster split) is off.
 * **Diagnostic builds** (`build_native.py -D ...`): `SS2_DBG_STAGE=k`,
   `SS2_DBG_WX/WY` (teleport), `SS2_DBG_NPC_X/Y` + `SS2_DBG_P2X/Y` (two-phase
   warp so off-screen spawners fire), `SS2_DBG_LOCK7F`, `SS2_DBG_KEY`,
@@ -158,5 +163,7 @@ runs after each link; keep load and store separate (empty asm barrier).
 | Townspeople, fortune teller, shops (item kind 29, bank 3 `$997F`-`$9E7A`, shop `$9E7B`-bank 4 `$A665`) | 31 tracer conversations exact (all 7 stages, every choice continuation, items given, money paid/lost); 7 shop visits (all 14 goods kinds, price rises, short money, owned goods) exact up to the exit, where `$7882`+`$EBE1` end at a VBlank boundary (source 8 or 9 VBlanks, native 3+5), replay then a frame behind; shop scene drawn on target (picture, prices, shopkeeper, icons, cursor) |
 | Item kind 11 (`$81A6`) | wired to the shots system's `$D86A` |
 | Pause magic select `$FE0C`, weapon box `$FE5A`, freeze flash `$EDB7`, sweep BG `$EDA0` | ported (shots traces m2 exact) |
-| Stage init/clear, title, intro, death/continue, ending | pending (SS2 starts from per-stage RAM bootstrap) |
+| Power-on, title, attract demo, intro, new game, stage start (`src/ss2_flow.c`) | exact on power-on traces (`capture_boot.py`): title->Start->intro->stage 1 1672/1699, title->demo->title 7466/7499 (the rest: CPU-bound loads' in-progress bytes, map streamer `$8E`) |
+| Genesis additions | "PUSH START BUTTON"; after START a GAME START / OPTIONS menu; OPTIONS has a music selector (`$00`-`$14`) and EXIT; the title does not roll into the demo while the menu is up |
+| Stage clear (`$F617`), death/continue (`$F8D8`), ending | pending (a miss returns to the title for now) |
 | Cartridge | SELECT GAME -> SS2 -> START+A -> SELECT GAME -> SonSon ARCADE/HOME verified headless |

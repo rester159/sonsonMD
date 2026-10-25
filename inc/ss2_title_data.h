@@ -3,12 +3,13 @@
 #define SS2_TITLE_DATA_H
 #include <genesis.h>
 
-#define SS2_TITLE_NKEYS 219
+#define SS2_TITLE_NKEYS 253
 
 extern const u16 ss2_title_palette[64];   /* lines 0-1 picture, 2-3 sprites */
 extern const u16 ss2_title_keys[SS2_TITLE_NKEYS];   /* sorted BAT words */
 extern const u32 ss2_title_tiles[SS2_TITLE_NKEYS * 8];
 extern const u8  ss2_title_line[SS2_TITLE_NKEYS];   /* CRAM line 0/1 */
 extern const u8  ss2_title_cmap[16 * 8];            /* sprite palette, colour -> (line-2) << 7 | index */
+extern const u8  ss2_intro_cmap[8 * 8];             /* intro sprite palettes 8-15 ($4A6C) on stage 1's lines */
 
 #endif

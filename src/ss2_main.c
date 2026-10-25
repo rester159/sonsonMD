@@ -392,6 +392,10 @@ static void scene_update(void)
         draw_hud(1);
         shown_bg = 0xFF;
     }
+    {
+        static u8 intro_shown;
+        if (ss2_pal_intro != intro_shown) { intro_shown = ss2_pal_intro; cache_reset(); }
+    }
     if (ss2_scene == scene_shown) return;
     scene_shown = ss2_scene;
     if (scene_shown == SS2_SCENE_TITLE)
@@ -592,7 +596,9 @@ static void conv_cell(u8 bank, u16 src, const u8 *cm, u32 *out)
 static u16 cache_tile(u16 c, u8 key, u8 *line)
 {
     const u8 *cm = scene_shown == SS2_SCENE_TITLE ? ss2_title_cmap + (key & 15) * 8
-                 : key >= 16 ? gfx->spr_cmap13 + (key - 16) * 8 : gfx->spr_cmap + key * 8;
+                 : key >= 16 ? gfx->spr_cmap13 + (key - 16) * 8
+                 : (ss2_pal_intro && key >= 8) ? ss2_intro_cmap + (key - 8) * 8
+                 : gfx->spr_cmap + key * 8;
     u8 b0 = ss2_cell_bank[c], b1 = ss2_cell_bank[c + 1];
     u16 s0 = ss2_cell_src[c], s1 = ss2_cell_src[c + 1];
     u8 i, victim = 0xFF;
@@ -678,7 +684,8 @@ static void draw_sprites(void)
             s16 y;
             u16 cc = (u16)(c & 0x3FE);
             line = gfx->spr_line[pal];
-            t = (cc >= 0x200 || key >= 16 || scene_shown == SS2_SCENE_TITLE || cell_dirty(cc)) ? 0
+            t = (cc >= 0x200 || key >= 16 || scene_shown == SS2_SCENE_TITLE || (ss2_pal_intro && key >= 8)
+                 || cell_dirty(cc)) ? 0
                 : gfx->spr_lut[pal * 256 + (cc >> 1)];
             if (t && line <= 3)
                 t = (u16)(SPR_TILE + t - 1);

@@ -134,6 +134,95 @@ static void hiscore(void)
     ZP(0x30) = (u8)!lead;
 }
 
+/* ---- Genesis addition: the title menu (GAME START / OPTIONS) -----------
+ * Not in the HuCard: after START on the title, a choice between the game
+ * and an OPTIONS screen with a music selector. Drawn with the title's own
+ * font (palette 15 BAT words) over its text rows; the title animation goes
+ * on, but does not roll into the attract demo while the menu is up. */
+u8 ss2_menu_active;
+
+static const char *const track_name[0x15] = {
+    "TITLE", "SHOP", "CONTINUE", "STAGE 1", "STAGE 2", "STAGE 3", "STAGE 4",
+    "STAGE 5", "STAGE 6", "STAGE 7", "ROOM A", "ROOM B", "ROOM C", "ROOM D",
+    "EXTRA", "MISS", "ENDING 1", "INTRO", "STAGE CLEAR", "ENDING 2", "ENDING 3" };
+
+/* the font has no < or >: '/' ($2F, the text tables' line break) is a
+ * right-pointing triangle, used as the cursor */
+static void menu_text(u8 col, u8 row, const char *s, u8 width)
+{
+    u8 i = 0;
+    for (; s[i] && i < width; i++) ss2_bat_put((u8)(col + i), row, (u16)(0xF180 + (u8)s[i]));
+    for (; i < width; i++) ss2_bat_put((u8)(col + i), row, 0xF1A0);
+}
+
+static void menu_blank_rows(void)
+{
+    u8 r;
+    for (r = 0x14; r < 0x1C; r++) menu_text(4, r, "", 24);
+}
+
+static u8 pressed(u8 mask)
+{
+    return (u8)(Z_PRESS & mask);
+}
+
+/* returns 1 for GAME START */
+static u8 title_menu(void)
+{
+    u8 sel = 0;
+    menu_text(6, 0x14, "", 20);
+    menu_text(6, 0x16, "", 20);              /* the HISCORE line, while the menu is up */
+    for (;;)
+    {
+        menu_text(9, 0x14, sel ? "  GAME START" : "/ GAME START", 12);
+        menu_text(9, 0x16, sel ? "/ OPTIONS" : "  OPTIONS", 12);
+        do ss2_wait(1); while (!Z_PRESS);
+        if (pressed(0x50)) sel ^= 1;                 /* Up / Down */
+        if (pressed(0x0B))                           /* START, I, II */
+        {
+            if (!sel) return 1;
+            return 0;
+        }
+    }
+}
+
+static void options_screen(void)
+{
+    u8 sel = 0, track = 0;
+    menu_blank_rows();
+    menu_text(10, 0x14, "OPTIONS", 7);
+    for (;;)
+    {
+        char buf[24];
+        u8 i = 0;
+        const char *n = track_name[track];
+        buf[i++] = sel ? ' ' : '/';
+        buf[i++] = ' ';
+        { const char *m = "MUSIC  "; while (*m) buf[i++] = *m++; }
+        buf[i++] = "0123456789ABCDEF"[track >> 4];
+        buf[i++] = "0123456789ABCDEF"[track & 15];
+        buf[i++] = ' ';
+        buf[i++] = ' ';
+        while (*n && i < 23) buf[i++] = *n++;
+        buf[i] = 0;
+        menu_text(4, 0x17, buf, 24);
+        menu_text(4, 0x19, sel ? "/ EXIT" : "  EXIT", 6);
+        do ss2_wait(1); while (!Z_PRESS);
+        if (pressed(0x50)) sel ^= 1;                 /* Up / Down */
+        if (!sel && pressed(0x20)) track = (u8)(track == 0x14 ? 0 : track + 1);   /* Right */
+        if (!sel && pressed(0x80)) track = (u8)(track ? track - 1 : 0x14);        /* Left */
+        if (!sel && pressed(0x03)) { ss2_sfx(0xF0); ss2_sfx(track); }             /* B, C: play */
+        if (!sel && pressed(0x04)) ss2_sfx(0xF0);                                 /* A: stop */
+        if ((sel && pressed(0x0B)) || (!sel && pressed(0x08)))                    /* leave */
+            break;
+    }
+    ss2_sfx(0xF0);
+    menu_blank_rows();
+    ss2_bat_text(0xE7F7);                    /* the title's own text back */
+    hiscore();
+    ss2_sfx(0x00);                           /* title music */
+}
+
 /* ---- slot 1 listeners -------------------------------------------------- */
 
 /* $E224: during the attract demo RUN ends it ($F884) */
@@ -184,6 +273,13 @@ restart:
         break;
     }
 run:                                         /* $E278 */
+    ss2_menu_active = 1;                     /* Genesis: GAME START / OPTIONS */
+    while (!title_menu())
+    {
+        options_screen();
+        do ss2_wait(1); while (Z_PAD);
+    }
+    ss2_menu_active = 0;
     ZP(0x89) = 0;
     if (Z_PAD == 0x1B) { /* $0400 = $84: VCE (presentation) */ }
     else if (Z_PAD == 0x1D) ZP(0x89) = 1;
@@ -312,6 +408,7 @@ static void title_task(void)
                 ss2_wait(1);
             }
     }
+    while (ss2_menu_active) ss2_wait(1);     /* Genesis: no demo under the menu */
     ss2_fade_out_title();                    /* $7251 */
     ss2_wait(30);                            /* $B9D4 */
     ss2_cr_set((u8)(R(0x2201) | 0x04));      /* raster split on */
