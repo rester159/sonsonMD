@@ -21,3 +21,5 @@ natshots/
 tools/ss03e_disasm.txt
 tools/composite_re2.txt
 tools/composite_re3.txt
+# Son Son II HuCard banks: generated from arcade/*.pce by tools/ss2/gen_rom.py
+src/ss2_rom.c

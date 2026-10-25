@@ -39,6 +39,10 @@ run(['m68k-elf-gcc',*flags,'-c','src/boot/rom_head.c','-o',out/'rom_head.o'])
 run(['m68k-elf-objcopy','-O','binary',out/'rom_head.o',out/'rom_head.bin'])
 run(['m68k-elf-gcc',*flags,'-x','assembler-with-cpp','-Wa,--register-prefix-optional,--bitwise-or','-c','src/boot/sega.s','-o',out/'sega.o'])
 if args.lto:flags.append('-flto')
+# Son Son II reads HuCard banks as tables; src/ss2_rom.c is generated from the
+# owner's local dumps in arcade/ (never versioned).
+if not (root/'src/ss2_rom.c').exists():
+    run(['python3',root/'tools/ss2/gen_rom.py'])
 objects=[]
 for source in sorted((root/'src').glob('*.c')):
     obj=out/'native'/ (source.stem+'.o'); obj.parent.mkdir(exist_ok=True)
@@ -61,4 +65,7 @@ b=bytearray((out/'rom.bin').read_bytes());
 assert len(b)<=0x400000, 'Linear 4 MiB cartridge window exceeded; review ROM hardware profile'
 b.extend(bytes((-len(b))%131072)); b[0x18e:0x190]=(sum(int.from_bytes(b[i:i+2],'big') for i in range(0x200,len(b),2))&65535).to_bytes(2,'big'); (out/'rom.bin').write_bytes(b)
 (out/'build-manifest.json').write_text(json.dumps({'sdk':str(sdk),'compiler':compiler,'sdk_library_sha256':hashlib.sha256((sdk/'lib/libmd.a').read_bytes()).hexdigest(),'symbols_sha256':hashlib.sha256((out/'symbol.txt').read_bytes()).hexdigest(),'source_sha256':{str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for d in ['src','inc'] for p in sorted((root/d).rglob('*')) if p.is_file()},'flags':flags,'rom_sha256':hashlib.sha256(b).hexdigest()},indent=2)+'\n')
+if args.out=='out' and not args.defines:
+    (root/'dist').mkdir(exist_ok=True); (root/'dist/SonSonCollection.bin').write_bytes(b)
+    print('Copied',root/'dist/SonSonCollection.bin')
 print('Built',out/'rom.bin',len(b),'bytes')
