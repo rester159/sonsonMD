@@ -20,6 +20,7 @@ SonSon via the game chooser (`src/game_select.c`).
 | `shot.py FRAMES SCRIPT SHOTS` | Headless Genesis Plus GX (libretro core via dlopen) captures of `out/rom.bin`. Keys `U D L R S a b c`. |
 | `capture_vbl.py OUT K FRAMES SCRIPT [WX WY]` | VBlank-to-VBlank pairs (multi-frame sequences such as doors); replay with `SS2_CONTINUOUS=1 hosttest/run.sh PAIRS ss2_frame_vbl`. WX WY teleports the player first. |
 | `capture_sprset.py` | Pairs around the sprite-set loaders `$774F/$77A5/$77D0`. |
+| `gen_shop.py` | Shop scene background (from a saved research-model shop screen, `research/npc/cap.py SAVE=240 SAVEPKL=out/ss2/shop_s1.pkl`) -> `src/ss2_shop_data.c`. |
 | `research/bank05,09,17/` | The enemy agents' spawn lists, injected captures and replays. |
 | `research/npc/` | Townsperson/shop captures (`cap.py`: townspeople spawn only off-screen, so a two-phase warp; `runs.sh` the 38 recorded conversations and shop visits with RAM pokes for money/flags; `rep.sh`, `difsum.py`). Replays use `SS2_MASK_SOUND=1` (the host build has no sound driver). |
 
@@ -87,6 +88,15 @@ SonSon via the game chooser (`src/game_select.c`).
   the stage fit) into 8-tile blocks (18 at `$D800`/`$F600`, LRU, at most 4
   conversions per frame).
 
+* **Shop scene** (`ss2_shop_screen`): the source's shop picture (one for
+  all shops; camera 0, BAT rows 7-29 = world tiles) replaces plane A and
+  CRAM lines 0-1; prices and the staff digit are ported BAT writes; the
+  shopkeeper, goods icons and cursor are built into the sprite table.
+* **Diagnostic builds** (`build_native.py -D ...`): `SS2_DBG_STAGE=k`,
+  `SS2_DBG_WX/WY` (teleport), `SS2_DBG_NPC_X/Y` + `SS2_DBG_P2X/Y` (two-phase
+  warp so off-screen spawners fire), `SS2_DBG_LOCK7F`, `SS2_DBG_KEY`,
+  `SS2_DBG_MAGIC=n`, `SS2_DBG_CLOUD`.
+
 ## Tasks (bank 0 $E1A5 scheduler) -- src/ss2_task.c
 
 Four slots in zp $00+4n: state (0 free, 1 waiting, 2 running, 4 ready, 8
@@ -135,7 +145,7 @@ runs after each link; keep load and store separate (empty asm barrier).
 | --- | --- |
 | Level decode/render/stream | all 7 stages, verified on target (VRAM 764-1410 of 1488 static tiles) |
 | Player `$C000` | exact (cloud, magic, push, $C4B8, $C4D7 pending) |
-| Shots/magic `$D03D` (7 slots `$22E5`), cloud, revive/trap paths | exact on all shot traces (research/shots); renderer does not draw shots/cloud/sweep yet |
+| Shots/magic `$D03D` (7 slots `$22E5`), cloud, revive/trap paths | exact on all shot traces (research/shots); drawn on target (shots = PCE sprite entries 7-13, cloud = entry 1; freeze flash and sweep via `$2201`) |
 | Object engine, spawner, items, containers, score task, HUD bars | exact on traces |
 | Enemies banks 5/7/9/$0F/$17/$1F + fixed 3/4 | exact on agent traces (see research/); boss calls `$6984` (message), `$6F40/$6F73` (defeat/drops), `$E1E2` task, `$F617` stage clear pending |
 | Task scheduler | exact (per-frame, continuous, VBlank-bracketed) |
@@ -145,7 +155,7 @@ runs after each link; keep load and store separate (empty asm barrier).
 | Sound | driver PSG-exact; YM via Z80 list |
 | Dialogue window `$6984`/`$69EE` (boss speech) | exact on stage 2/3 boss traces; renders on target |
 | HUD item icons `$BADE`, key items (kinds 10-14, 17, 26-28), stand-on items (kind 2) | ported |
-| Townspeople, fortune teller, shops (item kind 29, bank 3 `$997F`-`$9E7A`, shop `$9E7B`-bank 4 `$A665`) | 31 tracer conversations exact (all 7 stages, every choice continuation, items given, money paid/lost); 7 shop visits (all 14 goods kinds, price rises, short money, owned goods) exact up to the exit, where `$7882`+`$EBE1` end at a VBlank boundary (source 8 or 9 VBlanks, native 3+5), replay then a frame behind; shop picture is presentation only (`ss2_shop_screen` for a renderer) |
+| Townspeople, fortune teller, shops (item kind 29, bank 3 `$997F`-`$9E7A`, shop `$9E7B`-bank 4 `$A665`) | 31 tracer conversations exact (all 7 stages, every choice continuation, items given, money paid/lost); 7 shop visits (all 14 goods kinds, price rises, short money, owned goods) exact up to the exit, where `$7882`+`$EBE1` end at a VBlank boundary (source 8 or 9 VBlanks, native 3+5), replay then a frame behind; shop scene drawn on target (picture, prices, shopkeeper, icons, cursor) |
 | Item kind 11 (`$81A6`) | wired to the shots system's `$D86A` |
 | Pause magic select `$FE0C`, weapon box `$FE5A`, freeze flash `$EDB7`, sweep BG `$EDA0` | ported (shots traces m2 exact) |
 | Stage init/clear, title, intro, death/continue, ending | pending (SS2 starts from per-stage RAM bootstrap) |
