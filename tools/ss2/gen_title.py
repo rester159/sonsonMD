@@ -79,13 +79,13 @@ def main():
     import re
     from gen_ss2 import ROM, gen_colour
     data = open(os.path.join(ROOT, 'src', 'ss2_data.c')).read()
-    s0 = [int(v, 16) for v in re.findall(r'0x[0-9A-F]+', re.search(r'ss2_s0_palette\[64\] = \{(.*?)\};', data, re.S).group(1))]
-    gl = [s0[32:48], s0[48:64]]
     def gdist(g, c):
         w = gen_colour(c)
         return sum((((g >> sh) & 7) - ((w >> sh) & 7)) ** 2 for sh in (1, 5, 9))
     icmap = []
-    for p in range(8):
+    for s, p in [(s, p) for s in range(7) for p in range(8)]:      # per stage (the ending tally is on stage 7)
+        sp = [int(v, 16) for v in re.findall(r'0x[0-9A-F]+', re.search(r'ss2_s%d_palette\[64\] = \{(.*?)\};' % s, data, re.S).group(1))]
+        gl = [sp[32:48], sp[48:64]]
         cols = [ROM[0x2A6C + p * 16 + c * 2] | (ROM[0x2A6C + p * 16 + c * 2 + 1] << 8) for c in range(8)]   # 8 colours per palette ($FF8E)
         best = None
         for li in range(2):
@@ -115,7 +115,7 @@ extern const u16 ss2_title_keys[SS2_TITLE_NKEYS];   /* sorted BAT words */
 extern const u32 ss2_title_tiles[SS2_TITLE_NKEYS * 8];
 extern const u8  ss2_title_line[SS2_TITLE_NKEYS];   /* CRAM line 0/1 */
 extern const u8  ss2_title_cmap[16 * 8];            /* sprite palette, colour -> (line-2) << 7 | index */
-extern const u8  ss2_intro_cmap[8 * 8];             /* intro sprite palettes 8-15 ($4A6C) on stage 1's lines */
+extern const u8  ss2_intro_cmap[7 * 8 * 8];         /* sprite palettes 8-15 from $4A6C (intro, ending tally) per stage's lines */
 
 #endif
 ''' % len(words))

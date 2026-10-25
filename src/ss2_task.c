@@ -25,7 +25,10 @@
 static ucontext_t sched_ctx, task_ctx[4];
 static char task_stack[4][32768];
 #else
-static u32 task_stack[4][STACK_BYTES / 4];
+/* 16 KiB of stacks from SGDK's heap while Son Son II runs (ss2_tasks_alloc
+ * / ss2_tasks_free): as static RAM they left the front end's heap too
+ * small */
+static u32 (*task_stack)[STACK_BYTES / 4];
 static void *sched_sp, *task_sp[4];
 
 /* save d2-d7/a2-a6 on the current stack, store sp, switch to new sp */
@@ -39,6 +42,21 @@ __asm__(
     "    move.l  52(%sp),%sp\n"
     "    movem.l (%sp)+,%d2-%d7/%a2-%a6\n"
     "    rts\n");
+#endif
+
+#ifdef SS2_HOST
+void ss2_tasks_alloc(void) { }
+void ss2_tasks_free(void) { }
+#else
+void ss2_tasks_alloc(void)
+{
+    if (!task_stack) task_stack = MEM_alloc(4 * STACK_BYTES);
+}
+
+void ss2_tasks_free(void)
+{
+    if (task_stack) { MEM_free(task_stack); task_stack = 0; }
+}
 #endif
 
 static ss2_task_fn entry[4];

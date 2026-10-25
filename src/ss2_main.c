@@ -18,6 +18,7 @@
 #include "ss2_scene_data.h"
 #include "ss2_ram.h"
 #include "ss2_logic.h"
+#include "ss2_task.h"
 #include "ss2_sound.h"
 #include "sound.h"
 
@@ -26,8 +27,18 @@
 static u16 HUD_TILE, PLAYER_TILE, SPR_TILE;
 static const Ss2StageGfx *gfx;
 static void cache_reset(void);
-static u8 def_bank[0x200];            /* cell sources of the stage's own sets */
-static u16 def_src[0x200];
+/* cell sources of the stage's own sets (what the static sprite tables were
+ * made from); the ending, which converts every sprite at run time, uses
+ * the same RAM for more sprite cache entries (ss2_main.c cache) */
+typedef struct { u8 b0, b1, key; u8 used; u16 s0, s1, pair, tile, last; } CacheEnt;
+#define NEXTRA       64
+static union
+{
+    struct { u8 bank[0x200]; u16 src[0x200]; } def;
+    struct { CacheEnt e[NEXTRA]; u8 at[0x200]; } extra;    /* at[pair >> 1]: entry + 1 */
+} ram_share;
+#define def_bank (ram_share.def.bank)
+#define def_src  (ram_share.def.src)
 static void draw_hud(u8 all);
 static void stage_gfx_load(void);
 static u8 shown_frame;
@@ -115,9 +126,88 @@ static void stream_view(void)
  * line g + 8 on Genesis line g */
 static u8 split_shown = 1;
 
+/* The ending picture and the text below it (BAT rows 0-63, 32 wide) use a
+ * 32x64 plane; everything else a 64x32 ring. */
+static u8 tall_plane;
+
+static void plane_cell(u16 w, u16 x, u16 y)
+{
+    if (tall_plane) VDP_setTileMapXY(BG_A, w, (u16)(x & 31), (u16)(y & 63));
+    else VDP_setTileMapXY(BG_A, w, (u16)(x & 63), (u16)(y & 31));
+}
+
+/* The ending's text band (bank 4 $B174: RCR $E0, PCE line 160 = Genesis
+ * line 152): an H interrupt there switches plane A/B to the band's scroll,
+ * the VBlank callback puts the picture's back. Both touch the VDP only
+ * while the main loop waits for VBlank or runs the game logic (band_idle),
+ * so they never break into its port accesses; a frame whose presentation
+ * overruns line 152 shows no band. */
+static volatile u8 band_on, band_idle;
+static volatile u16 band_v, top_v;
+
+/* plane A then plane B (VSRAM $00, $02): one command each, whatever the
+ * auto-increment was left at */
+static void vsram_ab(u16 v)
+{
+    *(vu32 *)VDP_CTRL_PORT = 0x40000010;
+    *(vu16 *)VDP_DATA_PORT = v;
+    *(vu32 *)VDP_CTRL_PORT = 0x40020010;
+    *(vu16 *)VDP_DATA_PORT = v;
+}
+
+u16 ss2_band_hits, ss2_band_busy, ss2_loop_n;   /* diagnostics: H-ints applied / skipped, frames */
+
+static HINTERRUPT_CALLBACK band_hint(void)
+{
+    if (!band_on) return;
+    if (band_idle) { vsram_ab(band_v); ss2_band_hits++; }
+    else ss2_band_busy++;
+}
+
+static void band_vblank(void)
+{
+    if (band_on) vsram_ab(top_v);
+}
+
+static void band_set(u8 on)
+{
+    if (on == band_on) return;
+    band_on = on;
+    if (on)
+    {
+        SYS_setHIntCallback(band_hint);
+        VDP_setHIntCounter(151);
+        SYS_setVBlankCallback(band_vblank);
+        VDP_setHInterrupt(TRUE);
+    }
+    else
+    {
+        VDP_setHInterrupt(FALSE);
+        SYS_setVBlankCallback(NULL);
+        SYS_setHIntCallback(NULL);
+    }
+}
+
+/* scene ENDING after the tally: no HUD; the picture scrolls with the
+ * camera ($6E set: $45/$46, $48/$49), the band with $51/$52, $54/$55 */
+static void ending_scroll(void)
+{
+    u16 x = 0, y = 0;
+    if (split_shown) { split_shown = 0; VDP_setWindowOff(); }
+    if (ZP(0x6E)) { x = (u16)(((ZP(0x45) << 8) | ZP(0x46)) & 0x1FF); y = (u16)(((ZP(0x48) << 8) | ZP(0x49)) & 0x1FF); }
+    top_v = (u16)(y + 8);
+    VDP_setHorizontalScroll(BG_A, (s16)-x);
+    VDP_setHorizontalScroll(BG_B, (s16)-x);
+    VDP_setVerticalScroll(BG_A, (s16)top_v);
+    VDP_setVerticalScroll(BG_B, (s16)top_v);
+    band_v = (u16)((((ZP(0x54) << 8) | ZP(0x55)) - 152) & 0x1FF);
+    band_set((u8)(ss2_ending_part == 2 && (R(0x2201) & 0x04)));
+}
+
 static void apply_scroll(void)
 {
     u8 split = (u8)((R(0x2201) & 0x04) != 0);
+    if (scene_shown == SS2_SCENE_ENDING) { ending_scroll(); return; }
     if (split != split_shown)
     {
         split_shown = split;
@@ -148,6 +238,7 @@ static void apply_scroll(void)
 #define GLYPH_TILE   1504           /* SS2 VRAM map (gen_ss2.py TILE_BUDGET) */
 #define GLYPH_SLOTS  64
 #define ICON_TILE    1568
+#define END_FONT_TILE (GLYPH_TILE + 32)  /* the ending's credits font (glyph slots 32-63) */
 #define NGLYPH       0x200          /* glyph keys: $1180-$123F, $51A0-$523F, $F1A0-$F23F */
 static u8 glyph_slot[NGLYPH];       /* slot + 1, 0 = not loaded */
 static u8 glyph_next;
@@ -194,6 +285,8 @@ static u16 bat_word(u16 w)
         if (lo < sc->nkeys && sc->keys[lo] == w)
             return TILE_ATTR_FULL(sc->line[lo], 0, 0, 0, BG_TILE + lo);
     }
+    if (ss2_ending_part == 3 && w >= 0x51C0 && w < 0x51E0)  /* the credits font */
+        return TILE_ATTR_FULL(ss2_end_font_line, 1, 0, 0, END_FONT_TILE + w - 0x51C0);
     if (ss2_shop_screen && w >= 0xF1B0 && w <= 0xF1B9)      /* shop price digits */
         return (u16)(ss2_shop_digit[w - 0xF1B0] + BG_TILE);
     if (w >= 0x1180 && w < 0x1240) k = (u16)(w - 0x1180);
@@ -204,7 +297,8 @@ static u16 bat_word(u16 w)
     {
         if (!glyph_slot[k])
         {
-            if (glyph_next >= GLYPH_SLOTS) glyph_next = 0;     /* full: reuse */
+            if (glyph_next >= (scene_shown == SS2_SCENE_ENDING ? END_FONT_TILE - GLYPH_TILE : GLYPH_SLOTS))
+                glyph_next = 0;                                 /* full: reuse */
             glyph_slot[k] = (u8)(glyph_next + 1);
             VDP_loadTileData(gfx->bat_tiles + k * 8, (u16)(GLYPH_TILE + glyph_next), 1, DMA_QUEUE);
             glyph_next++;
@@ -243,7 +337,7 @@ static const u8 title_text_gen[] = {
 
 static void bat_cell(u16 a, u16 w)
 {
-    VDP_setTileMapXY(BG_A, bat_word(w), (u16)(a & 63), (u16)((a >> 6) & 31));
+    plane_cell(bat_word(w), (u16)(a & 63), (u16)(a >> 6));
 }
 
 /* $BB27 text table (BAT address, palette, characters, '/' next line, '\'
@@ -319,7 +413,8 @@ static void bat_drain(void)
         const Ss2BatOp *o = &ss2_bat_queue[ss2_bat_tail & (SS2_BATQ - 1)];
         ss2_bat_tail++;
         if (o->kind == SS2_BAT_PUT)
-            VDP_setTileMapXY(BG_A, bat_word(o->w), (u16)(o->x & 63), (u16)(o->y & 31));
+            plane_cell(bat_word(o->w), o->x, o->y);
+        else if (o->kind == SS2_BAT_RESTORE && scene_shown == SS2_SCENE_ENDING) { }   /* the picture is redrawn */
         else if (o->kind == SS2_BAT_RESTORE)
         {
             u8 w = (u8)(o->w >> 8), h = (u8)o->w, i, j;
@@ -415,6 +510,33 @@ static u16 pce_colour(u16 c)
     return (u16)(((c & 7) << 9) | (((c >> 6) & 7) << 5) | (((c >> 3) & 7) << 1));
 }
 
+/* the credits font (bank 4 $B2C1/$B387): glyphs A-Z ($1C1-$1DA) drawn
+ * ss2_end_font_dx pixels off their cells' left edge, cut at the edges.
+ * Written a tile at a time from the stack: work RAM above .bss is SGDK's
+ * heap, which the front end's splashes need (a 1 KiB static buffer here
+ * left them too little to boot). */
+static void end_font(void)
+{
+    static s8 shown_dx = 0x7F;
+    u32 t[8];
+    u8 k, r;
+    s8 dx = ss2_end_font_dx;
+    if (ss2_ending_part != 3) { shown_dx = 0x7F; return; }
+    if (dx == shown_dx) return;
+    shown_dx = dx;
+    for (k = 0; k < 32; k++)
+    {
+        for (r = 0; r < 8; r++)
+        {
+            u32 v = ss2_end_font[k * 8 + r];
+            if (k >= 1 && k <= 0x1A)
+                v = dx <= -8 || dx >= 8 ? 0 : dx < 0 ? v << (4 * -dx) : v >> (4 * dx);
+            t[r] = v;
+        }
+        VDP_loadTileData(t, (u16)(END_FONT_TILE + k), 1, CPU);
+    }
+}
+
 /* the title scene's tiles over the stage BG tiles (ss2_scene), and a stage
  * started by the game flow (ss2_stage_request: its sprite sets are the
  * defaults the static sprite tables were made from) */
@@ -434,8 +556,16 @@ static void scene_update(void)
         static u8 intro_shown;
         if (ss2_pal_intro != intro_shown) { intro_shown = ss2_pal_intro; cache_reset(); }
     }
+    end_font();
     if (ss2_scene == scene_shown) return;
     scene_shown = ss2_scene;
+    if ((scene_shown == SS2_SCENE_ENDING) != tall_plane)
+    {
+        tall_plane = (u8)(scene_shown == SS2_SCENE_ENDING);
+        VDP_setPlaneSize(tall_plane ? 32 : 64, tall_plane ? 64 : 32, FALSE);
+        VDP_clearPlane(BG_A, TRUE);
+        glyphs_reset();
+    }
     if (scene_shown == SS2_SCENE_TITLE)
         VDP_loadTileData(ss2_title_tiles, BG_TILE, SS2_TITLE_NKEYS, CPU);
     else if (scene_shown >= SS2_SCENE_BG_FIRST && ss2_scene_bg[scene_shown - SS2_SCENE_BG_FIRST].nkeys)
@@ -461,10 +591,11 @@ static void apply_fade(void)
     shown_c100 = c100;
     for (i = 0; i < 64; i++)
     {
-        u8 title = (u8)(scene_shown == SS2_SCENE_TITLE);
-        u8 pic = (u8)(scene_shown >= SS2_SCENE_BG_FIRST && ss2_scene_bg[scene_shown - SS2_SCENE_BG_FIRST].nkeys);
-        u16 w = (i < 32 && shop_shown) ? ss2_shop_palette[i] : title ? ss2_title_palette[i]
-              : (i < 32 && pic) ? ss2_scene_bg[scene_shown - SS2_SCENE_BG_FIRST].palette[i] : gfx->palette[i];
+        const Ss2SceneBg *sc = scene_shown >= SS2_SCENE_BG_FIRST ? &ss2_scene_bg[scene_shown - SS2_SCENE_BG_FIRST] : 0;
+        u8 pic = (u8)(sc && sc->nkeys);
+        u8 title = (u8)(scene_shown == SS2_SCENE_TITLE || (sc && sc->spr_palette));   /* own sprite lines */
+        u16 w = (i < 32 && shop_shown) ? ss2_shop_palette[i] : scene_shown == SS2_SCENE_TITLE ? ss2_title_palette[i]
+              : (i < 32 && pic) ? sc->palette[i] : (sc && sc->spr_palette) ? sc->spr_palette[i - 32] : gfx->palette[i];
         if (i < 32) w = (cr & 0x80) ? fade_colour(w, shown_bg) : c100;
         else if (title || !(hud_keep[(i >> 4) - 2] & (1 << (i & 15)))) w = fade_colour(w, shown_sp);
         fade_pal[i] = w;
@@ -546,7 +677,9 @@ static void stage_gfx_load(void)
 
 static void video_shutdown(void)
 {
+    band_set(0);
     VDP_setEnable(FALSE);
+    if (tall_plane) { tall_plane = 0; VDP_setPlaneSize(64, 32, FALSE); }
     VDP_setWindowOff();
     VDP_setEnable(TRUE);
     VDP_setBGBAddress(0xC000);                  /* SGDK reloads its font for SonSon */
@@ -596,7 +729,6 @@ static void player_sprite(s16 x, s16 y, u16 attr)
  * palette -> 8 tiles (two 16x16 cells, column-major like the static ones)
  * in 8-tile blocks in VRAM freed by plane B sharing plane A's map. */
 
-typedef struct { u8 b0, b1, key; u8 used; u16 s0, s1, pair, tile, last; } CacheEnt;
 static const u16 cache_base[] = {
     1728, 1736, 1744, 1752, 1760, 1768, 1776, 1784,          /* $D800-$DFFF */
     1968, 1976, 1984, 1992, 2000, 2008, 2016, 2024, 2032, 2040 };  /* $F600- */
@@ -606,9 +738,22 @@ static u16 cache_clock;
 static u8 conv_n;
 static u32 conv_buf[4][64];
 
+/* the ending: NEXTRA more blocks at tiles 640-1151 (its scene tiles end
+ * below 640, the stage's are not shown), found through a pair index: a
+ * linear search of every entry for every sprite cell costs more than a
+ * frame */
+#define EXTRA_TILE   640
+#define ending_cache() (scene_shown == SS2_SCENE_ENDING)
+#define ncache()     (ending_cache() ? NCACHE + NEXTRA : NCACHE)
+#define cache_ent(i) ((i) < NCACHE ? &cache[i] : &ram_share.extra.e[(i) - NCACHE])
+
+static void memo_reset(void);
+
 static void cache_reset(void)
 {
     memset(cache, 0, sizeof cache);
+    memo_reset();
+    if (ending_cache()) memset(&ram_share.extra, 0, sizeof ram_share.extra);
 }
 
 /* one 16x16 PCE cell (3 planes + zero plane, rows of 16 px) -> 4 Genesis
@@ -636,25 +781,43 @@ static void conv_cell(u8 bank, u16 src, const u8 *cm, u32 *out)
     }
 }
 
+/* a scene's own sprite colour map (title, ending picture), else 0 */
+static const u8 *scene_cmap(void)
+{
+    if (scene_shown == SS2_SCENE_TITLE) return ss2_title_cmap;
+    if (scene_shown >= SS2_SCENE_BG_FIRST) return ss2_scene_bg[scene_shown - SS2_SCENE_BG_FIRST].cmap;
+    return 0;
+}
+
 /* tile of a dirty cell pair for palette key (0-15, 16+v = palette 13
  * interior variant v), 0 when it cannot be made this frame */
 static u16 cache_tile(u16 c, u8 key, u8 *line)
 {
-    const u8 *cm = scene_shown == SS2_SCENE_TITLE ? ss2_title_cmap + (key & 15) * 8
+    const u8 *scm = scene_cmap();
+    const u8 *cm = scm ? scm + (key & 15) * 8
                  : key >= 16 ? gfx->spr_cmap13 + (key - 16) * 8
-                 : (ss2_pal_intro && key >= 8) ? ss2_intro_cmap + (key - 8) * 8
+                 : (ss2_pal_intro && key >= 8) ? ss2_intro_cmap + ((gfx - ss2_stage_gfx) * 8 + key - 8) * 8
                  : gfx->spr_cmap + key * 8;
     u8 b0 = ss2_cell_bank[c], b1 = ss2_cell_bank[c + 1];
     u16 s0 = ss2_cell_src[c], s1 = ss2_cell_src[c + 1];
-    u8 i, victim = 0xFF;
+    u8 i, victim = 0xFF, n = ncache();
     u16 age = 0;
     *line = (u8)(2 + (cm[1] >> 7));
-    for (i = 0; i < NCACHE; i++)
+    if (ending_cache() && ram_share.extra.at[c >> 1])
     {
-        CacheEnt *e = &cache[i];
+        CacheEnt *e = cache_ent(ram_share.extra.at[c >> 1] - 1);
+        if (e->used && e->pair == c && e->key == key && e->b0 == b0 && e->b1 == b1 && e->s0 == s0 && e->s1 == s1)
+        {
+            e->last = cache_clock;
+            return e->tile;
+        }
+    }
+    for (i = 0; i < n; i++)
+    {
+        CacheEnt *e = cache_ent(i);
         if (!e->used)
         {
-            if (victim == 0xFF || cache[victim].used) victim = i;   /* prefer a free block */
+            if (victim == 0xFF || cache_ent(victim)->used) victim = i;   /* prefer a free block */
             continue;
         }
         if (e->pair == c && e->key == key && e->b0 == b0 && e->b1 == b1 && e->s0 == s0 && e->s1 == s1)
@@ -662,19 +825,21 @@ static u16 cache_tile(u16 c, u8 key, u8 *line)
             e->last = cache_clock;
             return e->tile;
         }
-        if (e->last != cache_clock && (victim == 0xFF || (cache[victim].used && (u16)(cache_clock - e->last) > age)))
+        if (e->last != cache_clock && (victim == 0xFF || (cache_ent(victim)->used && (u16)(cache_clock - e->last) > age)))
         {
             victim = i;
             age = (u16)(cache_clock - e->last);
         }
     }
     if (victim == 0xFF || conv_n >= 4) return 0;
+    memo_reset();
     conv_cell(b0, s0, cm, conv_buf[conv_n]);
     conv_cell(b1, s1, cm, conv_buf[conv_n] + 32);
     {
-        CacheEnt *e = &cache[victim];
+        CacheEnt *e = cache_ent(victim);
         e->used = 1; e->pair = c; e->key = key; e->b0 = b0; e->b1 = b1; e->s0 = s0; e->s1 = s1;
-        e->tile = cache_base[victim];
+        e->tile = victim < NCACHE ? cache_base[victim] : (u16)(EXTRA_TILE + (victim - NCACHE) * 8);
+        if (ending_cache()) ram_share.extra.at[c >> 1] = (u8)(victim + 1);
         e->last = cache_clock;
         VDP_loadTileData(conv_buf[conv_n], e->tile, 8, DMA_QUEUE);
         conv_n++;
@@ -688,9 +853,41 @@ static u8 cell_dirty(u16 c)
              || ss2_cell_bank[c + 1] != def_bank[c + 1] || ss2_cell_src[c + 1] != def_src[c + 1]);
 }
 
+/* the ending's sprites per SAT slot: the pattern/attribute words they were
+ * resolved for and the tile (line << 14 | tile) of each 16-px row, reused
+ * while the words stay (cleared whenever the cache converts, which may
+ * evict a remembered block) */
+static u32 memo_words[64];
+static u16 memo_tile[64][4];
+
+static void memo_reset(void)
+{
+    memset(memo_words, 0, sizeof memo_words);
+}
+
+/* the ending's cell: its pair-index entry when that still holds it (no
+ * colour map lookups, no search), else cache_tile */
+static u16 ending_tile(u16 cc, u8 key, u8 *line)
+{
+    u8 at = ram_share.extra.at[cc >> 1];
+    if (at)
+    {
+        CacheEnt *e = cache_ent(at - 1);
+        if (e->pair == cc && e->key == key && e->used && e->b0 == ss2_cell_bank[cc] && e->s0 == ss2_cell_src[cc]
+            && e->b1 == ss2_cell_bank[cc + 1] && e->s1 == ss2_cell_src[cc + 1])
+        {
+            e->last = cache_clock;
+            *line = (u8)(2 + (ss2_scene_bg[SS2_SCENE_ENDING - SS2_SCENE_BG_FIRST].cmap[key * 8 + 1] >> 7));
+            return e->tile;
+        }
+    }
+    return cache_tile(cc, key, line);
+}
+
 static void draw_sprites(void)
 {
     u8 i, r;
+    u8 ending = (u8)ending_cache();
     nspr = 0;
     if (!(R(0x2201) & 0x40))                    /* $2201 bit 6: sprites off */
     {
@@ -706,8 +903,9 @@ static void draw_sprites(void)
         const u16 *e = &ss2_sat[i * 4];
         s16 sx, sy;
         u16 attr = e[3], cell = (u16)((e[2] >> 1) & 0x3FF);
-        u8 cw, ch, pal, line, key;
+        u8 cw, ch, pal, line, key, memo, ok = 1;
         if (!(e[0] & 0x3FF)) continue;
+        memo = (u8)(ending && memo_words[i] == (((u32)e[2] << 16) | attr));
         sx = (s16)((e[1] & 0x3FF) - 32);
         sy = (s16)((e[0] & 0x3FF) - 64 - 8);
         cw = (attr & 0x0100) ? 2 : 1;
@@ -728,8 +926,27 @@ static void draw_sprites(void)
             u16 c = (u16)(cell + r * 2), t;
             s16 y;
             u16 cc = (u16)(c & 0x3FE);
+            if (ending)
+            {
+                if (memo)
+                {
+                    t = memo_tile[i][r];
+                    if (!t) continue;
+                    line = (u8)(t >> 14);
+                    t &= 0x3FFF;
+                    goto put;
+                }
+                if (cc >= 0x200 || !ss2_cell_bank[cc] || !(t = ending_tile(cc, (u8)(attr & 15), &line)))
+                {
+                    ss2_sprite_misses++;
+                    ok = 0;                 /* (a conversion may come next frame) */
+                    continue;
+                }
+                memo_tile[i][r] = (u16)((line << 14) | t);
+                goto put;
+            }
             line = gfx->spr_line[pal];
-            t = (cc >= 0x200 || key >= 16 || scene_shown == SS2_SCENE_TITLE || (ss2_pal_intro && key >= 8)
+            t = (cc >= 0x200 || key >= 16 || scene_cmap() || (ss2_pal_intro && key >= 8)
                  || cell_dirty(cc)) ? 0
                 : gfx->spr_lut[pal * 256 + (cc >> 1)];
             if (t && line <= 3)
@@ -742,12 +959,14 @@ static void draw_sprites(void)
                 t = cache_tile(cc, key, &line);
                 if (!t) { ss2_sprite_misses++; continue; }
             }
+put:
             y = (s16)(sy + ((attr & 0x8000) ? (ch - 1 - r) : r) * 16);
             if (cw == 2)
                 put_sprite(sx, y, SPRITE_SIZE(4, 2), TILE_ATTR_FULL(line, 1, (attr & 0x8000) ? 1 : 0, (attr & 0x0800) ? 1 : 0, t));
             else
                 put_sprite(sx, y, SPRITE_SIZE(2, 2), TILE_ATTR_FULL(line, 1, (attr & 0x8000) ? 1 : 0, (attr & 0x0800) ? 1 : 0, (u16)(t + (c & 1) * 4)));
         }
+        if (ending && !memo) memo_words[i] = ok ? (((u32)e[2] << 16) | attr) : 0;
     }
     if (!nspr) put_sprite(-128, -128, SPRITE_SIZE(1, 1), 0);
     VDP_setSpriteLink((u16)(nspr - 1), 0);
@@ -968,6 +1187,7 @@ static void run_loop(void);
 
 void ss2_run(void)
 {
+    ss2_tasks_alloc();
 #ifdef SS2_BOOTSTRAP
 #ifdef SS2_DBG_STAGE
     ss2_run_stage(SS2_DBG_STAGE);
@@ -1075,7 +1295,12 @@ static void run_loop(void)
         u32 t0;
         u16 v0;
 #endif
-        SYS_doVBlankProcess();
+        /* a frame that ends a little into VBlank still gets this VBlank
+         * (ON_VBLANK_START would wait a whole frame more) */
+        band_idle = 1;
+        SYS_doVBlankProcessEx(ON_VBLANK);
+        band_idle = 0;
+        ss2_loop_n++;
 #ifdef SS2_PROF
         /* measure inside active display, where the V counter is linear
          * (NTSC VBlank counts $E5-$EA twice) */
@@ -1108,7 +1333,8 @@ static void run_loop(void)
 #ifdef SS2_DBG_FLOW
         /* diagnostic builds: SS2_DBG_FLOW_AT frames after the HUD split is
          * first up (the stage intro included), start the stage clear (1), or
-         * kill the player without (2) or with (3) the revive charm */
+         * kill the player without (2) or with (3) the revive charm, or clear
+         * stage 7 (4: the ending) */
         {
 #ifndef SS2_DBG_FLOW_AT
 #define SS2_DBG_FLOW_AT 120
@@ -1117,6 +1343,7 @@ static void run_loop(void)
             if ((dbg_n || (R(0x2201) & 0x04)) && ++dbg_n == SS2_DBG_FLOW_AT)
             {
                 if (SS2_DBG_FLOW == 1) ss2_stage_clear_start();
+                else if (SS2_DBG_FLOW == 4) { Z_STAGE = 6; ss2_stage_clear_start(); }   /* the last stage: the ending */
                 else
                 {
                     if (SS2_DBG_FLOW == 3) R(0x22C1) |= 0x04;
@@ -1126,11 +1353,13 @@ static void run_loop(void)
             }
         }
 #endif
+        band_idle = 1;                          /* the logic touches no VDP port */
         ss2_game_vblank(pce_pad(pad));
         PROF(0);
         sound_irq();
         PROF(0);
         ss2_game_frame();
+        band_idle = 0;
         camera_from_state();
         scene_update();
         shop_scene();
@@ -1148,4 +1377,5 @@ static void run_loop(void)
     }
     ss2_sound_shutdown();
     video_shutdown();
+    ss2_tasks_free();
 }
