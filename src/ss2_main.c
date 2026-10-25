@@ -1014,6 +1014,18 @@ static void draw_sprites(void)
     }
     cache_clock++;
     conv_n = 0;
+    /* The status bar stays on top (owner's choice; the PCE lets front
+     * sprites overlap it): VDP sprite masking. A sprite at X = 0 hides every
+     * later sprite on its lines once a sprite with X != 0 came before it on
+     * the line, so each pair is an off-screen dummy (X = 1) then the mask,
+     * 32 + 16 lines = the 48-line HUD. */
+    if (split_shown)
+    {
+        put_sprite(-127, 0, SPRITE_SIZE(1, 4), 0);
+        put_sprite(-128, 0, SPRITE_SIZE(1, 4), 0);
+        put_sprite(-127, 32, SPRITE_SIZE(1, 2), 0);
+        put_sprite(-128, 32, SPRITE_SIZE(1, 2), 0);
+    }
     /* per-frame invariants of the static-table test below */
     const u8 *spr_line = gfx->spr_line;
     const u16 *spr_lut = gfx->spr_lut;
