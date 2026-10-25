@@ -13,6 +13,7 @@
 /* source ROM banks kept for table reads (generated: src/ss2_rom.c) */
 extern const u8 ss2_bank0[0x2000];
 extern const u8 ss2_bank1[0x2000];
+extern const u8 ss2_bank1_jp[0x2000], ss2_bank2_jp[0x2000];   /* the Japanese text */
 extern const u8 ss2_bank2[0x2000];
 extern const u8 ss2_bank3[0x2000];
 extern const u8 ss2_bank4[0x2000];
@@ -48,7 +49,7 @@ void ss2_map6(u8 bank);                      /* $BB83 (also sets $8E)      */
 /* CPU view per 8 KiB page (the MPR model): $2000 work RAM, $4000-$BFFF
  * banks 1-4, $C000 the current bank, $E000 bank 0 */
 extern const u8 *ss2_page[8];
-extern const u8 *const ss2_banks[0x20];      /* by HuCard bank number      */
+extern const u8 *ss2_banks[0x20];             /* by HuCard bank number      */
 
 static inline u8 ss2_rom_byte(u16 addr) { return ss2_page[addr >> 13][addr & 0x1FFF]; }
 static inline u8 ss2_bank_byte(u8 bank, u16 addr) { return ss2_banks[bank & 0x1F][addr & 0x1FFF]; }
@@ -123,6 +124,7 @@ void ss2_title_return(void);                 /* slot 0 $FB97: back to the title 
 extern u8 ss2_language;
 void ss2_options_load(void);
 void ss2_options_save(void);
+void ss2_set_language(u8 lang);             /* text banks 1-2 */
 enum { SS2_SCENE_CONTINUE = 2, SS2_SCENE_ENDING = 3 };   /* more ss2_scene values */
 extern u8 ss2_scene;                         /* SS2_SCENE_* for the renderer */
 extern u8 ss2_pal_intro;                     /* intro sprite palettes 8-15 */

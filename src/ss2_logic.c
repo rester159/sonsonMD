@@ -12,7 +12,7 @@ u8 ss2_died;
 /* banks without exported data read as zeros; ss2_map6 reports them */
 static const u8 missing[0x2000];
 
-const u8 *const ss2_banks[0x20] = {
+const u8 *ss2_banks[0x20] = {          /* banks 1-2: ss2_set_language */
     ss2_bank0, ss2_bank1, ss2_bank2, ss2_bank3, ss2_bank4, ss2_bank5, ss2_bank6, ss2_bank7,
     ss2_bank8, ss2_bank9, missing, missing, ss2_bankC, ss2_bankD, ss2_bankE, ss2_bankF,
     ss2_bank10, ss2_bank11, ss2_bank12, ss2_bank13, ss2_bank14, ss2_bank15, ss2_bank16, ss2_bank17,

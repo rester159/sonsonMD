@@ -232,7 +232,7 @@ static void options_screen(void)
     }
     if (lang != ss2_language)
     {
-        ss2_language = lang;
+        ss2_set_language(lang);
         ss2_options_save();                  /* cartridge SRAM */
     }
     ss2_sfx(0xF0);

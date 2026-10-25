@@ -21,15 +21,24 @@ static u8 check(const u8 *b)
     return (u8)~s;
 }
 
+/* the HuCard's text banks (1-2, pages 2-3) for a language */
+void ss2_set_language(u8 lang)
+{
+    ss2_language = lang;
+    ss2_banks[1] = lang == SS2_LANG_JAPANESE ? ss2_bank1_jp : ss2_bank1;
+    ss2_banks[2] = lang == SS2_LANG_JAPANESE ? ss2_bank2_jp : ss2_bank2;
+    ss2_page[2] = ss2_banks[1];
+    ss2_page[3] = ss2_banks[2];
+}
+
 void ss2_options_load(void)
 {
     u8 b[NBYTES], i;
     SRAM_enableRO();
     for (i = 0; i < NBYTES; i++) b[i] = SRAM_readByte(BLOCK + i);
     SRAM_disable();
-    ss2_language = SS2_LANG_ENGLISH;
-    if (b[0] == 'S' && b[1] == '2' && b[2] == VERSION && b[4] == check(b) && b[3] <= SS2_LANG_JAPANESE)
-        ss2_language = b[3];
+    ss2_set_language(b[0] == 'S' && b[1] == '2' && b[2] == VERSION && b[4] == check(b) &&
+                     b[3] <= SS2_LANG_JAPANESE ? b[3] : SS2_LANG_ENGLISH);
 }
 
 void ss2_options_save(void)

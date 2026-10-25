@@ -463,6 +463,12 @@ def write_rom():
     # 0-9, $0F tables; $0C-$0F stage maps (bank 0 $F9F0 copies them to $3000); $10-$1F sprite pattern sources (run-time conversion)
     for b in (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x0C, 0x0D, 0x0E, 0x0F) + tuple(range(0x10, 0x20)):
         rom.append(c_array('ss2_bank%X' % b, 'u8', list(bank_bytes(b, 0, 0x2000)), 32, '0x%02X'))
+    # the Japanese HuCard: the English patch rewrote only the text block
+    # (file $36D6-$43D6, banks 1-2); OPTIONS LANGUAGE swaps these in
+    jp = open(os.path.join(ROOT, 'arcade', 'Son Son II (Japan).pce'), 'rb').read()
+    assert len(jp) == len(ROM) and all(jp[i] == ROM[i] for i in range(len(ROM)) if not 0x2000 <= i < 0x6000)
+    for b in (1, 2):
+        rom.append(c_array('ss2_bank%X_jp' % b, 'u8', list(jp[b * 0x2000:(b + 1) * 0x2000]), 32, '0x%02X'))
     open(os.path.join(ROOT, 'src', 'ss2_rom.c'), 'w').write('\n'.join(rom))
 
 
