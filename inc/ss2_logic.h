@@ -112,6 +112,9 @@ void ss2_game_start_task(void);              /* slot 0 $F5AA: new game      */
 void ss2_death_task(void);                   /* slot 0 $F884: miss/demo end */
 void ss2_stage_clear_start(void);            /* task 0 = $F617             */
 void ss2_ending_task(void);                  /* slot 0 bank 4 $AD5A (ss2_ending.c) */
+extern u8 ss2_ending_part;                   /* 0 none, 1 tally on the stage map, 2 picture, 3 credits */
+extern s8 ss2_end_font_dx;                   /* credits font tiles $1C0-$1DF: glyph x offset (-8/8 blank) */
+void ss2_end_petal(u8 x);                    /* bank 4 $B3E9 object handler */
 void ss2_title_return(void);                 /* slot 0 $FB97: back to the title */
 enum { SS2_SCENE_CONTINUE = 2, SS2_SCENE_ENDING = 3 };   /* more ss2_scene values */
 extern u8 ss2_scene;                         /* SS2_SCENE_* for the renderer */
@@ -175,6 +178,7 @@ void ss2_fade_out_alt(void);                 /* $7211                      */
 void ss2_fade_in_title(void);                /* $722E                      */
 extern u8 ss2_fade_late;                     /* next fade's first step crosses a VBlank */
 void ss2_fade_out_title(void);               /* $7251                      */
+void ss2_fade_in_spr_alt(void);              /* $72DD (sprites 1-7, alt 8-15) */
 
 /* sprite pattern sets (src/ss2_sprset.c): which ROM cell each PCE sprite
  * cell holds, plus the RAM animation bases the sets write */

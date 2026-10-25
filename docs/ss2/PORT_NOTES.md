@@ -22,6 +22,7 @@ SonSon via the game chooser (`src/game_select.c`).
 | `capture_sprset.py` | Pairs around the sprite-set loaders `$774F/$77A5/$77D0`. |
 | `gen_shop.py` | Shop scene background (from a saved research-model shop screen, `research/npc/cap.py SAVE=240 SAVEPKL=out/ss2/shop_s1.pkl`) -> `src/ss2_shop_data.c`. |
 | `research/bank05,09,17/` | The enemy agents' spawn lists, injected captures and replays. |
+| `research/ending/` | The ending (`cap.py`: injected at a frame start of stage 7 with PC = `$F617`; `runs.sh` A/B captures, S the screen pickles `out/ss2/end_*.pkl`); replay `ss2_frame_vbl_ending`. |
 | `research/npc/` | Townsperson/shop captures (`cap.py`: townspeople spawn only off-screen, so a two-phase warp; `runs.sh` the 38 recorded conversations and shop visits with RAM pokes for money/flags; `rep.sh`, `difsum.py`). Replays use `SS2_MASK_SOUND=1` (the host build has no sound driver). |
 
 ## Architecture decisions
@@ -165,5 +166,7 @@ runs after each link; keep load and store separate (empty asm barrier).
 | Pause magic select `$FE0C`, weapon box `$FE5A`, freeze flash `$EDB7`, sweep BG `$EDA0` | ported (shots traces m2 exact) |
 | Power-on, title, attract demo, intro, new game, stage start (`src/ss2_flow.c`) | exact on power-on traces (`capture_boot.py`): title->Start->intro->stage 1 1672/1699, title->demo->title 7466/7499 (the rest: CPU-bound loads' in-progress bytes, map streamer `$8E`) |
 | Genesis additions | "PUSH START BUTTON"; after START a GAME START / OPTIONS menu; OPTIONS has a music selector (`$00`-`$14`) and EXIT; the title does not roll into the demo while the menu is up |
-| Stage clear (`$F617`), death/continue (`$F8D8`), ending | pending (a miss returns to the title for now) |
+| Stage clear (`$F617`) | ported (tally) |
+| Ending (bank 4 `$AD5A`-`$B4D2`, bank 2 `$72DD`, `$7A9F`; `src/ss2_ending.c`) | exact on two 9000-pair traces (A: zenny tally, B: `$8A` set) 8992/9000 each; the rest are the `$77D0` load's and the `$EBE1` redraw's in-progress bytes. Renderer: `ss2_ending_part` (1 tally on the stage map, 2 picture, 3 credits), `ss2_scene = SS2_SCENE_ENDING` from `$7A9F`, zp `$6E` = `$88` from the picture on (top band scroll = camera), raster split at RCR `$E0` (band scroll `$51/$52`, `$54/$55`), credits font slide `ss2_end_font_dx` |
+| Death/continue (`$F8D8`) | pending (a miss returns to the title for now) |
 | Cartridge | SELECT GAME -> SS2 -> START+A -> SELECT GAME -> SonSon ARCADE/HOME verified headless |
