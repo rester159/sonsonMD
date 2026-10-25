@@ -82,7 +82,7 @@ static u16 world_tile(u16 tx, u16 ty)
     tx &= 255;
     ty &= 255;
     m = R(0x3000 + (((ty >> 5) << 3) | (tx >> 5)) * 64 + ((ty >> 2) & 7) * 8 + ((tx >> 2) & 7));
-    return (u16)(gfx->meta[m * 16 + (ty & 3) * 4 + (tx & 3)] + BG_TILE);
+    return (u16)((gfx->meta[m * 16 + (ty & 3) * 4 + (tx & 3)] + BG_TILE) | TILE_ATTR_PRIORITY_MASK);
 }
 
 static void draw_column(s16 tx, s16 ty0)
@@ -318,7 +318,7 @@ static u16 bat_word(u16 w)
             if (ss2_title_keys[mid] < w) lo = (u16)(mid + 1); else hi = mid;
         }
         if (lo < SS2_TITLE_NKEYS && ss2_title_keys[lo] == w)
-            return TILE_ATTR_FULL(ss2_title_line[lo], 0, 0, 0, BG_TILE + lo);
+            return TILE_ATTR_FULL(ss2_title_line[lo], 1, 0, 0, BG_TILE + lo);
         return 0;
     }
     if (ss2_scene >= SS2_SCENE_BG_FIRST)                    /* picture scenes */
@@ -331,12 +331,12 @@ static u16 bat_word(u16 w)
             if (sc->keys[mid] < w) lo = (u16)(mid + 1); else hi = mid;
         }
         if (lo < sc->nkeys && sc->keys[lo] == w)
-            return TILE_ATTR_FULL(sc->line[lo], 0, 0, 0, BG_TILE + lo);
+            return TILE_ATTR_FULL(sc->line[lo], 1, 0, 0, BG_TILE + lo);
     }
     if (ss2_ending_part == 3 && w >= 0x51C0 && w < 0x51E0)  /* the credits font */
         return TILE_ATTR_FULL(ss2_end_font_line, 1, 0, 0, END_FONT_TILE + w - 0x51C0);
     if (ss2_shop_screen && w >= 0xF1B0 && w <= 0xF1B9)      /* shop price digits */
-        return (u16)(ss2_shop_digit[w - 0xF1B0] + BG_TILE);
+        return (u16)((ss2_shop_digit[w - 0xF1B0] + BG_TILE) | TILE_ATTR_PRIORITY_MASK);
     if (w >= 0x1180 && w < 0x1240) k = (u16)(w - 0x1180);
     else if (w >= 0x51A0 && w < 0x5240) k = (u16)(0xC0 + w - 0x51A0);
     else if (w >= 0xF1A0 && w < 0xF240) k = (u16)(0x160 + w - 0xF1A0);
@@ -667,7 +667,7 @@ static void shop_scene(void)
         for (r = 0; r < SS2_SHOP_ROWS; r++)
         {
             for (c = 0; c < 32; c++)
-                linebuf[c] = (u16)(ss2_shop_map[r * 32 + c] + BG_TILE);
+                linebuf[c] = (u16)((ss2_shop_map[r * 32 + c] + BG_TILE) | TILE_ATTR_PRIORITY_MASK);
             VDP_setTileMapDataRow(BG_A, linebuf, (u16)((SS2_SHOP_ROW0 + r) & 31), 0, 32, CPU);
         }
     }
@@ -753,7 +753,11 @@ static void video_shutdown(void)
     VDP_setEnable(TRUE);
 }
 
-/* ---- sprites: PCE SATB entries (ss2_sat) -> VDP sprites ---------------- */
+/* ---- sprites: PCE SATB entries (ss2_sat) -> VDP sprites ----------------
+ * Priority as on the PCE: SATB attribute bit 7 puts a sprite in front of
+ * the BG; without it the sprite shows only through BG colour 0. Every BG
+ * map word (playfield, HUD, scenes, shop) has the Genesis priority bit, so
+ * low-priority sprites sit behind opaque BG pixels and high ones in front. */
 
 static u8 nspr;
 u16 ss2_sprite_misses;
@@ -776,7 +780,7 @@ static void player_sprite(s16 x, s16 y, u16 attr)
         VDP_loadTileData(gfx->player_tiles + (u16)frame * 128, PLAYER_TILE, 16, DMA_QUEUE);
         shown_frame = frame;
     }
-    put_sprite(x, y, SPRITE_SIZE(4, 4), TILE_ATTR_FULL(gfx->player_pal, 1, 0, (attr & 0x0800) ? 1 : 0, PLAYER_TILE));
+    put_sprite(x, y, SPRITE_SIZE(4, 4), TILE_ATTR_FULL(gfx->player_pal, (attr & 0x0080) ? 1 : 0, 0, (attr & 0x0800) ? 1 : 0, PLAYER_TILE));
 }
 
 /* ---- run-time sprite cells -------------------------------------------
@@ -1112,8 +1116,8 @@ put:
                 u8 yo = (u8)(((attr & 0x8000) ? (ch - 1 - r) : r) * 16);
                 u8 sz = cw == 2 ? SPRITE_SIZE(4, 2) : SPRITE_SIZE(2, 2);
                 u16 ta = cw == 2
-                    ? TILE_ATTR_FULL(line, 1, (attr & 0x8000) ? 1 : 0, (attr & 0x0800) ? 1 : 0, t)
-                    : TILE_ATTR_FULL(line, 1, (attr & 0x8000) ? 1 : 0, (attr & 0x0800) ? 1 : 0, (u16)(t + (c & 1) * 4));
+                    ? TILE_ATTR_FULL(line, (attr & 0x0080) ? 1 : 0, (attr & 0x8000) ? 1 : 0, (attr & 0x0800) ? 1 : 0, t)
+                    : TILE_ATTR_FULL(line, (attr & 0x0080) ? 1 : 0, (attr & 0x8000) ? 1 : 0, (attr & 0x0800) ? 1 : 0, (u16)(t + (c & 1) * 4));
                 y = (s16)(sy + yo);
                 put_sprite(sx, y, sz, ta);
                 if (rec) { mm->yoff[mm->n] = yo; mm->size[mm->n] = sz; mm->attr[mm->n] = ta; mm->cidx[mm->n] = ci; mm->n++; }
