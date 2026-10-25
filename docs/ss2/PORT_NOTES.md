@@ -194,6 +194,17 @@ player 26), stage 5's wall scene ~350 (objects 131, sprites 47), stage 7
 ~316 (objects 105). Each live object costs ~5,000-6,700 cycles per frame;
 C-level changes are at diminishing returns.
 
+Hand-written 68000 tried (2026-10-24) on the hottest leaf, the terrain
+probe (~20 calls a pass in stage 2): register arguments, table-built map
+offset, checked against the C on 354,000 calls (`-D SS2_ASMCHECK`, 0
+differences), yet no measurable gain (stage 2 objects 121 -> 123 lines):
+GCC's inlined C is close to it, and the call plus the memory barrier it
+imposes on callers cost the rest. Not kept. Reaching 60 in stage 2 would
+need the object logic ~2x faster as a whole, not routine-level assembly;
+the remaining levers are structural (e.g. running the logic at full rate
+and skipping presentation when a frame is late, where the logic alone fits:
+stage 7 ~250 lines, stage 2 ~264).
+
 Round 2 (all output-identical: 62/62 traces, and a -D SS2_SPRCHECK build
 that compares the memoized sprite table with the full path every pass):
 object fields through a slot pointer (`OF(a)`, 128 functions),
