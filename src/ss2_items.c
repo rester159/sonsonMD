@@ -340,6 +340,59 @@ static void stand_on(u8 x)
     O(0x251A, x) = ZP(0x4A);
 }
 
+/* bank 2 $7FD8: the object the player stands on ($22C5, from $7F74)
+ * moves the camera with it: a stand-on item ($299A = $88) by its own
+ * fall speed, kind 1 by its negated velocity, others by their velocity */
+static void cam_add(u8 lo, u8 hi, u16 frac, u16 low, u16 top)
+{
+    u8 sx = (u8)((hi & 0x80) ? 0xFF : 0);
+    u16 t = (u16)(lo + ZP(frac));
+    ZP(frac) = (u8)t;
+    t = (u16)(hi + ZP(low) + (t >> 8));
+    ZP(low) = (u8)t;
+    ZP(top) = (u8)((sx + ZP(top) + (t >> 8)) & 7);
+}
+
+void ss2_platform_carry(void)
+{
+    u8 x = (u8)(P_PUSHOBJ - 1), k = O(0x299A, x);
+    if (k == 0x88)
+    {
+        u16 t;
+        R(0x2C1A + O(0x281A, x)) = 0x64;
+        O(0x261A, x) |= 1;
+        if (O(0x25FA, x) == 5) { ZP(0x28) = O(0x261A, x); ZP(0x29) = O(0x25FA, x); }
+        else
+        {
+            t = (u16)(0x20 + O(0x261A, x));
+            ZP(0x28) = (u8)t;
+            ZP(0x29) = (u8)(O(0x25FA, x) + (t >> 8));
+        }
+        t = (u16)(ZP(0x28) + ZP(0x4A));
+        ZP(0x4A) = (u8)t;
+        t = (u16)(ZP(0x29) + ZP(0x49) + (t >> 8));
+        ZP(0x49) = (u8)t;
+        ZP(0x48) = (u8)((ZP(0x48) + (t >> 8)) & 7);
+        return;
+    }
+    if (k == 1)
+    {
+        u16 v = (u16)-(s16)((O(0x25BA, x) << 8) | O(0x25DA, x));
+        u16 w = (u16)-(s16)((O(0x25FA, x) << 8) | O(0x261A, x));
+        ZP(0x28) = (u8)v; ZP(0x29) = (u8)(v >> 8);
+        ZP(0x2A) = (u8)w; ZP(0x2B) = (u8)(w >> 8);
+    }
+    else
+    {
+        ZP(0x29) = O(0x25BA, x); ZP(0x28) = O(0x25DA, x);
+        ZP(0x2B) = O(0x25FA, x); ZP(0x2A) = O(0x261A, x);
+    }
+    ZP(0x37) = (u8)((ZP(0x29) & 0x80) ? 0xFF : 0);
+    cam_add(ZP(0x28), ZP(0x29), 0x47, 0x46, 0x45);
+    ZP(0x37) = (u8)((ZP(0x2B) & 0x80) ? 0xFF : 0);
+    cam_add(ZP(0x2A), ZP(0x2B), 0x4A, 0x49, 0x48);
+}
+
 /* $8104-$818D: key-type items: a $22C1 bit and their item-box icon ($819D) */
 static void key_item(u8 x, u8 bit, u16 icon)
 {

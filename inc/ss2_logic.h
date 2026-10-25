@@ -23,6 +23,9 @@ extern const u8 ss2_bank5[0x2000];
 extern const u8 ss2_bank8[0x2000];
 extern const u8 ss2_bank17[0x2000];
 extern const u8 ss2_bankF[0x2000];
+extern const u8 ss2_bankC[0x2000];
+extern const u8 ss2_bankD[0x2000];
+extern const u8 ss2_bankE[0x2000];
 extern const u8 ss2_bank1F[0x2000];
 extern const u8 ss2_bank10[0x2000];
 extern const u8 ss2_bank11[0x2000];
@@ -93,11 +96,32 @@ void ss2_game_frame(void);                   /* run tasks + sprite table   */
 void ss2_game_tick(void);                    /* host replay: one pass      */
 void ss2_boss_watch_start(void);             /* $E1E2 -> task 2 = bank 2 $6E1A (ss2_obj1f.c) */
 void ss2_main_restart(void);                 /* JMP $EDB0 from inside slot 0 */
+void ss2_main_loop(void);                    /* slot 0 $EC3B                */
+void ss2_sat_update(void);                   /* $8732 outside the main body */
+void ss2_game_listener(void);                /* slot 1 $E2A6                */
+void ss2_score_task(void);                   /* slot 3 $FD05                */
+void ss2_cr_set(u8 v);                       /* $2201 with $8B = 5          */
+void ss2_bg_on(void);                        /* $BA1E                       */
+void ss2_bg_off(void);                       /* $BA35                       */
+void ss2_spr_on(void);                       /* $B9F0                       */
+void ss2_spr_off(void);                      /* $BA07                       */
+
+/* game flow (src/ss2_flow.c) */
+void ss2_power_on(void);                     /* $E000/$E2D0: RAM + tasks    */
+void ss2_game_start_task(void);              /* slot 0 $F5AA: new game      */
+void ss2_death_task(void);                   /* slot 0 $F884: miss/demo end */
+extern u8 ss2_scene;                         /* SS2_SCENE_* for the renderer */
+extern u8 ss2_pal_intro;                     /* intro sprite palettes 8-15 */
+extern u8 ss2_stage_request;                 /* renderer: load stage graphics */
+enum { SS2_SCENE_PLAY, SS2_SCENE_TITLE };
 
 /* dialogue window and HUD icons (src/ss2_msgwin.c): map writes queued
  * for the renderer */
-enum { SS2_BAT_PUT, SS2_BAT_RESTORE, SS2_BAT_HUD, SS2_BAT_HUDPUT };
-typedef struct { u8 kind, x, y; u16 w; } Ss2BatOp;   /* RESTORE: w = width<<8|rows */
+enum { SS2_BAT_PUT, SS2_BAT_RESTORE, SS2_BAT_HUD, SS2_BAT_HUDPUT,
+       SS2_BAT_CLEAR, SS2_BAT_PICTURE, SS2_BAT_TEXT };
+/* RESTORE: w = width<<8|rows; PICTURE ($FBB1): x,y = width bytes, rows,
+ * w = BAT address, w2 = source map; TEXT ($BAD9): w = table, w2 = BAT base */
+typedef struct { u8 kind, x, y; u16 w, w2; } Ss2BatOp;
 #define SS2_BATQ 512
 extern Ss2BatOp ss2_bat_queue[SS2_BATQ];
 extern u16 ss2_bat_head, ss2_bat_tail;
@@ -108,6 +132,9 @@ void ss2_msg_close(void);                    /* $6C1F                     */
 void ss2_msg_continue(u16 addr, u8 y);       /* $6C12: JMP ($28) after a choice */
 void ss2_hud_text(u16 ptr);                  /* bank 4 $BADE              */
 void ss2_hud_put(u16 a, u16 w);              /* one HUD BAT word          */
+void ss2_bat_clear(void);                    /* $BA91                     */
+void ss2_bat_picture(u16 dst, u16 src, u8 w, u8 h);   /* $FBB1            */
+void ss2_bat_text(u16 ptr);                  /* $BAD9 (camera-relative)   */
 void ss2_bat_put(u8 x, u8 y, u16 w);         /* one BAT word at a world tile */
 extern u8 ss2_shop_screen, ss2_shop_type;    /* shop scene up; shopkeeper type */
 extern u16 ss2_shop_goods;                   /* its goods table ($A666..)   */
@@ -125,6 +152,7 @@ void ss2_hud_bars(void);                     /* bank 2 $7649 + $7688       */
 /* doors (src/ss2_door.c) */
 extern u8 ss2_redraw_request;                /* $EBE1 playfield redraw     */
 void ss2_door(u8 x);                         /* $7DB5 item kind 1          */
+void ss2_platform_carry(void);               /* bank 2 $7FD8               */
 
 /* palette fades (src/ss2_fade.c): RAM shadow $2EA0-$2F9F -> ss2_vce */
 extern u16 ss2_vce[512];                     /* PCE colour RAM mirror      */
@@ -138,6 +166,9 @@ void ss2_fade_in_all(void);                  /* $7274                      */
 void ss2_fade_out_all(void);                 /* $7297                      */
 void ss2_fade_in_alt(void);                  /* $71F4                      */
 void ss2_fade_out_alt(void);                 /* $7211                      */
+void ss2_fade_in_title(void);                /* $722E                      */
+extern u8 ss2_fade_late;                     /* next fade's first step crosses a VBlank */
+void ss2_fade_out_title(void);               /* $7251                      */
 
 /* sprite pattern sets (src/ss2_sprset.c): which ROM cell each PCE sprite
  * cell holds, plus the RAM animation bases the sets write */
@@ -151,6 +182,7 @@ void ss2_staff_art(void);                    /* $79F7                      */
 
 /* objects (src/ss2_objects.c) */
 void ss2_objects_update(void);               /* $ED0D loop over 32 slots   */
+void ss2_obj_camera(void);                   /* camera delta for $EE01     */
 extern u8 ss2_obj_next;                      /* slot the loop resumes after */
 void ss2_obj_update(u8 x);                   /* $EE01                      */
 void ss2_obj_common(u8 x);                   /* $EE67 script/motion/hits   */

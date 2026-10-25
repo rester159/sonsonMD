@@ -17,12 +17,43 @@
 Ss2BatOp ss2_bat_queue[SS2_BATQ];
 u16 ss2_bat_head, ss2_bat_tail;
 
-static void bat_op(u8 kind, u8 x, u8 y, u16 w)
+static void bat_op2(u8 kind, u8 x, u8 y, u16 w, u16 w2)
 {
     Ss2BatOp *o = &ss2_bat_queue[ss2_bat_head & (SS2_BATQ - 1)];
-    o->kind = kind; o->x = x; o->y = y; o->w = w;
+    o->kind = kind; o->x = x; o->y = y; o->w = w; o->w2 = w2;
     ss2_bat_head++;
     ZP(0x8B) = 0x02;                         /* $BA4C: VWR selected last */
+}
+
+static void bat_op(u8 kind, u8 x, u8 y, u16 w)
+{
+    bat_op2(kind, x, y, w, 0);
+}
+
+/* $BA91: the whole BAT filled with the blank word $01A0 */
+void ss2_bat_clear(void)
+{
+    bat_op(SS2_BAT_CLEAR, 0, 0, 0);
+}
+
+/* $FBB1: a picture of 16x16 blocks: source rows of (block lo, palette|hi)
+ * byte pairs, $FF = blank; each source row gives two BAT rows (top and
+ * bottom tiles, +$10), w bytes wide, h BAT rows, from BAT address dst */
+void ss2_bat_picture(u16 dst, u16 src, u8 w, u8 h)
+{
+    ZP(0x28) = (u8)dst; ZP(0x29) = (u8)(dst >> 8);
+    ZP(0x2A) = (u8)src; ZP(0x2B) = (u8)(src >> 8);
+    ZP(0x31) = w; ZP(0x32) = h; ZP(0x30) = h;
+    bat_op2(SS2_BAT_PICTURE, w, h, dst, src);
+}
+
+/* $BAD9: a BAT text table placed relative to the camera ($BAE5) */
+void ss2_bat_text(u16 ptr)
+{
+    u16 base = (u16)(((((Z_CAMX_HI & 1) << 8) | Z_CAMX_LO) >> 3) & 0x3F);
+    base = (u16)(base + ((Z_CAMY_LO & 0xF8) << 3));
+    ZP(0x26) = (u8)ptr; ZP(0x27) = (u8)(ptr >> 8);
+    bat_op2(SS2_BAT_TEXT, 0, 0, ptr, base);
 }
 
 /* $6DBA: BAT word ($26/$27) at world tile ($90,$92) */

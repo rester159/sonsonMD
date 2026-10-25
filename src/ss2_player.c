@@ -198,7 +198,7 @@ static void move(void)
     if ((s8)P_VYH < 0) ZP(0x30) = 0xFF;
 
     /* $C1FB */
-    if (P_PUSHOBJ) ss2_unported(0x7FD8);
+    if (P_PUSHOBJ) ss2_platform_carry();     /* bank 2 $7FD8 */
     if (P_JUMPING || !P_SETTLE) return;
     {
         u8 d, c;

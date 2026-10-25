@@ -196,6 +196,15 @@ static void build_shop_sat(void)
     while (sat_i < 64) sat_put(0, 0, 0, 0);
 }
 
+/* bank 3 $8732 called outside the main body (title, intro, death): its
+ * RAM effects; the table itself is built at the frame end */
+void ss2_sat_update(void)
+{
+    spark();
+    sat_banks();
+    ZP(0x8B) = 0x02;                        /* its SATB writes select VWR */
+}
+
 static void build_sat(void)
 {
     u8 x, bank = ZP(0x8E);
@@ -375,6 +384,28 @@ void ss2_prof_mark(u8 sec);
 #define PROF(n)
 #endif
 
+/* bank 4 $BD16: the attract demo's pad: while no game runs ($6C = 0) the
+ * pad comes from (pad, frames) pairs at ($C4), $C6 counting; $FF ends the
+ * demo through $F884 */
+static void demo_input(void)
+{
+    u16 p;
+    u8 v;
+    if (ZP(0xC3)) { ss2_unported(0xBD1F); return; }     /* demo recording (development) */
+    if (ZP(0x6C)) return;
+    ZP(0x1B) = Z_PAD;
+    if (!--ZP(0xC6))
+    {
+        p = (u16)(((ZP(0xC5) << 8) | ZP(0xC4)) + 2);
+        ZP(0xC4) = (u8)p; ZP(0xC5) = (u8)(p >> 8);
+        ZP(0xC6) = ss2_rom_byte((u16)(p + 1));
+    }
+    v = ss2_rom_byte((u16)((ZP(0xC5) << 8) | ZP(0xC4)));
+    if (v == 0xFF) ss2_task_restart(ss2_death_task);    /* JMP $F884 */
+    Z_PAD = v;
+    Z_PRESS = (u8)((v ^ ZP(0x1B)) & v);
+}
+
 /* $EC42-$EDA2: one pass of the main loop body (player .. respawn/HUD) */
 static void main_body(void)
 {
@@ -383,6 +414,7 @@ static void main_body(void)
     for (i = 0; i < 6; i++) ZP(0x4B + i) = ZP(0x45 + i);
     if (ZP(0x71)) ZP(0x71)--;               /* $EC49: freeze/flash timer */
     ss2_map6(9);
+    demo_input();                           /* $BD16 */
     ss2_player_update();
     ss2_shots_update();
     select_frame();
@@ -490,10 +522,15 @@ static void cr_set(u8 v)
     ZP(0x8B) = 0x05;                        /* $BA4C: CR selected */
     R(0x2201) = v;
 }
-static void bg_on(void)   { cr_set((u8)(R(0x2201) | 0x80)); }      /* $BA1E */
-static void bg_off(void)  { cr_set((u8)(R(0x2201) & 0x7F)); }      /* $BA35 */
-static void spr_on(void)  { cr_set((u8)(R(0x2201) | 0x40)); }      /* $B9F0 */
-static void spr_off(void) { cr_set((u8)(R(0x2201) & 0xBF)); }      /* $BA07 */
+void ss2_cr_set(u8 v) { cr_set(v); }
+void ss2_bg_on(void)   { cr_set((u8)(R(0x2201) | 0x80)); }      /* $BA1E */
+void ss2_bg_off(void)  { cr_set((u8)(R(0x2201) & 0x7F)); }      /* $BA35 */
+void ss2_spr_on(void)  { cr_set((u8)(R(0x2201) | 0x40)); }      /* $B9F0 */
+void ss2_spr_off(void) { cr_set((u8)(R(0x2201) & 0xBF)); }      /* $BA07 */
+#define bg_on ss2_bg_on
+#define bg_off ss2_bg_off
+#define spr_on ss2_spr_on
+#define spr_off ss2_spr_off
 
 /* $EDB7: freeze-magic flash: while $71 >= $C8, every 4 frames the picture
  * goes white (background and sprites off, colour $100 white) and back */
@@ -528,7 +565,7 @@ static void main_tail(void)
 }
 
 /* slot 0, $EC3B: the main game loop */
-static void main_task(void)
+void ss2_main_loop(void)
 {
     for (;;)
     {
@@ -548,7 +585,7 @@ static void main_task(void)
 static void main_task_edb0(void)
 {
     ZP(0x14) = 0x88;
-    main_task();
+    ss2_main_loop();
 }
 
 void ss2_main_restart(void)
@@ -556,18 +593,26 @@ void ss2_main_restart(void)
     ss2_task_restart(main_task_edb0);
 }
 
-/* slot 1, $E2A6: title RUN handler, idle during play */
-static void listener_task(void)
+/* slot 1, $E2A6: during the intro ($6D) I or II skips to the game:
+ * $E2B5 restarts task 0 at $F5AA and this task ends */
+void ss2_game_listener(void)
 {
     for (;;)
     {
-        if (ZP(0x6D) && (Z_PRESS & 0x03)) ss2_unported(0xE2B5);
+        if (ZP(0x6D) && (Z_PRESS & 0x03))
+        {
+            ZP(0x6C) = 0x88;
+            ZP(0x10) = 0xAA; ZP(0x11) = 0xF5;
+            ss2_task_create(0, ss2_game_start_task);
+            ss2_task_exit();                /* $E212 */
+        }
         ss2_wait(1);
     }
 }
+#define listener_task ss2_game_listener
 
 /* slot 3, $FD05: score task */
-static void score_task_loop(void)
+void ss2_score_task(void)
 {
     for (;;)
     {
@@ -581,9 +626,9 @@ void ss2_game_start(void)
 {
     u8 i;
     for (i = 0; i < 16; i++) ZP(i) = 0;
-    ss2_task_create(0, main_task);
+    ss2_task_create(0, ss2_main_loop);
     ss2_task_create(1, listener_task);
-    ss2_task_create(3, score_task_loop);
+    ss2_task_create(3, ss2_score_task);
 }
 
 /* One frame of game logic after the VBlank part: run the ready tasks. */

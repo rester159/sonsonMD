@@ -32,3 +32,25 @@ void ss2_frame_vbl(void)
     ss2_sched_vblank();
     ss2_sched_run();
 }
+
+/* Power-on traces (capture_boot.py): the native game boots and runs until
+ * its tasks wait (the source's reset code before the first VBlank), then
+ * each pair is a VBlank and the tasks after it. */
+#include <stdio.h>
+#include <stdlib.h>
+void ss2_frame_vbl_boot(void)
+{
+    static int started, n;
+    if (!started) { ss2_power_on(); ss2_sched_run(); started = 1; }
+    /* SS2_PAD0: the trace had no input (the attract demo writes $16 itself,
+     * so the post-state pad is not what the hardware read) */
+    ss2_game_vblank(getenv("SS2_PAD0") ? 0 : ss2_expected_pad);
+    ss2_sched_vblank();
+    ss2_sched_run();
+    if (getenv("SS2_DUMPAT") && ++n == atoi(getenv("SS2_DUMPAT")))
+    {
+        FILE *f = fopen("out/ss2/native_dump.bin", "wb");
+        fwrite(ss2_ram, 1, 0x2000, f);
+        fclose(f);
+    }
+}

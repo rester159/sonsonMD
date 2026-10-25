@@ -14,6 +14,15 @@ u16 ss2_vce[512];
 u8 ss2_vce_dirty;
 u8 ss2_fade_bg = 7, ss2_fade_sp = 7;         /* last uploaded levels (renderer) */
 u8 ss2_pal13_variant = 0xFF;                  /* interior palette 13 ($493C+), $FF none */
+u8 ss2_fade_late;                             /* first step's colours cross a VBlank */
+
+/* A fade started late in a frame: its first computation runs past the
+ * VBlank, so its first wait starts a frame later (measured, e.g. the
+ * intro's $7274 begins on line 226) */
+static void late(void)
+{
+    if (ss2_fade_late) { ss2_fade_late = 0; ss2_busy(1); }
+}
 
 /* $7396: count bytes of colours from src, faded to level, into dst */
 static void fade_block(u16 src, u16 dst, u8 count, u8 level)
@@ -46,6 +55,7 @@ static void f7324(u8 l) { fade_block(0x49BC, 0x2EF0, 0xB0, l); }             /* 
 static void f733A(u8 l) { fade_block(0x4050, 0x2EA0, 0x10, l); }             /* sprite 0        */
 static void f7350(u8 l) { fade_block(0x4060, 0x2EB0, 0x70, l); }             /* sprite 1-7      */
 static void f7366(u8 l) { fade_block(stage_ptr(0x45AE), 0x2F20, 0x80, l); }  /* sprite 8-15     */
+static void f7382(u8 l) { fade_block(0x4A6C, 0x2F20, 0x80, l); }             /* sprite 8-15 alt */
 
 /* VCE uploads of shadow palettes first..15 (8 colours each) */
 static void upload(u16 vce_base, u8 first)
@@ -69,6 +79,7 @@ static void up_sp_stage(void) { upload(0x100, 1); ss2_pal13_variant = 0xFF; }  /
 static void fade_stage_step(u8 l)
 {
     f7308(l);
+    late();
     ss2_wait(2);
     up_bg_stage();
     ss2_fade_bg = l;
@@ -95,6 +106,7 @@ void ss2_fade_out(void)
 static void fade_all_step(u8 l)
 {
     f72F1(l);
+    late();                                  /* (the intro: $7308 crosses it) */
     f7308(l);
     ss2_wait(2);
     up_bg();
@@ -123,6 +135,7 @@ void ss2_fade_out_all(void)
 static void fade_alt_step(u8 l)
 {
     f7324(l);
+    late();
     ss2_wait(2);
     up_bg_stage();
     ss2_fade_bg = l;
@@ -143,6 +156,35 @@ void ss2_fade_out_alt(void)
 {
     s8 l;
     for (l = 6; l != -1; l--) fade_alt_step((u8)l);
+}
+
+/* $722E / $7251: the title's fades (alternate BG and sprite 8-15 sets) */
+static void fade_title_step(u8 l)
+{
+    f72F1(l);
+    f7324(l);
+    late();
+    ss2_wait(2);
+    up_bg();
+    ss2_fade_bg = l;
+    f733A(l);
+    f7350(l);
+    f7382(l);
+    ss2_wait(1);
+    up_sp();
+    ss2_fade_sp = l;
+}
+
+void ss2_fade_in_title(void)
+{
+    u8 l;
+    for (l = 1; l != 8; l++) fade_title_step(l);
+}
+
+void ss2_fade_out_title(void)
+{
+    s8 l;
+    for (l = 6; l != -1; l--) fade_title_step((u8)l);
 }
 
 /* Unfaded VCE contents for the current stage (what the stage load sets) */

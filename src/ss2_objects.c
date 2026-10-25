@@ -105,6 +105,15 @@ void ss2_obj_snap_y(u8 x)
 /* bank 3 $8505: shift by the camera movement since the previous frame
  * (the delta is the same for every slot, so it is computed once a frame) */
 static s16 cam_dx, cam_dy;
+
+/* the camera's move since the previous frame ($4C/$4F - $46/$49), which
+ * $EE01 subtracts from every object: hoisted per frame (also for the
+ * title/intro scripts that call $EE01 directly) */
+void ss2_obj_camera(void)
+{
+    cam_dx = (s8)(u8)(ZP(0x4C) - Z_CAMX_LO);
+    cam_dy = (s8)(u8)(ZP(0x4F) - Z_CAMY_LO);
+}
 static u8 shots_live;
 static void camera_shift(u8 x)
 {
@@ -486,8 +495,7 @@ void ss2_objects_update(void)
 {
     u8 x;
     P_PUSHOBJ = 0;
-    cam_dx = (s8)(u8)(ZP(0x4C) - Z_CAMX_LO);
-    cam_dy = (s8)(u8)(ZP(0x4F) - Z_CAMY_LO);
+    ss2_obj_camera();
     shots_live = 0;
     for (x = 0; x < 7; x++) if (R(0x22E5 + x) == 0x80) shots_live = 1;
     for (x = 0; x < 0x20; x++)

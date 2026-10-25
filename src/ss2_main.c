@@ -14,6 +14,7 @@
 #include "ss2.h"
 #include "ss2_data.h"
 #include "ss2_shop_data.h"
+#include "ss2_title_data.h"
 #include "ss2_ram.h"
 #include "ss2_logic.h"
 #include "ss2_sound.h"
@@ -24,6 +25,12 @@
 static u16 HUD_TILE, PLAYER_TILE, SPR_TILE;
 static const Ss2StageGfx *gfx;
 static void cache_reset(void);
+static u8 def_bank[0x200];            /* cell sources of the stage's own sets */
+static u16 def_src[0x200];
+static void draw_hud(u8 all);
+static void stage_gfx_load(void);
+static u8 shown_frame;
+static u8 scene_shown;
 
 #define HUD_ROWS     6
 #define VIEW_TOP     (HUD_ROWS * 8)
@@ -102,8 +109,28 @@ static void stream_view(void)
 
 /* plane B shares plane A's map (its own table area becomes sprite cache)
  * and scrolls with it, so it sits exactly behind plane A */
+/* $2201 bit 2 (raster split): on = HUD in the window plane over the
+ * camera-scrolled playfield; off (title) = the whole BAT from (0,0), PCE
+ * line g + 8 on Genesis line g */
+static u8 split_shown = 1;
+
 static void apply_scroll(void)
 {
+    u8 split = (u8)((R(0x2201) & 0x04) != 0);
+    if (split != split_shown)
+    {
+        split_shown = split;
+        if (split) VDP_setWindowOnTop(HUD_ROWS);
+        else VDP_setWindowOff();
+    }
+    if (!split)
+    {
+        VDP_setHorizontalScroll(BG_A, 0);
+        VDP_setVerticalScroll(BG_A, 8);
+        VDP_setHorizontalScroll(BG_B, 0);
+        VDP_setVerticalScroll(BG_B, 8);
+        return;
+    }
     VDP_setHorizontalScroll(BG_A, (s16)-camx);
     VDP_setVerticalScroll(BG_A, (s16)(camy - VIEW_TOP));
     VDP_setHorizontalScroll(BG_B, (s16)-camx);
@@ -142,6 +169,18 @@ static u16 bat_key(u16 w)
 static u16 bat_word(u16 w)
 {
     u16 k;
+    if (ss2_scene == SS2_SCENE_TITLE)                       /* title scene words */
+    {
+        u16 lo = 0, hi = SS2_TITLE_NKEYS;
+        while (lo < hi)
+        {
+            u16 mid = (u16)((lo + hi) >> 1);
+            if (ss2_title_keys[mid] < w) lo = (u16)(mid + 1); else hi = mid;
+        }
+        if (lo < SS2_TITLE_NKEYS && ss2_title_keys[lo] == w)
+            return TILE_ATTR_FULL(ss2_title_line[lo], 0, 0, 0, BG_TILE + lo);
+        return 0;
+    }
     if (ss2_shop_screen && w >= 0xF1B0 && w <= 0xF1B9)      /* shop price digits */
         return (u16)(ss2_shop_digit[w - 0xF1B0] + BG_TILE);
     if (w >= 0x1180 && w < 0x1180 + NGLYPH)
@@ -179,6 +218,63 @@ static void hud_text(u16 ptr)
     }
 }
 
+/* Genesis wording: the START button, where the PCE says RUN */
+static const u8 title_text_gen[] = {
+    0x06, 0x05, 0xF0, 'P','U','S','H',' ','S','T','A','R','T',' ','B','U','T','T','O','N', '/', '/',
+    ' ',' ','H','I','S','C','O','R','E','/','/','/',
+    ' ','@',' ','1','9','8','9',' ','N','E','C',' ','A','V','E','N','U','E','/','/',
+    ' ','L','I','C','E','N','S','E','D',' ','B','Y',' ','C','A','P','C','O','M', 0x5C };
+
+static void bat_cell(u16 a, u16 w)
+{
+    VDP_setTileMapXY(BG_A, bat_word(w), (u16)(a & 63), (u16)((a >> 6) & 31));
+}
+
+/* $BB27 text table (BAT address, palette, characters, '/' next line, '\'
+ * end) at BAT base + its address */
+static void bat_text(u16 ptr, u16 base)
+{
+    u16 a = (u16)(base + (ss2_rom_byte(ptr) | (ss2_rom_byte((u16)(ptr + 1)) << 8)));
+    u16 hi = ss2_rom_byte((u16)(ptr + 2)), line = a;
+    const u8 *gen = ptr == 0xE7F7 ? title_text_gen : 0;
+    u16 i = 3;
+    for (;;)
+    {
+        u8 c = gen ? gen[i] : ss2_rom_byte((u16)(ptr + i));
+        u16 lo = (u16)(c + 0x80);
+        i++;
+        if (c == 0x5C) return;
+        if (c == 0x2F) { line = (u16)(line + 0x40); a = line; continue; }
+        bat_cell(a, (u16)((u8)(hi + 1 + (lo >> 8)) << 8 | (lo & 0xFF)));   /* $BB62 */
+        a++;
+    }
+}
+
+/* $FBB1 picture: per source row two BAT rows (block tops, then +$10) */
+static void bat_picture(u16 dst, u16 src, u8 w, u8 h)
+{
+    u8 r, y;
+    for (r = 0; r < h; r++)
+    {
+        u16 a = (u16)(dst + r * 0x40), s = (u16)(src + (r >> 1) * w);
+        for (y = 0; y < w; y = (u8)(y + 2))
+        {
+            u8 b0 = ss2_rom_byte((u16)(s + y)), b1 = ss2_rom_byte((u16)(s + y + 1));
+            if (b0 == 0xFF) { bat_cell(a, 0x01A0); bat_cell((u16)(a + 1), 0x01A0); }
+            else
+            {
+                u16 lo = (u16)(b0 + 0x80);
+                u16 wd = (u16)((((2 + (lo >> 8)) | b1) << 8) | ((lo & 0xFF) | ((r & 1) << 4)));
+                bat_cell(a, wd);
+                bat_cell((u16)(a + 1), (u16)(wd + 1));
+            }
+            a = (u16)(a + 2);
+        }
+    }
+}
+
+static u8 map_live = 1;                         /* stage map drawn: streaming valid */
+
 static struct { u16 a, ptr; } hud_last[16];   /* table shown per BAT address */
 
 static void bat_drain(void)
@@ -200,6 +296,15 @@ static void bat_drain(void)
                 }
             if (w <= 6) glyphs_reset();          /* last close step: window gone */
         }
+        else if (o->kind == SS2_BAT_CLEAR)
+        {
+            VDP_clearPlane(BG_A, TRUE);
+            map_live = 0;
+        }
+        else if (o->kind == SS2_BAT_PICTURE)
+            bat_picture(o->w, o->w2, o->x, o->y);
+        else if (o->kind == SS2_BAT_TEXT)
+            bat_text(o->w, o->w2);
         else if (o->kind == SS2_BAT_HUDPUT)
         {
             if (o->y >= 1 && o->y <= HUD_ROWS && o->x < 32)
@@ -272,6 +377,31 @@ static u16 pce_colour(u16 c)
     return (u16)(((c & 7) << 9) | (((c >> 6) & 7) << 5) | (((c >> 3) & 7) << 1));
 }
 
+/* the title scene's tiles over the stage BG tiles (ss2_scene), and a stage
+ * started by the game flow (ss2_stage_request: its sprite sets are the
+ * defaults the static sprite tables were made from) */
+static void scene_update(void)
+{
+    if (ss2_stage_request)
+    {
+        ss2_stage_request = 0;
+        gfx = &ss2_stage_gfx[Z_STAGE < SS2_NSTAGES ? Z_STAGE : 0];
+        memcpy(def_bank, ss2_cell_bank, sizeof def_bank);
+        memcpy(def_src, ss2_cell_src, sizeof def_src);
+        stage_gfx_load();
+        draw_hud(1);
+        shown_bg = 0xFF;
+    }
+    if (ss2_scene == scene_shown) return;
+    scene_shown = ss2_scene;
+    if (scene_shown == SS2_SCENE_TITLE)
+        VDP_loadTileData(ss2_title_tiles, BG_TILE, SS2_TITLE_NKEYS, CPU);
+    else
+        VDP_loadTileData(gfx->bg_tiles, BG_TILE, gfx->bg_ntiles, CPU);
+    cache_reset();
+    shown_bg = 0xFF;
+}
+
 static void apply_fade(void)
 {
     u8 i, cr = (u8)(R(0x2201) & 0xC0);
@@ -284,9 +414,10 @@ static void apply_fade(void)
     shown_c100 = c100;
     for (i = 0; i < 64; i++)
     {
-        u16 w = (i < 32 && shop_shown) ? ss2_shop_palette[i] : gfx->palette[i];
+        u8 title = (u8)(scene_shown == SS2_SCENE_TITLE);
+        u16 w = (i < 32 && shop_shown) ? ss2_shop_palette[i] : title ? ss2_title_palette[i] : gfx->palette[i];
         if (i < 32) w = (cr & 0x80) ? fade_colour(w, shown_bg) : c100;
-        else if (!(hud_keep[(i >> 4) - 2] & (1 << (i & 15)))) w = fade_colour(w, shown_sp);
+        else if (title || !(hud_keep[(i >> 4) - 2] & (1 << (i & 15)))) w = fade_colour(w, shown_sp);
         fade_pal[i] = w;
     }
     if (!(cr & 0x80)) fade_pal[0] = c100;           /* backdrop */
@@ -330,6 +461,17 @@ static void video_init(void)
     VDP_setBackgroundColor(0);
     VDP_resetSprites();
     VDP_updateSprites(1, CPU);
+    stage_gfx_load();
+    ss2_bat_head = ss2_bat_tail = 0;
+    VDP_setWindowOnTop(HUD_ROWS);
+    split_shown = 1;
+    VDP_setEnable(TRUE);
+}
+
+/* the current stage's graphics: tiles, palette, HUD, icons (also when the
+ * game flow starts a stage: ss2_stage_request) */
+static void stage_gfx_load(void)
+{
     HUD_TILE = (u16)(BG_TILE + gfx->bg_ntiles);
     PLAYER_TILE = (u16)(HUD_TILE + gfx->hud_ntiles);
     SPR_TILE = (u16)(PLAYER_TILE + 16);
@@ -347,10 +489,10 @@ static void video_init(void)
     VDP_loadTileData(gfx->bat_tiles + NGLYPH * 8, ICON_TILE, SS2_BAT_NKEYS - NGLYPH, CPU);
     glyphs_reset();
     memset(hud_last, 0, sizeof hud_last);
-    ss2_bat_head = ss2_bat_tail = 0;
     VDP_setTileMapDataRectEx(WINDOW, gfx->hud_map, HUD_TILE, 0, 0, 32, HUD_ROWS, 32, CPU);
-    VDP_setWindowOnTop(HUD_ROWS);
-    VDP_setEnable(TRUE);
+    cache_reset();
+    shown_frame = 0xFF;
+    scene_shown = SS2_SCENE_PLAY;
 }
 
 static void video_shutdown(void)
@@ -373,7 +515,6 @@ static void video_shutdown(void)
 
 /* ---- sprites: PCE SATB entries (ss2_sat) -> VDP sprites ---------------- */
 
-static u8 shown_frame = 0xFF;
 static u8 nspr;
 u16 ss2_sprite_misses;
 
@@ -405,8 +546,6 @@ static void player_sprite(s16 x, s16 y, u16 attr)
  * demand from the HuCard pattern (ss2_cell_bank/src): a cell pair for one
  * palette -> 8 tiles (two 16x16 cells, column-major like the static ones)
  * in 8-tile blocks in VRAM freed by plane B sharing plane A's map. */
-static u8 def_bank[0x200];
-static u16 def_src[0x200];
 
 typedef struct { u8 b0, b1, key; u8 used; u16 s0, s1, pair, tile, last; } CacheEnt;
 static const u16 cache_base[] = {
@@ -452,7 +591,8 @@ static void conv_cell(u8 bank, u16 src, const u8 *cm, u32 *out)
  * interior variant v), 0 when it cannot be made this frame */
 static u16 cache_tile(u16 c, u8 key, u8 *line)
 {
-    const u8 *cm = key >= 16 ? gfx->spr_cmap13 + (key - 16) * 8 : gfx->spr_cmap + key * 8;
+    const u8 *cm = scene_shown == SS2_SCENE_TITLE ? ss2_title_cmap + (key & 15) * 8
+                 : key >= 16 ? gfx->spr_cmap13 + (key - 16) * 8 : gfx->spr_cmap + key * 8;
     u8 b0 = ss2_cell_bank[c], b1 = ss2_cell_bank[c + 1];
     u16 s0 = ss2_cell_src[c], s1 = ss2_cell_src[c + 1];
     u8 i, victim = 0xFF;
@@ -538,7 +678,8 @@ static void draw_sprites(void)
             s16 y;
             u16 cc = (u16)(c & 0x3FE);
             line = gfx->spr_line[pal];
-            t = (cc >= 0x200 || key >= 16 || cell_dirty(cc)) ? 0 : gfx->spr_lut[pal * 256 + (cc >> 1)];
+            t = (cc >= 0x200 || key >= 16 || scene_shown == SS2_SCENE_TITLE || cell_dirty(cc)) ? 0
+                : gfx->spr_lut[pal * 256 + (cc >> 1)];
             if (t && line <= 3)
                 t = (u16)(SPR_TILE + t - 1);
             else
@@ -763,19 +904,42 @@ static void dbg_npc_phase2(void)
 }
 #endif
 
+static void run_loop(void);
+
+/* The cartridge: power on into the title, as the HuCard. Diagnostic builds
+ * (-D SS2_DBG_*) start a stage from its research bootstrap instead. */
+#if defined(SS2_DBG_STAGE) || defined(SS2_DBG_WX) || defined(SS2_DBG_NPC_X) || \
+    defined(SS2_DBG_MAGIC) || defined(SS2_DBG_CLOUD) || defined(SS2_DBG_KEY)
+#define SS2_BOOTSTRAP 1
+#endif
+
 void ss2_run(void)
 {
+#ifdef SS2_BOOTSTRAP
 #ifdef SS2_DBG_STAGE
-    ss2_run_stage(SS2_DBG_STAGE);           /* diagnostic builds */
+    ss2_run_stage(SS2_DBG_STAGE);
 #else
     ss2_run_stage(0);
+#endif
+#else
+    gfx = &ss2_stage_gfx[0];
+    memset(def_bank, 0, sizeof def_bank);
+    memset(def_src, 0, sizeof def_src);
+    snd_shutdown();
+    ss2_sound_init();
+    ss2_scene = SS2_SCENE_PLAY;
+    ss2_stage_request = 0;
+    ss2_power_on();
+    video_init();
+    camera_from_state();
+    apply_scroll();
+    run_loop();
 #endif
 }
 
 /* Start stage k (0-6) from its bootstrap state */
 void ss2_run_stage(u8 k)
 {
-    u16 pad;
 
     gfx = &ss2_stage_gfx[k];
     load_bootstrap();
@@ -844,6 +1008,13 @@ void ss2_run_stage(u8 k)
     redraw_view();
     apply_scroll();
 
+    run_loop();
+}
+
+/* the frame loop: VBlank, sound, logic, presentation; START+A leaves */
+static void run_loop(void)
+{
+    u16 pad;
     for (;;)
     {
 #ifdef SS2_PROF
@@ -886,9 +1057,10 @@ void ss2_run_stage(u8 k)
         PROF(0);
         ss2_game_frame();
         camera_from_state();
+        scene_update();
         shop_scene();
-        if (ss2_redraw_request) { ss2_redraw_request = 0; redraw_view(); }   /* $EBE1 */
-        else if (!shop_shown) stream_view();
+        if (ss2_redraw_request) { ss2_redraw_request = 0; redraw_view(); map_live = 1; }   /* $EBE1 */
+        else if (!shop_shown && map_live && (R(0x2201) & 0x04)) stream_view();
         bat_drain();
         apply_scroll();
         apply_fade();

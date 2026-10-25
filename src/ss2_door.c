@@ -97,6 +97,7 @@ static void enter(u8 x)
     ss2_wait(12);                            /* $B9C8 */
     ss2_redraw_request = 1;                  /* $EBE1: 32 map rows take */
     ss2_busy(5);                             /* ~5.5 frames: 5 VBlanks pass */
+    ZP(0x8B) = 0x02;                         /* its BAT writes */
     if (!ZP(0x64)) ss2_fade_in();
     else { ss2_fade_in_all(); ZP(0x64) = 0; }
 
