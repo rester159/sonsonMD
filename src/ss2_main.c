@@ -1484,10 +1484,26 @@ void ss2_run_stage(u8 k)
     run_loop();
 }
 
+/* Full-rate logic. A pass that ends after the next VBlank has gone by
+ * (not inside it: SGDK then still processes that VBlank) has cost the game
+ * a tick: the next tick runs at once, without waiting, and skips the
+ * presentation (scroll, palette, sprites, HUD; scene/shop changes, map
+ * streaming and the BAT queue still run). Then a presented pass follows,
+ * so at most one tick in a row is not shown, and owed ticks beyond that
+ * are dropped (the old slowdown, now only when even that cannot keep up). */
+#ifndef SS2_MAX_SKIP
+#define SS2_MAX_SKIP 2              /* ticks in a row that may go unshown */
+#endif
+static u8 catchup;                  /* the next tick runs at once, not shown */
+static u8 skip_run;                 /* unshown ticks in a row so far */
+static u32 tick_vt;                 /* VBlank count the current tick belongs to */
+u16 ss2_present_n;                  /* presented ticks (ss2_loop_n: all ticks) */
+
 /* the frame loop: VBlank, sound, logic, presentation; START+C leaves */
 static void run_loop(void)
 {
     u16 pad;
+    u8 skip;
 #ifdef SS2_TPROF_PC
     band_set(1);
 #endif
@@ -1499,9 +1515,22 @@ static void run_loop(void)
 #endif
         /* a frame that ends a little into VBlank still gets this VBlank
          * (ON_VBLANK_START would wait a whole frame more) */
-        band_idle = 1;
-        SYS_doVBlankProcessEx(ON_VBLANK);
-        band_idle = 0;
+        skip = catchup;
+        catchup = 0;
+        if (skip)
+        {
+            skip_run++;
+            tick_vt++;                          /* the VBlank this tick stands for */
+            JOY_update();                       /* (SYS_doVBlankProcess does it otherwise) */
+        }
+        else
+        {
+            band_idle = 1;
+            SYS_doVBlankProcessEx(ON_VBLANK);
+            band_idle = 0;
+            tick_vt = vtimer;
+            skip_run = 0;
+        }
         ss2_loop_n++;
 #ifdef SS2_TPROF
         tp_frame();
@@ -1576,35 +1605,47 @@ static void run_loop(void)
         else if (!shop_shown && map_live && (R(0x2201) & 0x04)) stream_view();
         PROF(10);
         bat_drain();
-        apply_scroll();
-        apply_fade();
-        PROF(11);
-#ifdef SS2_SPRCHECK
+        if (!skip)
         {
-            /* check build: the memoized rows must equal the full path's */
-            static VDPSprite full[64];
-            u8 n0;
-            u8 conv;
-            spr_nomemo = 1; draw_sprites(); n0 = nspr; conv = conv_n;
-            memcpy(full, vdpSpriteCache, sizeof full);
-            spr_nomemo = 0; draw_sprites();
-            ss2_sprchk[0]++;
-            /* a pass that converted cells: the second call has its own
-             * conversion budget, so the two can differ without the memo */
-            if (conv | conv_n) ss2_sprchk[2]++;
-            else
+            apply_scroll();
+            apply_fade();
+            PROF(11);
+#ifdef SS2_SPRCHECK
             {
-                const u8 *a = (const u8 *)full, *b = (const u8 *)vdpSpriteCache;
-                u16 k, bad = (u16)(n0 != nspr);
-                for (k = 0; k < (u16)n0 * sizeof(VDPSprite); k++) bad |= (u16)(a[k] != b[k]);
-                if (bad) ss2_sprchk[1]++;
+                /* check build: the memoized rows must equal the full path's */
+                static VDPSprite full[64];
+                u8 n0;
+                u8 conv;
+                spr_nomemo = 1; draw_sprites(); n0 = nspr; conv = conv_n;
+                memcpy(full, vdpSpriteCache, sizeof full);
+                spr_nomemo = 0; draw_sprites();
+                ss2_sprchk[0]++;
+                /* a pass that converted cells: the second call has its own
+                 * conversion budget, so the two can differ without the memo */
+                if (conv | conv_n) ss2_sprchk[2]++;
+                else
+                {
+                    const u8 *a = (const u8 *)full, *b = (const u8 *)vdpSpriteCache;
+                    u16 k, bad = (u16)(n0 != nspr);
+                    for (k = 0; k < (u16)n0 * sizeof(VDPSprite); k++) bad |= (u16)(a[k] != b[k]);
+                    if (bad) ss2_sprchk[1]++;
+                }
             }
-        }
 #else
-        draw_sprites();
+            draw_sprites();
 #endif
-        PROF(12);
-        draw_hud(0);
+            PROF(12);
+            draw_hud(0);
+            ss2_present_n++;
+        }
+        /* late? A VBlank after this tick's own has gone by (and we are not
+         * still inside it, when it would be processed): the next tick runs
+         * now, unshown, unless SS2_MAX_SKIP are already in a row */
+        {
+            u32 late = (u32)(vtimer - tick_vt);
+            if (late && GET_VDP_STATUS(VDP_VBLANK_FLAG)) late--;
+            catchup = (u8)(late && skip_run < SS2_MAX_SKIP);
+        }
 #ifdef SS2_SOUND_LATE
         sound_irq();                            /* profiling: sampled lines */
 #endif

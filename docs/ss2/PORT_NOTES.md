@@ -194,6 +194,23 @@ player 26), stage 5's wall scene ~350 (objects 131, sprites 47), stage 7
 ~316 (objects 105). Each live object costs ~5,000-6,700 cycles per frame;
 C-level changes are at diminishing returns.
 
+**Full-rate logic** (`run_loop`): a pass that ends after the next VBlank
+has gone by (and not inside it) owes the game a tick; the next tick runs at
+once without waiting and skips the presentation (scroll, palette, sprites,
+HUD; scene/shop changes, map streaming and the BAT queue still run), at
+most `SS2_MAX_SKIP` (2) in a row. Game speed (logic ticks/s) and screen rate
+(`ss2_present_n`/s), same route:
+
+| | S1 | S2 | S3 | S4 | S5 | S6 | S7 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| before (game = screen) | 59.7 | 35.4 | 60.0 | 56.9 | 37.2 | 54.5 | 48.2 |
+| game speed | 59.9 | 47.2 | 60.0 | 59.1 | 48.4 | 58.6 | 55.6 |
+| screen | 59.5 | 21.2 | 60.0 | 56.7 | 25.3 | 53.4 | 44.5 |
+
+Cap 1: S2/S5/S7 game 43.5/44.7/53.6, screen 26/29/46; cap 3: 49.3/49.7/56.4,
+screen 17/23/44. Stages 2 and 5 cannot reach 60 this way: there the logic
+alone takes more than a frame.
+
 Hand-written 68000 tried (2026-10-24) on the hottest leaf, the terrain
 probe (~20 calls a pass in stage 2): register arguments, table-built map
 offset, checked against the C on 354,000 calls (`-D SS2_ASMCHECK`, 0

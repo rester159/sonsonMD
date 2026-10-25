@@ -185,11 +185,13 @@ int main(int argc, char **argv)
     FILE *tf = getenv("SS2_TRACE") ? fopen(getenv("SS2_TRACE"), "w") : NULL;
     unsigned loop_a = getenv("SS2_TRACE_LOOP") ? (unsigned)strtoul(getenv("SS2_TRACE_LOOP"), NULL, 16) & 0xFFFF : 0;
     unsigned ram_a = getenv("SS2_TRACE_RAM") ? (unsigned)strtoul(getenv("SS2_TRACE_RAM"), NULL, 16) & 0xFFFF : 0;
+    unsigned pres_a = getenv("SS2_TRACE_PRES") ? (unsigned)strtoul(getenv("SS2_TRACE_PRES"), NULL, 16) & 0xFFFF : 0;
     unsigned count_a = getenv("SS2_TRACE_COUNT") ? (unsigned)strtoul(getenv("SS2_TRACE_COUNT"), NULL, 16) & 0xFFFF : 0;
     unsigned prof_a = getenv("SS2_TRACE_PROF") ? (unsigned)strtoul(getenv("SS2_TRACE_PROF"), NULL, 16) & 0xFFFF : 0;
     const u8 *wram = (const u8 *)retro_get_memory_data(2);
     FILE *hf_ram = getenv("SS2_RAMHASH") ? fopen(getenv("SS2_RAMHASH"), "w") : NULL;
-    if (tf) fputs(prof_a ? "frame,loop,zframe,camx,stage,s0,s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12,s13,s14,s15,s16,s17,s18,s19,s20,s21,s22,total,c0,c1,c2,c3\n"
+    if (tf && pres_a && !prof_a) fputs("frame,loop,zframe,camx,stage,pres\n", tf);
+    else if (tf) fputs(prof_a ? "frame,loop,zframe,camx,stage,s0,s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12,s13,s14,s15,s16,s17,s18,s19,s20,s21,s22,total,c0,c1,c2,c3\n"
                          : "frame,loop,zframe,camx,stage\n", tf);
 #define WB(a) (wram[((a) & 0xFFFF) ^ 1])
     /* PC samples (SS2_TRACE_PCRING = ring,index addresses, SS2_PCOUT = file):
@@ -250,6 +252,12 @@ int main(int argc, char **argv)
         if (tf && wram)
             fprintf(tf, "%u,%u,%u,%u,%u\n", frame, (WB(loop_a) << 8) | WB(loop_a + 1),
                     WB(ram_a + 0x12), ((WB(ram_a + 0x45) & 7) << 8) | WB(ram_a + 0x46), WB(ram_a + 0x69));
+        if (tf && wram && pres_a && !prof_a)
+        {
+            /* presented-tick counter (SS2_TRACE_PRES = ss2_present_n) */
+            fseek(tf, -1, SEEK_CUR);
+            fprintf(tf, ",%u\n", (WB(pres_a) << 8) | WB(pres_a + 1));
+        }
         if (tf && wram && prof_a)
         {
             /* ss2_tp_last[24] (SS2_TPROF builds): the last finished pass */
