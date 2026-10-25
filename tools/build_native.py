@@ -66,6 +66,6 @@ assert len(b)<=0x400000, 'Linear 4 MiB cartridge window exceeded; review ROM har
 b.extend(bytes((-len(b))%131072)); b[0x18e:0x190]=(sum(int.from_bytes(b[i:i+2],'big') for i in range(0x200,len(b),2))&65535).to_bytes(2,'big'); (out/'rom.bin').write_bytes(b)
 (out/'build-manifest.json').write_text(json.dumps({'sdk':str(sdk),'compiler':compiler,'sdk_library_sha256':hashlib.sha256((sdk/'lib/libmd.a').read_bytes()).hexdigest(),'symbols_sha256':hashlib.sha256((out/'symbol.txt').read_bytes()).hexdigest(),'source_sha256':{str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for d in ['src','inc'] for p in sorted((root/d).rglob('*')) if p.is_file()},'flags':flags,'rom_sha256':hashlib.sha256(b).hexdigest()},indent=2)+'\n')
 if args.out=='out' and not args.defines:
-    (root/'dist').mkdir(exist_ok=True); (root/'dist/SonSonCollection.bin').write_bytes(b)
-    print('Copied',root/'dist/SonSonCollection.bin')
+    (root/'dist').mkdir(exist_ok=True); (root/'dist/SonSonCollection-v1.0.bin').write_bytes(b)
+    print('Copied',root/'dist/SonSonCollection-v1.0.bin')
 print('Built',out/'rom.bin',len(b),'bytes')

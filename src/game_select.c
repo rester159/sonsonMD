@@ -10,6 +10,7 @@
  *   rows 13-22   two logos, IDENTICAL 18x10 tiles (144x80 px), on BG_B:
  *                SONSON at cols 1-18, SON SON II at cols 21-38
  *   rows 12/23   a red frame round the selected logo (ring of cells outside it)
+ *   row  26      V1.0 at the bottom right (owner request; selector.c's spot)
  * All art: selector_art.c, baked by tools/gen_selector_art.py.
  *
  * Palettes: PAL0 = SONSON logo, PAL1 = SON SON II logo (15 Genesis colours
@@ -37,12 +38,16 @@
 #define COL_TITLE   5    /* title left column (30 cols wide)      */
 #define ROW_TEXT    11
 #define ROW_LOGO    13   /* logo top row (10 rows tall)           */
+#define ROW_VERSION 26   /* version, bottom right (row 27 is clipped) */
+#define COL_VERSION 35
+#define VERSION_STR "V1.0"
 #define COL_SONSON  1    /* logo left columns (18 cols wide)      */
 #define COL_SONSON2 21
 #define COLS        40   /* H40 text grid width */
 
 /* Arcade font: char codes 0-9 digits, 16 space, 17-42 A-Z (ss_title.h). */
 #define GLYPH_COUNT 43
+#define GLYPH_DOT   GLYPH_COUNT   /* the font has no '.': one extra tile */
 
 /* VRAM: SONSON, SON SON II, title tiles, the 8 frame tiles, the font. */
 #define VRAM_SONSON  TILE_USER_INDEX
@@ -67,22 +72,31 @@ static const u32 frame_tiles[8 * 8] = {
     FR, 0xFFF00000, 0xFFF00000, 0, 0, 0, 0, 0,      /* BR */
 };
 
-/* ---- centred text in the arcade font (white glyph block, title.c glyph()). */
-static void draw_text_center(u16 row, const char *s)
+/* 2x2 dot on the glyphs' baseline, in their colour (6) */
+static const u32 dot_tile[8] = { 0, 0, 0, 0, 0, 0, 0x00066000, 0x00066000 };
+
+/* ---- text in the arcade font (white glyph block, title.c glyph()). */
+static void draw_text(u16 col, u16 row, const char *s)
 {
-    u16 i, len = 0, start;
-    for (i = 0; s[i]; i++) len++;
-    start = (u16)((COLS - len) / 2);
+    u16 i;
     for (i = 0; s[i]; i++)
     {
         const char ch = s[i];
         u16 code;
         if (ch >= '0' && ch <= '9')      code = (u16)(ch - '0');
         else if (ch >= 'A' && ch <= 'Z') code = (u16)(17 + (ch - 'A'));
+        else if (ch == '.')              code = GLYPH_DOT;
         else                             continue;      /* space: leave blank */
         VDP_setTileMapXY(BG_A, TILE_ATTR_FULL(PAL_FONT, 0, 0, 0, VRAM_FONT + code),
-                         start + i, row);
+                         col + i, row);
     }
+}
+
+static void draw_text_center(u16 row, const char *s)
+{
+    u16 len = 0;
+    while (s[len]) len++;
+    draw_text((u16)((COLS - len) / 2), row, s);
 }
 
 /* ---- one baked image (w x h tiles) on BG_B at (col, row). */
@@ -109,6 +123,7 @@ static void draw_screen(void)
     VDP_loadTileData(selector_art_title_tiles,   VRAM_TITLE,   SELECTOR_ART_TITLE_TILE_COUNT,   DMA);
     VDP_loadTileData(frame_tiles, VRAM_FRAME, 8, DMA);
     VDP_loadTileData(&ss_title_tiles[SS_TITLE_GLYPH_W * 8], VRAM_FONT, GLYPH_COUNT, DMA);
+    VDP_loadTileData(dot_tile, VRAM_FONT + GLYPH_DOT, 1, DMA);
     draw_art(selector_art_title_map, SELECTOR_ART_TITLE_TW, SELECTOR_ART_TITLE_TH,
              VRAM_TITLE, PAL_TITLE, COL_TITLE, ROW_TITLE);
     draw_art(selector_art_sonson_map, SELECTOR_ART_SONSON_TW, SELECTOR_ART_SONSON_TH,
@@ -116,6 +131,7 @@ static void draw_screen(void)
     draw_art(selector_art_sonson2_map, SELECTOR_ART_SONSON2_TW, SELECTOR_ART_SONSON2_TH,
              VRAM_SONSON2, PAL_SONSON2, COL_SONSON2, ROW_LOGO);
     draw_text_center(ROW_TEXT, "SELECT GAME");
+    draw_text(COL_VERSION, ROW_VERSION, VERSION_STR);
 }
 
 /* ---- the red selection frame round the logo at col (or clear it). */
