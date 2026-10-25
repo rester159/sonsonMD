@@ -1,3 +1,4 @@
+#include "sound_ym_pitch.h"
 /* sound.c -- SonSon NATIVE audio engine: record-&-replay arcade music + SFX,
  * mapped to the Genesis PSG + YM2612 and advanced from the V-Blank interrupt so
  * it never slows with the game loop.  See inc/sound.h for the full rationale and
@@ -18,6 +19,7 @@
  */
 #include <genesis.h>
 #include "sound.h"
+#include "game.h"
 
 /* ---- recorded data (sound_replay_data.c, generated) ----------------------- */
 extern const uint8_t  snd_replay_blob[];
@@ -35,6 +37,7 @@ typedef struct {
     const u8 *pos;
     u16       wait;
     u8        active;
+    u8        oneshot;     /* treat the generator's forced 0xFF loop as the end */
 } ReplayCh;
 static ReplayCh rp[2][2];
 
@@ -99,6 +102,39 @@ static ReplayCh rp_1up;        /* dedicated 1-up channel -> ay[2] -> YM ch3-5   
 static u8 snd_ready = 0;   /* set by snd_init; gates the V-Blank tick           */
 
 /* ===========================================================================
+ *  ONE-SHOT CUES vs LOOPING BGM  (VERIFIED 2026-10-24 on the real sound 6809)
+ *  encode_replay.py force-looped EVERY music-slot stream, but most of them are
+ *  short cues, not BGM. Injecting each command into MAME's `sonson` sound CPU
+ *  (main-CPU latch $3010 + FIRQ strobe $3019, -wavwrite RMS) shows:
+ *    - 0x10/0x11/0x13/0x17: real looping BGM (kept as loops);
+ *    - 0x04/0x05/0x06/0x16/0x18: ONE-SHOT, LAYERED over the running BGM, which
+ *      keeps playing (food / bonus / kill / round + start cues);
+ *    - 0x14 (player death): ONE-SHOT that STOPS the whole BGM (both chips), then
+ *      silence until the game re-sends a BGM command.
+ *  Played through the forced loop, the game's frequent 0x04/0x05/0x06 replaced
+ *  the BGM with a ~3 s phrase repeating forever. The layered cues now play on
+ *  the dedicated layer channel (rp_1up / ay[2] -> YM ch3-5, see above), so the
+ *  BGM slots are untouched; a newer cue simply replaces the older one there.
+ * =========================================================================== */
+static bool cmd_is_layered_cue(u8 cmd)
+{
+    return cmd == 0x04 || cmd == 0x05 || cmd == 0x06 || cmd == 0x16 || cmd == 0x18;
+}
+#define SND_CMD_DEATH_STOPS_BGM 0x14
+
+/* Arm the layer channel on `stream` (its own AY file ay[2], starts muted). */
+static void layer_start(const u8 *stream, u8 oneshot)
+{
+    u8 i;
+    for (i = 0; i < 16; i++) ay[2][i] = 0;
+    ay[2][7] = 0xFF;                                  /* start muted; stream opens it */
+    rp_1up.base = rp_1up.pos = stream;
+    rp_1up.wait = 0;
+    rp_1up.oneshot = oneshot;
+    rp_1up.active = 1;
+}
+
+/* ===========================================================================
  *  REPLAY ENGINE  (cmd -> arm streams; per-tick -> apply register writes)
  * =========================================================================== */
 static void replay_start(u8 cmd)
@@ -120,6 +156,32 @@ static void replay_start(u8 cmd)
     {
         const uint32_t *e = snd_replay_index[cmd & 0x3F];
         u8 c;
+
+        if (cmd_is_layered_cue(cmd))
+        {
+            /* One recorded chip per cue; 0x04 uses its hand-verified one-shot. */
+            if (cmd == 0x04) { layer_start(snd_1up_oneshot, 0); return; }
+            for (c = 0; c < 2; c++)
+                if (e[c] != 0xFFFFFFFFu)
+                {
+                    layer_start(snd_replay_blob + (e[c] & 0xFFFFFFu), 1);
+                    return;
+                }
+            return;
+        }
+
+        if (cmd == SND_CMD_DEATH_STOPS_BGM)
+        {
+            /* the death tune silences the whole BGM, not just the chip it uses */
+            for (c = 0; c < 2; c++)
+                if (rp[c][0].active)
+                {
+                    rp[c][0].active = 0;
+                    ay[c][7] = 0xFF;
+                    ay[c][8] = ay[c][9] = ay[c][10] = 0;
+                }
+        }
+
         for (c = 0; c < 2; c++)
         {
             if (e[c] != 0xFFFFFFFFu)
@@ -128,6 +190,7 @@ static void replay_start(u8 cmd)
                 ReplayCh *r = &rp[c][slot];
                 r->base = r->pos = snd_replay_blob + (e[c] & 0xFFFFFFu);
                 r->wait = 0;
+                r->oneshot = (cmd == SND_CMD_DEATH_STOPS_BGM);
                 r->active = 1;
             }
         }
@@ -153,6 +216,13 @@ static void replay_tick_into(ReplayCh *r, u8 *regs)
         if (op == 0xFE) { r->active = 0; return; }   /* one-shot done (hold)     */
         if (op == 0xFF)                              /* loop-jump                */
         {
+            if (r->oneshot)                          /* forced loop: cue is over */
+            {
+                regs[7] = 0xFF;                      /* mute (recording ends mid-fade) */
+                regs[8] = regs[9] = regs[10] = 0;
+                r->active = 0;
+                return;
+            }
             u16 off = (u16)(r->pos[0] | (r->pos[1] << 8));
             r->pos = r->base + off;
             continue;
@@ -297,12 +367,9 @@ static void ay1_to_ym(void)
             continue;
         }
         {
-            u32 tot = 1845281UL / period;             /* fnum * 2^block          */
-            u8  block = 0;
-            while (tot >= 2048 && block < 7) { tot >>= 1; block++; }
-            if (tot >= 2048) tot = 2047;
-            YM2612_writeReg(0, 0xA4 + c, (u8)((block << 3) | (tot >> 8)));
-            YM2612_writeReg(0, 0xA0 + c, (u8)tot);
+            const u16 pitch = sound_ym_pitch[period];
+            YM2612_writeReg(0, 0xA4 + c, (u8)(pitch >> 8));
+            YM2612_writeReg(0, 0xA0 + c, (u8)pitch);
         }
         YM2612_writeReg(0, 0x4C + c, (u8)((15 - v) * 2 + SFX_TL_BIAS)); /* OP4 TL */
         if (!ym_keyed[c]) { YM2612_writeReg(0, 0x28, 0xF0 | c); ym_keyed[c] = 1; }
@@ -333,12 +400,9 @@ static void ay_1up_to_ym(void)
             continue;
         }
         {
-            u32 tot = 1845281UL / period;             /* fnum * 2^block          */
-            u8  block = 0;
-            while (tot >= 2048 && block < 7) { tot >>= 1; block++; }
-            if (tot >= 2048) tot = 2047;
-            YM2612_writeReg(1, 0xA4 + c, (u8)((block << 3) | (tot >> 8)));
-            YM2612_writeReg(1, 0xA0 + c, (u8)tot);
+            const u16 pitch = sound_ym_pitch[period];
+            YM2612_writeReg(1, 0xA4 + c, (u8)(pitch >> 8));
+            YM2612_writeReg(1, 0xA0 + c, (u8)pitch);
         }
         YM2612_writeReg(1, 0x4C + c, (u8)((15 - v) * 2 + ONEUP_TL_BIAS)); /* OP4 TL */
         if (!ym_keyed2[c]) { YM2612_writeReg(0, 0x28, 0xF0 | 0x04 | c); ym_keyed2[c] = 1; }
@@ -420,8 +484,16 @@ void snd_shutdown(void)
     }
 }
 
+void snd_play_coin(void)
+{
+    replay_start(SND_CMD_COIN);
+}
+
 void snd_command(u8 cmd)
 {
+    /* Original 6347: ordinary commands require demo sound (52) or live play
+     * (22). Shutdown uses replay_start directly so cleanup is never gated. */
+    if (g_attract && !g_config.demoSound) return;
     replay_start(cmd);
 }
 
@@ -431,10 +503,7 @@ void snd_command(u8 cmd)
  * (a second extra life) restarts it cleanly.  See the snd_1up_oneshot block. */
 void snd_play_1up(void)
 {
-    u8 i;
-    for (i = 0; i < 16; i++) ay[2][i] = 0;
-    ay[2][7] = 0xFF;                                  /* start muted; stream opens it */
-    rp_1up.base = rp_1up.pos = snd_1up_oneshot;
-    rp_1up.wait = 0;
-    rp_1up.active = 1;
+    /* 6410 sends this event through the same ordinary-command gate. */
+    if (g_attract && !g_config.demoSound) return;
+    layer_start(snd_1up_oneshot, 0);
 }

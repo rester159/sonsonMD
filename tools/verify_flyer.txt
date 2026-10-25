@@ -1,0 +1,4 @@
+fr=981 SNAP flyer slot 8
+fr=990 SNAP flyer slot 8
+fr=999 SNAP flyer slot 8
+done fr=999 snaps=3

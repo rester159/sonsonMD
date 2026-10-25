@@ -1,0 +1,4 @@
+fr=707 SNAP with ET_SHOT live (slot 6)
+fr=714 SNAP with ET_SHOT live (slot 6)
+fr=721 SNAP with ET_SHOT live (slot 6)
+done fr=721 shotsSeen=21 snaps=3

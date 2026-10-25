@@ -1,0 +1,157 @@
+{
+  "date": "2026-10-21",
+  "rom": {
+    "path": "out/rom.bin",
+    "sha256": "9a19b07ebc5c628f6be69354356c7fcc0bffce17bbc61040cf6ec6c45828d9a9",
+    "bytes": 524288
+  },
+  "features": {
+    "survival": "Home Instadeath 1P/2P: one life, one-hit death, no energy, no bonus lives or continues; shared co-op timer freezes on pause and ends with the last survivor. Pressure increases every 20 seconds to 16 scheduled enemies with faster spawning and movement.",
+    "saves": "CRC-32 two-slot SRAM records; independent Home options and Arcade DIP banks; regular-score boards per ruleset; separate 1P/2P survival-time boards; auto-commit at options confirmation and completed runs.",
+    "reset_actions": "Home Options has separately confirmed Reset Options and Clear Scores actions; each preserves the other data."
+  },
+  "survival_rules": {
+    "1": [
+      "PASS Home Instadeath menu starts requested player count",
+      "PASS One life and no continue credits",
+      "PASS Scoring cannot award bonus lives",
+      "PASS Home Start pauses Instadeath",
+      "PASS Survival timer freezes while paused",
+      "PASS Timer resumes with gameplay",
+      "PASS Enemy pressure increases at twenty seconds",
+      "PASS One lethal hit ends each player's run immediately",
+      "PASS Final timer stops and Start cannot continue",
+      "PASS Survival record committed to SRAM",
+      "CHECKS 10 FAILURES 0"
+    ],
+    "2": [
+      "PASS Home Instadeath menu starts requested player count",
+      "PASS One life and no continue credits",
+      "PASS Scoring cannot award bonus lives",
+      "PASS Home Start pauses Instadeath",
+      "PASS Survival timer freezes while paused",
+      "PASS Timer resumes with gameplay",
+      "PASS Enemy pressure increases at twenty seconds",
+      "PASS One lethal hit ends each player's run immediately",
+      "PASS Final timer stops and Start cannot continue",
+      "PASS Survival record committed to SRAM",
+      "CHECKS 10 FAILURES 0"
+    ]
+  },
+  "sram_fresh_process_checks": [
+    [
+      "PASS Arcade DIP confirmation writes a validated SRAM record",
+      "CHECKS 1 FAILURES 0"
+    ],
+    [
+      "PASS A fresh process loads the previous battery save",
+      "PASS Home Options confirmation writes the next mirrored slot",
+      "CHECKS 2 FAILURES 0"
+    ],
+    [
+      "PASS New process loads mirrored settings/records",
+      "PASS Home options restore independently from Arcade DIP banks",
+      "PASS Finalized high score commits after the game ends",
+      "CHECKS 3 FAILURES 0"
+    ],
+    [
+      "PASS New process loads mirrored settings/records",
+      "PASS Home options restore independently from Arcade DIP banks",
+      "PASS A fresh game restores the qualifying high score for its ruleset",
+      "CHECKS 3 FAILURES 0"
+    ],
+    [
+      "PASS Saving Home settings and scores preserved Arcade DIP switches",
+      "CHECKS 1 FAILURES 0"
+    ],
+    [
+      "PASS Fresh Instadeath game restores its saved survival-time record",
+      "CHECKS 1 FAILURES 0"
+    ]
+  ],
+  "home_options_regression": [
+    "PASS Options CREDITS increases from 3 to 5",
+    "PASS Options CREDITS increases to 9",
+    "PASS Options CREDITS wraps to zero",
+    "PASS Options CREDITS changes left independently of lives",
+    "PASS Home two-player menu launches co-op",
+    "PASS Selected credits apply to new Home game",
+    "PASS Held menu Start does not immediately pause gameplay",
+    "PASS Fresh Home Start pauses",
+    "PASS Home pause freezes the actual game loop",
+    "PASS Fresh Home Start resumes",
+    "CHECKS 10 FAILURES 0"
+  ],
+  "save_codec_host": [
+    "CRC known vector, round trips, generation wrap, 514 torn writes, corruption and newer-schema preservation passed",
+    "checks=1033"
+  ],
+  "save_transaction_host": [
+    "1033 transaction checks: every torn-write boundary on both slots, absent/read-only storage, reset isolation and newer-schema preservation passed"
+  ],
+  "maximum_pressure_performance": [
+    {
+      "players": 1,
+      "measured_refreshes": 6000,
+      "presentation_deltas": {
+        "1": 5999
+      },
+      "cpu_peak_percent": 54.833984375,
+      "max_entities": 23,
+      "max_scheduled": 16,
+      "rom_sha256": "9a19b07ebc5c628f6be69354356c7fcc0bffce17bbc61040cf6ec6c45828d9a9",
+      "core_sha256": "88314cd8554a3cc5eebf00a4139e6f0dee9ea579dcb2321a0959579f1902fa09"
+    },
+    {
+      "players": 2,
+      "measured_refreshes": 6000,
+      "presentation_deltas": {
+        "1": 5999
+      },
+      "cpu_peak_percent": 68.408203125,
+      "max_entities": 23,
+      "max_scheduled": 16,
+      "rom_sha256": "9a19b07ebc5c628f6be69354356c7fcc0bffce17bbc61040cf6ec6c45828d9a9",
+      "core_sha256": "88314cd8554a3cc5eebf00a4139e6f0dee9ea579dcb2321a0959579f1902fa09"
+    }
+  ],
+  "mame_pressure_performance": {
+    "players": 2,
+    "samples": 1800,
+    "presentation_deltas": {
+      "1": 1799
+    },
+    "cpu_peak_percent": 67.333984375,
+    "max_entities": 22,
+    "max_scheduled": 16
+  },
+  "clean_build": {
+    "rom_sha256": "9a19b07ebc5c628f6be69354356c7fcc0bffce17bbc61040cf6ec6c45828d9a9",
+    "clean_rebuild_sha256": "9a19b07ebc5c628f6be69354356c7fcc0bffce17bbc61040cf6ec6c45828d9a9",
+    "identical": true
+  },
+  "validation_scope": [
+    "Rules tests drive the real Home menu and use overlapping enemy-body fixtures to verify actual contact death. Timer-ramp checks inject the elapsed-time checkpoint.",
+    "Pressure benchmarks inject the maximum pressure and a prolonged invulnerable grace flow; simulation, AI, projectiles, firing, rendering and audio remain active. They are computational stress fixtures, not unassisted survival runs.",
+    "Battery-save tests use fresh emulator processes and dedicated on-disk NVRAM; high-score/config fixtures are explicitly injected before normal menu confirmation or game-over finalization.",
+    "The previous base-port long-run reports are retained with their original ROM identity under out/before-survival-sram.",
+    "Physical console/cart/flashcart persistence and PAL timing are not verified."
+  ],
+  "normal_mode_controls_regression": [
+    "PASS Start without a coin stays on arcade title",
+    "PASS Held C inserts one coin without starting",
+    "PASS Paid Start starts game and spends one credit",
+    "PASS Only the requested player starts",
+    "PASS Gameplay C adds a coin and does not fire",
+    "PASS Other controller joins; Arcade Start never pauses",
+    "PASS Controller two C inserts one coin",
+    "PASS Arcade Start rejoins an eliminated player",
+    "PASS Home Start pauses",
+    "PASS Held Start does not toggle; simulation and camera freeze",
+    "PASS Other controller Start resumes",
+    "PASS Home C does not mint credits",
+    "PASS Home continue spends one shared credit and restores both players",
+    "PASS Zero credits prevents continuing",
+    "CHECKS 14 FAILURES 0"
+  ]
+}

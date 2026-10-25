@@ -137,6 +137,8 @@ void snd_shutdown(void);
  * SFX never disturbs the running music (separate chips / masked mixer). Cheap:
  * just arms the replay stream pointer(s); the V-Blank tick does the work. */
 void snd_command(u8 cmd);
+/* 6400/6339: caller must be outside live gameplay; ignores demo-sound DIP. */
+void snd_play_coin(void);
 
 /* Play the extra-life / 1-up jingle (cmd 0x04) LAYERED over the BGM, on the
  * YM2612's second FM bank -- the music + SFX are untouched. One-shot (~3.2 s).

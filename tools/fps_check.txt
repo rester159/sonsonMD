@@ -1,0 +1,2 @@
+SNAP fr2000
+fps ratio=1.0000

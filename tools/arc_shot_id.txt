@@ -1,0 +1,42 @@
+fr=120 gs($0002)=255 inGame=false shotActive=255
+fr=240 gs($0002)=255 inGame=false shotActive=255
+fr=360 gs($0002)=255 inGame=false shotActive=255
+fr=480 gs($0002)=255 inGame=false shotActive=255
+fr=600 gs($0002)=255 inGame=false shotActive=255
+fr=720 gs($0002)=255 inGame=false shotActive=255
+fr=840 gs($0002)=255 inGame=false shotActive=255
+fr=960 gs($0002)=255 inGame=false shotActive=255
+fr=1080 gs($0002)=2 inGame=true shotActive=0
+fr=1200 gs($0002)=2 inGame=true shotActive=0
+fr=1320 gs($0002)=2 inGame=true shotActive=0
+fr=1440 gs($0002)=2 inGame=true shotActive=0
+fr=1560 gs($0002)=2 inGame=true shotActive=0
+fr=1680 gs($0002)=2 inGame=true shotActive=0
+fr=1800 gs($0002)=2 inGame=true shotActive=0
+fr=1920 gs($0002)=2 inGame=true shotActive=0
+fr=2040 gs($0002)=2 inGame=true shotActive=0
+fr=2160 gs($0002)=2 inGame=true shotActive=0
+fr=2280 gs($0002)=2 inGame=true shotActive=0
+fr=2400 gs($0002)=2 inGame=true shotActive=0
+fr=2520 gs($0002)=2 inGame=true shotActive=0
+fr=2640 gs($0002)=2 inGame=true shotActive=0
+fr=2760 gs($0002)=2 inGame=true shotActive=0
+fr=2880 gs($0002)=1 inGame=true shotActive=0
+fr=3000 gs($0002)=1 inGame=true shotActive=0
+fr=3120 gs($0002)=1 inGame=true shotActive=0
+fr=3240 gs($0002)=1 inGame=true shotActive=0
+fr=3360 gs($0002)=1 inGame=true shotActive=0
+fr=3480 gs($0002)=1 inGame=true shotActive=0
+fr=3600 gs($0002)=1 inGame=true shotActive=0
+fr=3720 gs($0002)=1 inGame=true shotActive=0
+fr=3840 gs($0002)=1 inGame=true shotActive=0
+fr=3960 gs($0002)=1 inGame=true shotActive=0
+fr=4080 gs($0002)=1 inGame=true shotActive=0
+fr=4200 gs($0002)=1 inGame=true shotActive=0
+fr=4320 gs($0002)=1 inGame=true shotActive=0
+fr=4440 gs($0002)=1 inGame=true shotActive=0
+
+max gs seen=255  everInGame=true
+=== DISTINCT (codelo,attr) SEEN ON $0E28 ===
+  (none -- pool never active)
+frames active with NO recent fire (>20f): 0

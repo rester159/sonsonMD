@@ -1,0 +1,10 @@
+=== REGIONS ===
+  :proms                   size=832
+  :sprites                 size=49152
+  :chars                   size=16384
+  :audiocpu                size=65536
+  :maincpu                 size=65536
+=== SHARES ===
+  :spriteram               size=96
+  :colorram                size=1024
+  :videoram                size=1024

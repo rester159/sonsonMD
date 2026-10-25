@@ -1,0 +1,26 @@
+=== fr1400  playerX=481 ===
+slot 0 ITEM       x=  420 facing=0  want=0 OK  side=left-of-player
+slot 1 ITEM       x=  820 facing=0  want=1 MISMATCH  side=right-of-player
+slot 2 ITEM       x= 1080 facing=0  want=1 MISMATCH  side=right-of-player
+slot 3 ITEM       x=  960 facing=0  want=1 MISMATCH  side=right-of-player
+slot 4 CREATURE_G x=  385 facing=0  want=0 OK  side=left-of-player
+slot 5 THROWER    x=  364 facing=0  want=0 OK  side=left-of-player
+slot 6 ENEMY_SHOT x=  405 facing=0  want=0 OK  side=left-of-player
+slot 7 ENEMY_A    x=  502 facing=1  want=1 OK  side=right-of-player
+slot 8 THROWER    x=  525 facing=1  want=1 OK  side=right-of-player
+slot 9 ENEMY_A    x=  482 facing=0  want=1 MISMATCH  side=right-of-player
+slot10 THROWER    x=  386 facing=0  want=0 OK  side=left-of-player
+slot11 SHOT       x=  509 facing=0  want=1 MISMATCH  side=right-of-player
+slot12 ENEMY_SHOT x=  391 facing=0  want=0 OK  side=left-of-player
+=== fr1500  playerX=536 ===
+slot 0 ITEM       x=  420 facing=0  want=0 OK  side=left-of-player
+slot 1 ITEM       x=  820 facing=0  want=1 MISMATCH  side=right-of-player
+slot 2 ITEM       x= 1080 facing=0  want=1 MISMATCH  side=right-of-player
+slot 3 ITEM       x=  960 facing=0  want=1 MISMATCH  side=right-of-player
+slot 4 CREATURE_G x=  473 facing=0  want=0 OK  side=left-of-player
+slot 5 THROWER    x=  439 facing=0  want=0 OK  side=left-of-player
+slot 6 ENEMY_SHOT x=  479 facing=0  want=0 OK  side=left-of-player
+slot 7 ENEMY_A    x=  536 facing=0  want=0 OK  side=left-of-player
+slot 8 THROWER    x=  525 facing=0  want=0 OK  side=left-of-player
+slot 9 ENEMY_A    x=  536 facing=0  want=0 OK  side=left-of-player
+slot10 THROWER    x=  439 facing=0  want=0 OK  side=left-of-player

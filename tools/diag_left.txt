@@ -1,0 +1,11 @@
+playerX=281
+t=3 x=420 facing=0 side=RIGHT
+t=3 x=820 facing=0 side=RIGHT
+t=3 x=1080 facing=0 side=RIGHT
+t=3 x=960 facing=0 side=RIGHT
+t=7 x=282 facing=0 side=RIGHT
+t=1 x=502 facing=1 side=RIGHT
+t=1 x=282 facing=0 side=RIGHT
+t=5 x=507 facing=1 side=RIGHT
+t=5 x=302 facing=1 side=RIGHT
+t=6 x=280 facing=1 side=left

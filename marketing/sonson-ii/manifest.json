@@ -1,0 +1,76 @@
+{
+  "source": "sonson-ii-genesis-port commit bbd431a (clean build); stage starts 07-10 use SS2_DBG_STAGE diagnostic builds of the same commit",
+  "capture": "Genesis Plus GX (headless, tools/ss2/gpgx_shot.c), scripted input; nearest-neighbor 3x",
+  "screenshots": [
+    {
+      "file": "01-title.png",
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "02-options-japanese.png",
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "03-intro-shadow.png",
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "04-forest-combat.png",
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "05-snowy-peaks.png",
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "06-vine-climb.png",
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "07-lava-cave.png",
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "08-temple.png",
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "09-dusk-village.png",
+      "native_size": [
+        256,
+        224
+      ]
+    },
+    {
+      "file": "10-castle-swarm.png",
+      "native_size": [
+        256,
+        224
+      ]
+    }
+  ]
+}
