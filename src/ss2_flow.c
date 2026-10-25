@@ -659,9 +659,175 @@ static void intro_task(void)
     ss2_task_restart(ss2_game_start_task);   /* JMP $F5AA */
 }
 
+/* ---- slot 0: the stage clear tally ($F617) ------------------------------ */
+
+/* 7 BCD digits at d (index 1-7) += the table at t (index 1-7) */
+static void bcd_add7(u16 d, u16 t)
+{
+    u8 i, c = 0;
+    for (i = 7; i; i--)
+    {
+        u8 a = (u8)(ss2_rom_byte((u16)(t + i)) + R(d + i) + c);
+        c = (u8)(a >= 10);
+        if (c) a = (u8)(a - 10);
+        R(d + i) = a;
+    }
+}
+
+/* digits 3-7 at d, leading zeros skipped, from BAT address a (palette 5) */
+static void bat_digits(u16 a, u16 d)
+{
+    u8 x = 3;
+    while (x < 8 && !R(d + x)) x++;
+    for (; x < 8; x++, a++) ss2_bat_put((u8)(a & 63), (u8)(a >> 6), (u16)(0x51B0 + R(d + x)));
+}
+
+/* a BCD byte as two digits */
+static u16 bat_bcd(u16 a, u8 v)
+{
+    ss2_bat_put((u8)(a & 63), (u8)(a >> 6), (u16)(0x51B0 + (v >> 4)));
+    a++;
+    ss2_bat_put((u8)(a & 63), (u8)(a >> 6), (u16)(0x51B0 + (v & 15)));
+    return (u16)(a + 1);
+}
+
+/* bank 4 $AD5A: the ending (src/ss2_ending.c); a weak stand-in until then */
+__attribute__((weak)) void ss2_ending_task(void)
+{
+    ss2_unported(0xAD5A);
+    for (;;) ss2_wait(1);
+}
+#define ending_task ss2_ending_task
+
+static void stage_clear_task(void)
+{
+    u16 t;
+    if ((u8)(Z_STAGE + 1) == 7) ss2_task_restart(ending_task);     /* JMP bank 4 $AD5A */
+    ss2_fade_out();                          /* $71D7 */
+    ss2_bat_clear();                         /* $A649 */
+    vram_clear();
+    ss2_sfx(0xF0);
+    ss2_wait(30);
+    zero(0x2045, 6);
+    ss2_bat_text(0xFC8A);                    /* BONUS SCORE / LIFE x 500 */
+    ss2_bat_text(0xFCA9);                    /* BONUS ZENNY / TIME */
+    ss2_sfx(0x12);                           /* stage clear */
+    ss2_fade_in();                           /* $71BA */
+    zero(0x2213, 0x10);
+    ZP(0x83) = R(0x22B8);
+    ss2_sfx(0x1B);
+    for (;;)                                 /* $F66F: 500 points per life unit */
+    {
+        R(0x22BA)--;
+        if ((s8)--R(0x22B8) < 0) break;
+        ss2_hud_life_bar();
+        bcd_add7(0x2213, 0x4B1C);
+        bat_digits(0x0355, 0x2213);
+        ss2_wait(3);                         /* $B9C0 */
+    }
+    ss2_sfx(0xF1);
+    t = bat_bcd(0x04CD, ZP(0x66));           /* the time: minutes */
+    ss2_bat_put((u8)(t & 63), (u8)(t >> 6), 0x520E);
+    t = bat_bcd((u16)(t + 1), ZP(0x67));     /* seconds */
+    ss2_bat_put((u8)(t & 63), (u8)(t >> 6), 0x01A0);
+    t++;
+    ss2_bat_put((u8)(t & 63), (u8)(t >> 6), 0x520D);
+    if (ZP(0x66) >= 0x0A) ss2_bat_text(0xFCC0);      /* NO BONUS */
+    else
+    {
+        u16 tab = w16((u16)(0xFCD5 + (u8)(Z_STAGE << 1)));
+        u8 x = ss2_rom_byte((u16)(tab + ZP(0x66)));
+        ss2_sfx(0x1B);
+        do
+        {
+            u8 y;
+            for (y = 0x0A; y; y--)
+            {
+                bcd_add7(0x221B, 0x4BFC);
+                bat_digits(0x04D5, 0x221B);
+                ss2_wait(1);
+            }
+        } while (--x);
+    }
+    ss2_sfx(0xF1);
+    seconds(1);
+    {
+        u8 i, c = 0;                         /* score += bonus, money += zenny */
+        for (i = 7; i; i--)
+        {
+            u8 a = (u8)(R(0x2203 + i) + R(0x2213 + i) + c);
+            c = (u8)(a >= 10); if (c) a = (u8)(a - 10);
+            R(0x2203 + i) = a;
+        }
+        hud_digits();
+        c = 0;
+        for (i = 7; i; i--)
+        {
+            u8 a = (u8)(R(0x220B + i) + R(0x221B + i) + c);
+            c = (u8)(a >= 10); if (c) a = (u8)(a - 10);
+            R(0x220B + i) = a;
+        }
+        hud_digits();
+    }
+    ss2_score_award(0);                      /* $BB89 */
+    ss2_wait(2);
+    ss2_hud_magic_bar();                     /* $7688 */
+    seconds(1);
+    R(0x22BA) = 0;
+    {
+        u8 a = (u8)(ZP(0x83) + 5);
+        R(0x22B8) = a < R(0x22B9) ? a : R(0x22B9);
+        a = (u8)(R(0x22BB) + 5);
+        R(0x22BB) = a < R(0x22BC) ? a : R(0x22BC);
+    }
+    ss2_sfx(0xF1);
+    ss2_wait(30);
+    if (R(0x22B8) != R(0x22BA))              /* the life bar fills */
+    {
+        u8 ne;
+        ss2_sfx(0x20);
+        do
+        {
+            ne = (u8)(R(0x22B8) != R(0x22BA));
+            ss2_wait(1);
+            ss2_hud_life_bar();
+        } while (ne);
+    }
+    ss2_sfx(0xF1);
+    ss2_wait(30);
+    if (R(0x22BB) != R(0x22BD))              /* the magic bar fills */
+    {
+        u8 ne;
+        ss2_sfx(0x20);
+        do
+        {
+            ne = (u8)(R(0x22BB) != R(0x22BD));
+            ss2_wait(1);
+            ss2_hud_magic_bar();
+        } while (ne);
+    }
+    ss2_sfx(0xF1);
+    seconds(1);
+    ss2_fade_out_all();                      /* $7297 */
+    Z_STAGE++;
+    ZP(0x83) = R(0x22B8);
+    ZP(0x82) = R(0x22B9);
+    ZP(0x85) = R(0x22BB);
+    ZP(0x84) = R(0x22BC);
+    ZP(0x77) = R(0x22C1);
+    ZP(0x78) = R(0x22BF);
+    stage_init();                            /* JMP $F9F0 */
+}
+
+void ss2_stage_clear_start(void)
+{
+    ZP(0x10) = 0x17; ZP(0x11) = 0xF6;
+    ss2_task_create(0, stage_clear_task);
+}
+
 /* ---- slot 0: back to the title ($FB97) ---------------------------------- */
 
-static void title_return(void)
+void ss2_title_return(void)
 {
     ZP(0x6C) = 0;
     Z_STAGE = 0;
@@ -690,11 +856,11 @@ void ss2_death_task(void)
         ZP(0xC7) = 0;
         ZP(0x6C) = 0;
         Z_STAGE = 0;
-        title_return();                      /* JMP $FB97 */
+        ss2_title_return();                      /* JMP $FB97 */
     }
     /* $F8D8: continue / game over -- not ported yet: back to the title */
     ss2_unported(0xF8D8);
-    title_return();
+    ss2_title_return();
 }
 
 /* ---- power-on (bank 0 $E000 with Y = 0, $E065, $E2D0) ------------------- */

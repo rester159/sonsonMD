@@ -295,15 +295,25 @@ static u8 bar_step(u8 shown, u8 real)
     return shown;
 }
 
-void ss2_hud_bars(void)
+void ss2_hud_life_bar(void)                 /* $7649 */
 {
     if (P_LIFE < 5 && P_MODE != 0x40 && !(Z_FRAME & 0x1F)) ss2_sfx(0x18);
     ss2_hud_life[0] = R(0x22BA);
     ss2_hud_life[1] = R(0x22B9);
     R(0x22BA) = bar_step(R(0x22BA), P_LIFE);
+}
+
+void ss2_hud_magic_bar(void)                /* $7688 */
+{
     ss2_hud_magic[0] = R(0x22BD);
     ss2_hud_magic[1] = R(0x22BC);
     R(0x22BD) = bar_step(R(0x22BD), P_MAGIC);
+}
+
+void ss2_hud_bars(void)
+{
+    ss2_hud_life_bar();
+    ss2_hud_magic_bar();
 }
 
 /* bank 4 $BA66: compare 8 digits at a against b: -1, 0, 1 */

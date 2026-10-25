@@ -103,7 +103,7 @@ static void boss_watch_task(void)
     } while (x < 0x20);
     ss2_wait(0x3C);                     /* $B9D8 */
     do ss2_wait(1); while (ZP(0x6B));
-    ss2_unported(0xF617);               /* task 0 = stage clear, then $E212 */
+    ss2_stage_clear_start();            /* task 0 = $F617, then $E212 */
 }
 
 void ss2_boss_watch_start(void)

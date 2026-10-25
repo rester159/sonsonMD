@@ -110,6 +110,10 @@ void ss2_spr_off(void);                      /* $BA07                       */
 void ss2_power_on(void);                     /* $E000/$E2D0: RAM + tasks    */
 void ss2_game_start_task(void);              /* slot 0 $F5AA: new game      */
 void ss2_death_task(void);                   /* slot 0 $F884: miss/demo end */
+void ss2_stage_clear_start(void);            /* task 0 = $F617             */
+void ss2_ending_task(void);                  /* slot 0 bank 4 $AD5A (ss2_ending.c) */
+void ss2_title_return(void);                 /* slot 0 $FB97: back to the title */
+enum { SS2_SCENE_CONTINUE = 2, SS2_SCENE_ENDING = 3 };   /* more ss2_scene values */
 extern u8 ss2_scene;                         /* SS2_SCENE_* for the renderer */
 extern u8 ss2_pal_intro;                     /* intro sprite palettes 8-15 */
 extern u8 ss2_stage_request;                 /* renderer: load stage graphics */
@@ -148,6 +152,8 @@ void ss2_npc(u8 x);                          /* bank 3 $997F item kind 29  */
 u8   ss2_drop_item(u8 p);                    /* bank 3 $9072/$9428 (ZP $35) */
 void ss2_money_sub(u16 a);                   /* bank 4 $BA52               */
 void ss2_hud_bars(void);                     /* bank 2 $7649 + $7688       */
+void ss2_hud_life_bar(void);                 /* $7649                      */
+void ss2_hud_magic_bar(void);                /* $7688                      */
 
 /* doors (src/ss2_door.c) */
 extern u8 ss2_redraw_request;                /* $EBE1 playfield redraw     */
