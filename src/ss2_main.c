@@ -809,8 +809,16 @@ static u32 conv_buf[4][64];
  * frame */
 #define EXTRA_TILE   640
 #define ending_cache() (scene_shown == SS2_SCENE_ENDING)
-#define ncache()     (ending_cache() ? NCACHE + NEXTRA : NCACHE)
-#define cache_ent(i) ((i) < NCACHE ? &cache[i] : &ram_share.extra.e[(i) - NCACHE])
+/* During play the VRAM between the stage's static tiles and the glyph
+ * cache (tile 1504) is free: XCACHE_MAX more blocks there (cache_xtile,
+ * cache_xn, set by draw_sprites; 0 in title, picture, shop and ending scenes,
+ * whose tiles use that VRAM). The intro's shadow alone has ~35 cells. */
+#define XCACHE_MAX   40
+static CacheEnt cache_x[XCACHE_MAX];
+static u16 cache_xtile;
+static u8 cache_xn;
+#define ncache()     (ending_cache() ? NCACHE + NEXTRA : NCACHE + cache_xn)
+#define cache_ent(i) ((i) < NCACHE ? &cache[i] : ending_cache() ? &ram_share.extra.e[(i) - NCACHE] : &cache_x[(i) - NCACHE])
 
 static void memo_reset(void);
 
@@ -820,6 +828,7 @@ static void cache_reset(void)
     pairs_ok = 0;
     spr_gen_bump();
     memset(cache, 0, sizeof cache);
+    memset(cache_x, 0, sizeof cache_x);
     memo_reset();
     if (ending_cache()) memset(&ram_share.extra, 0, sizeof ram_share.extra);
 }
@@ -919,7 +928,9 @@ static u16 cache_tile(u16 c, u8 key, u8 *line)
         cache_epoch++;
         cache_idx = victim;
         e->used = 1; e->pair = c; e->key = key; e->b0 = b0; e->b1 = b1; e->s0 = s0; e->s1 = s1;
-        e->tile = victim < NCACHE ? cache_base[victim] : (u16)(EXTRA_TILE + (victim - NCACHE) * 8);
+        e->tile = victim < NCACHE ? cache_base[victim]
+                : ending_cache() ? (u16)(EXTRA_TILE + (victim - NCACHE) * 8)
+                : (u16)(cache_xtile + (victim - NCACHE) * 8);
         if (ending_cache()) ram_share.extra.at[c >> 1] = (u8)(victim + 1);
         else cache_at[c >> 1] = (u8)(victim + 1);
         e->last = cache_clock;
@@ -1014,6 +1025,18 @@ static void draw_sprites(void)
     }
     cache_clock++;
     conv_n = 0;
+    {
+        /* extra cache blocks: normal play only (see XCACHE_MAX) */
+        u16 x0 = (u16)((SPR_TILE + gfx->spr_ntiles + 7) & ~7);
+        u16 n = x0 < GLYPH_TILE ? (u16)((GLYPH_TILE - x0) / 8) : 0;
+        u8 xn = (u8)((scene_shown == SS2_SCENE_PLAY && !shop_shown && !ending) ? (n > XCACHE_MAX ? XCACHE_MAX : n) : 0);
+        if (xn != cache_xn || (xn && x0 != cache_xtile))
+        {
+            cache_xn = xn;
+            cache_xtile = x0;
+            cache_reset();
+        }
+    }
     /* The status bar stays on top (owner's choice; the PCE lets front
      * sprites overlap it): VDP sprite masking. A sprite at X = 0 hides every
      * later sprite on its lines once a sprite with X != 0 came before it on

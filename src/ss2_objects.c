@@ -524,6 +524,12 @@ void ss2_spawn_scan(void)
     u8 row = (u8)(Z_FRAME & 3), saved = ZP(0x8E);
     u16 cx;
     const u8 *const b8 = ss2_banks[8];      /* the spawn lists' bank (fixed) */
+    /* The record pointer ($3C/$3D), spawner id ($44) and $26/$27 are
+     * rewritten for every record; only their values at a spawn handler call
+     * and at the end can be seen, so they are kept here and stored there
+     * (d44/d26: changed since the last store) */
+    u16 zrec = 0, z26 = 0;
+    u8 z44 = 0, d44 = 0, d26 = 0;
 #define B8(a) (b8[(u16)(a) & 0x1FFF])
     if (row == 3) return;
     ZP(0xE3) = row;
@@ -542,23 +548,22 @@ void ss2_spawn_scan(void)
         list = (u16)((ss2_rom_byte((u16)(0xBD09 + (u8)(Z_STAGE << 1))) << 8) | ss2_rom_byte((u16)(0xBD08 + (u8)(Z_STAGE << 1))));
         rec = (u16)((B8((u16)(list + (u8)(ZP(0x37) << 1) + 1)) << 8) |
                     B8((u16)(list + (u8)(ZP(0x37) << 1))));
-        ZP(0x26) = (u8)list; ZP(0x27) = (u8)(list >> 8);
+        z26 = list; d26 = 1;
         for (;;)
         {
             u8 id;
             u16 d;
-            ZP(0x3C) = (u8)rec; ZP(0x3D) = (u8)(rec >> 8);
             if (B8(rec) == 0xFF) break;
             id = B8((u16)(rec + 2));
-            ZP(0x44) = id;
+            z44 = id; d44 = 1;
             if ((id < 0x58 || !ZP(0x70)) && O(0x2B5A, id) != 0xFF)
             {
                 d = (u16)(((ZP(0x3E) << 8) | B8(rec)) - ((ZP(0xE4) << 8) | ZP(0xE5)));
-                ZP(0x26) = (u8)d; ZP(0x27) = (u8)(d >> 8);
+                z26 = d;
                 if (d < 0x1A0)
                 {
                     d = (u16)(((ZP(0x3F) << 8) | B8((u16)(rec + 1))) - ((Z_CAMY_HI << 8) | Z_CAMY_LO));
-                    ZP(0x26) = (u8)d; ZP(0x27) = (u8)(d >> 8);
+                    z26 = d;
                     if (d < 0x130)
                     {
                         /* $BCD7 */
@@ -568,7 +573,10 @@ void ss2_spawn_scan(void)
                         p = (u16)(((ZP(0x3F) << 8) | B8((u16)(rec + 1))) - ((ZP(0x4E) << 8) | ZP(0x4F)));
                         ZP(0x42) = (u8)(p >> 8); ZP(0x43) = (u8)p;
                         p = (u16)((B8((u16)(rec + 5)) << 8) | B8((u16)(rec + 4)));
+                        ZP(0x3C) = (u8)rec; ZP(0x3D) = (u8)(rec >> 8);
+                        ZP(0x44) = id;
                         ZP(0x26) = (u8)p; ZP(0x27) = (u8)(p >> 8);
+                        d44 = d26 = 0;
                         ss2_map6(B8((u16)(rec + 3)));
                         if (!ss2_spawn_handler(ss2_mpr6, p)) ss2_unported(p);
                         ss2_map6(8);        /* (bank 8 is still mapped otherwise) */
@@ -577,8 +585,12 @@ void ss2_spawn_scan(void)
             }
             rec = (u16)(rec + 6);
         }
+        zrec = rec;                         /* the list's $FF end */
         if (++ZP(0xE2) == 3) break;
     }
+    ZP(0x3C) = (u8)zrec; ZP(0x3D) = (u8)(zrec >> 8);
+    if (d44) ZP(0x44) = z44;
+    if (d26) { ZP(0x26) = (u8)z26; ZP(0x27) = (u8)(z26 >> 8); }
     ss2_map6(saved);
 #undef B8
 }

@@ -159,6 +159,9 @@ static void sat_composite(u8 x)
         sat_put(sy, sx, pat, (u16)((ss2_rom_byte((u16)(list + y)) << 8) | lo));
         y++;
         ZP(0x38)++;
+#ifdef SS2_TPROF
+        { extern u16 ss2_tc_now[4]; ss2_tc_now[2]++; }   /* composite parts per pass */
+#endif
     }
 }
 
@@ -169,24 +172,37 @@ static void sat_composite(u8 x)
  * disturbed. */
 static void sat_banks(void)
 {
-    /* only the last mapping's state ($8E, page 6) remains, so the bank is
-     * mapped once at the end; the unported placeholder bank is still mapped
-     * where it occurs (its diagnostic) */
-    u8 x, pass, last = 0, found = 0, z71 = ZP(0x71);
+    /* only the last mapping's state ($8E, page 6) remains: the last drawable
+     * composite of the rear pass if any, else of the front pass, mapped once.
+     * One walk over the slots; if the unported placeholder bank occurs, the
+     * source order of mappings (its diagnostic) is replayed instead. */
+    u8 x, last0 = 0, last1 = 0, f0 = 0, f1 = 0, slow = 0, z71 = ZP(0x71);
     u8 blink = (u8)(z71 && z71 < 0x28 && !(z71 & 4));
-    for (pass = 0; pass < 2; pass++)
-        for (x = 0; x < 0x20; x++)
+    const u8 *o = &ss2_ram[0x045A];
+    for (x = 0; x < 0x20; x++, o++)
+    {
+        u8 st = *o;
+        if (!st || !(o[0x0240] & 0x20)) continue;            /* $269A */
+        if (st != 0x40 && !o[0x0260] && blink) continue;     /* $26BA */
         {
-            const u8 *o = &ss2_ram[x];
-            u8 st = o[0x045A];
-            if (st && !o[0x087A] == !pass && (o[0x069A] & 0x20) && !(st != 0x40 && !o[0x06BA] && blink))
-            {
-                u8 b = o[0x075A];
-                if (ss2_banks[b & 0x1F] == ss2_banks[0x0A]) { ss2_map6(b); found = 0; }
-                else { last = b; found = 1; }
-            }
+            u8 b = o[0x0300];                                /* $275A */
+            if (ss2_banks[b & 0x1F] == ss2_banks[0x0A]) slow = 1;
+            if (o[0x0420]) { last1 = b; f1 = 1; }            /* $287A: rear */
+            else { last0 = b; f0 = 1; }
         }
-    if (found) ss2_map6(last);
+    }
+    if (slow)
+    {
+        u8 pass;
+        for (pass = 0; pass < 2; pass++)
+            for (x = 0; x < 0x20; x++)
+                if (O(0x245A, x) && !O(0x287A, x) == !pass && (O(0x269A, x) & 0x20)
+                    && !(O(0x245A, x) != 0x40 && !O(0x26BA, x) && blink))
+                    ss2_map6(O(0x275A, x));
+        return;
+    }
+    if (f1) ss2_map6(last1);
+    else if (f0) ss2_map6(last0);
 }
 
 /* the shop scene's sprites (bank 3 $9EF0-$9F87, bank 4 $A514-$A5F9):
@@ -276,11 +292,14 @@ static void build_sat(void)
     /* entries 16+: front objects, player, rear objects */
     sat_i = 16;
     ZP(0x38) = 0;
-    for (x = 0; x < 0x20; x++)
-        if (O(0x245A, x) && !O(0x287A, x))
-        {
-            if (O(0x269A, x) & 0x20) sat_composite(x); else sat_object(x);
-        }
+    {
+        const u8 *o = &ss2_ram[0x045A];                      /* $245A */
+        for (x = 0; x < 0x20; x++, o++)
+            if (*o && !o[0x0420])                            /* $287A */
+            {
+                if (o[0x0240] & 0x20) sat_composite(x); else sat_object(x);
+            }
+    }
     if (P_MODE)
     {
         u16 pat = 0x0200;
@@ -289,11 +308,14 @@ static void build_sat(void)
                 (u16)((P_ATTRH << 8) | P_ATTRL));
         ZP(0x38)++;
     }
-    for (x = 0; x < 0x20; x++)
-        if (O(0x245A, x) && O(0x287A, x))
-        {
-            if (O(0x269A, x) & 0x20) sat_composite(x); else sat_object(x);
-        }
+    {
+        const u8 *o = &ss2_ram[0x045A];
+        for (x = 0; x < 0x20; x++, o++)
+            if (*o && o[0x0420])
+            {
+                if (o[0x0240] & 0x20) sat_composite(x); else sat_object(x);
+            }
+    }
     /* $8949: clear entries left over from a busier previous frame */
     if (ZP(0x39) > ZP(0x38))
     {
