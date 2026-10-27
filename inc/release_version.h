@@ -1,7 +1,7 @@
 #ifndef SONSON_RELEASE_VERSION_H
 #define SONSON_RELEASE_VERSION_H
 
-#define SONSON_VERSION "1.2"
+#define SONSON_VERSION "1.3"
 #define SONSON_ROM_TITLE "SONSON COLLECTION V" SONSON_VERSION "                          "
 
 #endif

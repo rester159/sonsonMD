@@ -235,6 +235,10 @@ void ss2_vce_reset(void)
         ss2_vce[i] = (u16)(ss2_rom_byte(a) | ((ss2_rom_byte((u16)(a + 1)) & 1) << 8));
     }
     ss2_fade_bg = ss2_fade_sp = 7;
+    /* A skipped intro bypasses intro_task's normal cleanup. These are now
+     * stage palettes, so the renderer must also retire the intro colour map
+     * and its converted sprite cache. scene_update observes this flag. */
+    ss2_pal_intro = 0;
     ss2_pal13_variant = 0xFF;
     ss2_vce_dirty = 1;
 }

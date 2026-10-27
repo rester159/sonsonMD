@@ -108,10 +108,10 @@ static u8 snd_ready = 0;   /* set by snd_init; gates the V-Blank tick           
  *  (main-CPU latch $3010 + FIRQ strobe $3019, -wavwrite RMS) shows:
  *    - 0x10/0x11/0x13/0x17: real looping BGM (kept as loops);
  *    - 0x04/0x05/0x06/0x16/0x18: ONE-SHOT, LAYERED over the running BGM, which
- *      keeps playing (food / bonus / kill / round + start cues);
+ *      keeps playing (latch-level cues; gameplay selectors are translated below);
  *    - 0x14 (player death): ONE-SHOT that STOPS the whole BGM (both chips), then
  *      silence until the game re-sends a BGM command.
- *  Played through the forced loop, the game's frequent 0x04/0x05/0x06 replaced
+ *  Played through the forced loop, repeated latch cues 0x04/0x05/0x06 replaced
  *  the BGM with a ~3 s phrase repeating forever. The layered cues now play on
  *  the dedicated layer channel (rp_1up / ay[2] -> YM ch3-5, see above), so the
  *  BGM slots are untouched; a newer cue simply replaces the older one there.
@@ -150,6 +150,9 @@ static void replay_start(u8 cmd)
             ay[c][7] = 0xFF;                          /* mixer: all channels off */
             ay[c][8] = ay[c][9] = ay[c][10] = 0;      /* volumes 0               */
         }
+        rp_1up.active = 0;
+        ay[2][7] = 0xFF;
+        ay[2][8] = ay[2][9] = ay[2][10] = 0;
         return;
     }
 
@@ -289,6 +292,7 @@ static void ay_chip_to_psg(const u8 *r)
                 PSG_setEnvelope(3, (u8)(15 - nv));
             }
         }
+        else PSG_setEnvelope(3, PSG_ENVELOPE_MIN);
     }
 }
 
@@ -348,7 +352,7 @@ static void snd_ym_init(void)
     }
 }
 
-#define SFX_TL_BIAS 24          /* SFX attenuation floor (~18 dB) so SFX sit under
+#define SFX_TL_BIAS 12          /* SFX attenuation floor (~9 dB), restoring audibility under
                                  * the music; owner-tunable (+1 ~= -0.75 dB).      */
 static void ay1_to_ym(void)
 {
@@ -489,12 +493,21 @@ void snd_play_coin(void)
     replay_start(SND_CMD_COIN);
 }
 
+/* Main ROM $63AB/$63DD: gameplay queues event selectors, not sound-CPU
+ * latch bytes. In particular food 4 -> 2, fire 8 -> 11, kill 12/13 -> 8.
+ * The replay recordings are indexed by the latch byte. */
+static const u8 event_to_latch[25] = {
+    0x00,0x01,0x09,0x04,0x02,0x03,0x09,0x0A,0x0B,0x0C,
+    0x06,0x0F,0x08,0x08,0x0E,0x10,0x00,0x11,0x12,0x13,
+    0x14,0x15,0x16,0x17,0x18
+};
+
 void snd_command(u8 cmd)
 {
     /* Original 6347: ordinary commands require demo sound (52) or live play
      * (22). Shutdown uses replay_start directly so cleanup is never gated. */
     if (g_attract && !g_config.demoSound) return;
-    replay_start(cmd);
+    if (cmd < sizeof event_to_latch) replay_start(event_to_latch[cmd]);
 }
 
 /* Play the extra-life / 1-up jingle (arcade cmd 0x04) LAYERED over the running

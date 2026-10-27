@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pinned arcade command gate and extracted production dispatch regression."""
 from pathlib import Path
-import hashlib,subprocess,json
+import hashlib,subprocess,json,re
 r=Path(__file__).resolve().parents[1];o=r/'out/parity-audit/demo-sound';o.mkdir(parents=True,exist_ok=True)
 rom=b''.join((r/'arcade'/n).read_bytes() for n in ('ss.01e','ss.02e','ss.03e'))
 assert hashlib.sha256(rom).hexdigest()=='09243a5a27a14d1e31db7456e1795016cd4da6466dc7735a1852eb102d8400d1'
@@ -24,14 +24,15 @@ static u8 ay[3][16],snd_1up_oneshot[1];
 static struct {const u8 *base,*pos;unsigned wait;u8 active;} rp_1up;
 static unsigned calls,last;
 static void replay_start(u8 cmd){calls++;last=cmd;}
-'''+function('snd_play_coin')+'\n'+function('snd_command')+'\n'+function('snd_play_1up')+'''
+static void layer_start(const u8 *p,u8 oneshot){(void)oneshot;memset(ay[2],0,16);ay[2][7]=255;rp_1up.base=rp_1up.pos=p;rp_1up.wait=0;rp_1up.active=1;}
+'''+re.search(r'static const u8 event_to_latch\[25\] = \{.*?\};',source,re.S)[0]+function('snd_play_coin')+'\n'+function('snd_command')+'\n'+function('snd_play_1up')+'''
 int main(void){
  for(unsigned demo=0;demo<2;demo++)for(unsigned enabled=0;enabled<2;enabled++) {
   g_attract=demo;g_config.demoSound=enabled;
   for(unsigned cmd=0;cmd<256;cmd++){
    calls=0;last=999;snd_command(cmd);
-   assert(calls==(unsigned)(!demo||enabled));
-   if(calls)assert(last==cmd);else assert(last==999);
+   assert(calls==(unsigned)((!demo||enabled)&&cmd<25));
+   if(calls)assert(last==event_to_latch[cmd]);else assert(last==999);
   }
   calls=0;last=999;snd_play_coin();assert(calls==1 && last==1);
   memset(ay,0x55,sizeof(ay));rp_1up.base=rp_1up.pos=0;rp_1up.wait=123;rp_1up.active=0;
