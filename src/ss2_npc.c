@@ -335,6 +335,15 @@ static void shop_exit(void)
     for (i = 0; i < 6; i++) ZP(0x45 + i) = ZP(0x57 + i);
     vdc();                                   /* $A649 BAT, $BAAF SATB cleared */
     ss2_shop_screen = 0;
+    /* $BAAF clears the source SATB on leaving the shop. Gameplay retains
+     * cloud/staff slots 1-6 until they are explicitly updated; without this
+     * clear those slots keep the shop goods and cursor on screen. */
+    for (i = 0; i < 64; i++)
+    {
+        ss2_sat[i * 4] = ss2_sat[i * 4 + 1] = 0;
+        ss2_sat[i * 4 + 2] = ss2_sat[i * 4 + 3] = 0;
+    }
+    ss2_sat_hi = 0;
     /* $7882: the stage's BG blocks back into VRAM (presentation; MPR6 is
      * reset by the $BB83 below). It holds the CPU across 3 VBlanks ($2FA0
      * counts the blocks of a record meanwhile; not modelled). */

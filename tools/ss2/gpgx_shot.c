@@ -15,6 +15,8 @@ typedef unsigned char u8;
 
 struct Game { const char *path; const void *data; size_t size; const char *meta; };
 struct Variable { const char *key, *value; };
+struct Geometry { unsigned base_width, base_height, max_width, max_height; float aspect_ratio; };
+struct AVInfo { struct Geometry geometry; struct { double fps, sample_rate; } timing; };
 
 static unsigned pixel_format, frame;
 /* SS2_AUTOPLAY_LOOP: the play pattern indexed by the game's own loop
@@ -168,6 +170,8 @@ int main(int argc, char **argv)
     fclose(f);
     struct Game g = { argv[2], data, (size_t)n, NULL };
     if (!retro_load_game(&g)) return 3;
+    void (*get_av)(struct AVInfo *) = dlsym(core, "retro_get_system_av_info");
+    if (get_av) { struct AVInfo av; get_av(&av); printf("CORE_FPS %.12f\n", av.timing.fps); }
     FN(size_t, retro_get_memory_size, (unsigned));
     if (getenv("SS2_SRAM"))
     {
@@ -204,6 +208,13 @@ int main(int argc, char **argv)
         ring_a &= 0xFFFF; ridx_a &= 0xFFFF;
         pf = fopen(getenv("SS2_PCOUT"), "w");
     }
+    unsigned work_a=0, work_i=0;
+    FILE *wf=NULL;
+    if(getenv("SS2_TRACE_WORK") && getenv("SS2_WORKOUT")) {
+        sscanf(getenv("SS2_TRACE_WORK"),"%x,%x",&work_a,&work_i);
+        wf=fopen(getenv("SS2_WORKOUT"),"w");
+        if(wf)fputs("refresh,tick,camx,camy,px,py,rng,objects,pres\n",wf);
+    }
     if (getenv("SS2_AUTOPLAY_LOOP")) apl_start = atol(getenv("SS2_AUTOPLAY_LOOP"));
     unsigned hlast = 0xFFFFFFFF;
     for (frame = 0; frame < frames; frame++)
@@ -228,6 +239,12 @@ int main(int argc, char **argv)
         if (getenv("SS2_LIFE") && wram && ram_a)
             ((u8 *)wram)[((ram_a + 0x2B8) & 0xFFFF) ^ 1] = WB(ram_a + 0x2B9);
         retro_run();
+        if(wf && wram) {
+            unsigned wi=(WB(work_i)<<8)|WB(work_i+1), k, a=work_a+16*(wi&1);
+            fprintf(wf,"%u",frame);
+            for(k=0;k<8;k++)fprintf(wf,",%u",(WB(a+2*k)<<8)|WB(a+2*k+1));
+            fputc('\n',wf);
+        }
         if (hf_ram && wram && loop_a)
         {
             /* SS2_RAMHASH: FNV-1a of ss2_ram (8 KiB) once per loop pass */
@@ -268,6 +285,7 @@ int main(int argc, char **argv)
             fputc('\n', tf);
         }
     }
+    if(wf)fclose(wf);
     if (tf) fclose(tf);
     if (pf) fclose(pf);
     if (hf_ram) fclose(hf_ram);

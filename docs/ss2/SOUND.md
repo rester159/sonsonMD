@@ -151,7 +151,10 @@ events offline anyway and adds a Z80 driver; our music needs no PCM).
 
 * PCE channel c → YM2612 channel c (all six FM channels, DAC off).
 * Timbre: each 32-sample wave → algorithm 7 with four sine carriers at the four
-  strongest harmonics (MUL 1..15) and TL from their amplitudes (+6 dB headroom).
+  strongest harmonics (MUL 1..15) and TL from their amplitudes. The generated
+  patches include an 8-TL reserve; the renderer now subtracts that reserve
+  (6 dB) from active carriers, saturating at zero and preserving silent
+  operators. See `docs/hardware/2026-10-26-boot-audio.md` for output measurements.
   Retained AC power: 81-100 % (ramps/saws lowest: instruments 2, 10, 11, 25).
 * Envelopes stay in software (driver volume per tick): FM AR=31, SL=0, RR=15;
   volume → carrier TL: 2 TL/volume step (1.5 dB), 4 TL/balance and main-volume

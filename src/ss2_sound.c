@@ -260,7 +260,11 @@ static void render_fm(u8 ch)
         const Ss2FmPatch *p = &ss2_snd_patch[c->patch];
         for (o = 0; o < 4; o++)
         {
+            /* Algorithm 7: all four operators are carriers. Recover the
+             * extractor's 8-TL (6 dB) mix reserve without changing their
+             * relative levels. Preserve unused/silent operators below. */
             u16 t = (u16)(p->tl[o] + att);
+            t = t >= 8 ? t - 8 : 0;
             ym(ch, (u8)(0x40 + op_off[o]), (u8)(p->tl[o] >= 127 || t > 127 ? 127 : t));
         }
         c->att = att;

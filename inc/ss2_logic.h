@@ -240,7 +240,8 @@ u8   ss2_spawn_handler(u8 bank, u16 addr);
  * (wx&$E0)>>5 is ss2_probe_row[wy>>5] + ss2_probe_col[wx>>5] (disjoint
  * bit fields). */
 extern const u16 ss2_probe_row[64], ss2_probe_col[64];
-static inline u8 ss2_probe_point(u16 sx, u16 sy)
+#if defined(SS2_HOST) || defined(SS2_PROBECHECK)
+static inline u8 ss2_probe_point_reference(u16 sx, u16 sy)
 {
     extern u8 ss2_ram[0x2000];
     u8 *const z = ss2_ram;                   /* zero page = ss2_ram[0..] */
@@ -260,6 +261,34 @@ static inline u8 ss2_probe_point(u16 sx, u16 sy)
     else if (at == 4) z[0x63] = 1;
     return 1;
 }
+
+#endif
+#if defined(SS2_HOST)
+#define ss2_probe_point ss2_probe_point_reference
+#else
+/* Native word-indexed lookup; preserves the C reference's scratch writes. */
+u8 ss2_probe_point_native(u16 sx, u16 sy);
+void ss2_obj_motion_native(u8 *o);
+#ifdef SS2_PROBECHECK
+extern volatile u32 ss2_probe_checks, ss2_probe_failures;
+static inline u8 ss2_probe_point(u16 sx, u16 sy)
+{
+    extern u8 ss2_ram[0x2000];
+    u8 expected = ss2_probe_point_reference(sx, sy);
+    u8 scratch[7], actual, i;
+    for (i = 0; i < 4; i++) scratch[i] = ss2_ram[0x28 + i];
+    for (i = 0; i < 3; i++) scratch[4 + i] = ss2_ram[0x61 + i];
+    actual = ss2_probe_point_native(sx, sy);
+    ss2_probe_checks++;
+    if (actual != expected) ss2_probe_failures++;
+    for (i = 0; i < 4; i++) if (scratch[i] != ss2_ram[0x28 + i]) ss2_probe_failures++;
+    for (i = 0; i < 3; i++) if (scratch[4 + i] != ss2_ram[0x61 + i]) ss2_probe_failures++;
+    return actual;
+}
+#else
+#define ss2_probe_point ss2_probe_point_native
+#endif
+#endif
 
 /* bank 3 $8327: probe at the object + signed ($263A, $265A) */
 static inline u8 ss2_obj_probe(u8 x)

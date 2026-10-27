@@ -100,8 +100,22 @@ static void draw_column(s16 tx, s16 ty0)
 static void draw_row(s16 ty, s16 tx0)
 {
     u16 i, px = (u16)(tx0 & 63), n1;
-    for (i = 0; i < NCOLS; i++)
-        linebuf[i] = world_tile((u16)(tx0 + i), (u16)ty);
+    /* Four adjacent tiles share a metatile lookup. Decode its row once,
+     * including partial groups at either edge and world-coordinate wrap. */
+    u16 tx = (u16)tx0 & 255, y = (u16)ty & 255;
+    u16 base = (u16)(((y >> 5) << 9) + ((y >> 2) & 7) * 8);
+    i = 0;
+    while (i < NCOLS)
+    {
+        u16 x = tx & 3;
+        u8 m = R(0x3000 + base + (tx >> 5) * 64 + ((tx >> 2) & 7));
+        const u16 *tiles = gfx->meta + (u16)m * 16 + (y & 3) * 4;
+        do
+        {
+            linebuf[i++] = (u16)((tiles[x++] + BG_TILE) | TILE_ATTR_PRIORITY_MASK);
+            tx = (tx + 1) & 255;
+        } while (x < 4 && i < NCOLS);
+    }
     n1 = (u16)(64 - px);
     if (n1 > NCOLS) n1 = NCOLS;
     VDP_setTileMapDataRow(BG_A, linebuf, (u16)(ty & 31), px, n1, CPU);
@@ -123,6 +137,14 @@ static void redraw_view(void)
 static void stream_view(void)
 {
     s16 tx = (s16)(camx >> 3), ty = (s16)(camy >> 3);
+    /* World coordinates wrap every 256 tiles, independently of the VDP
+     * ring. Rebase the old origin to the nearest equivalent coordinate;
+     * crossing 0/255 then streams one border instead of the whole view.
+     * 256 is divisible by both plane dimensions, so existing cells stay put. */
+    if (tx - drawn_tx > 128) drawn_tx += 256;
+    else if (drawn_tx - tx > 128) drawn_tx -= 256;
+    if (ty - drawn_ty > 128) drawn_ty += 256;
+    else if (drawn_ty - ty > 128) drawn_ty -= 256;
     if (tx - drawn_tx > 8 || drawn_tx - tx > 8 || ty - drawn_ty > 8 || drawn_ty - ty > 8)
     {
         redraw_view();
@@ -1493,6 +1515,9 @@ void ss2_run_stage(u8 k)
     {
         u16 cx = (u16)((SS2_DBG_WX - 0x70) & 0x7FF), cy = (u16)((SS2_DBG_WY - 0x80) & 0x7FF);
         u8 b, s;
+#ifdef SS2_PERF_UP
+        cx = (cx - 16) & 0x7FF; /* fixture WX addresses the body probe */
+#endif
         for (b = 0x45; b <= 0x4B; b = (u8)(b + 6))
         {
             ZP(b) = (u8)(cx >> 8); ZP(b + 1) = (u8)cx; ZP(b + 2) = 0;
@@ -1555,7 +1580,26 @@ static void pipe_dma(void)
 static u8 catchup;                  /* the next tick runs at once, not shown */
 static u8 skip_run;                 /* unshown ticks in a row so far */
 static u32 tick_vt;                 /* VBlank count the current tick belongs to */
-u16 ss2_present_n;                  /* presented ticks (ss2_loop_n: all ticks) */
+u16 ss2_present_n;
+#ifdef SS2_PERF_INPUT
+/* Double-buffered completed-tick evidence, published after all writes. */
+volatile u16 ss2_perf_work[2][8];
+volatile u16 ss2_perf_index;
+static void perf_work_done(void)
+{
+    u16 i = ss2_perf_index ^ 1, n = 0; u8 k;
+    for(k=0;k<32;k++) if(O(0x245A,k))n++;
+    ss2_perf_work[i][0]=ss2_loop_n;
+    ss2_perf_work[i][1]=(u16)((Z_CAMX_HI<<8)|Z_CAMX_LO);
+    ss2_perf_work[i][2]=(u16)((Z_CAMY_HI<<8)|Z_CAMY_LO);
+    ss2_perf_work[i][3]=(u16)((P_XH<<8)|P_XL);
+    ss2_perf_work[i][4]=(u16)((P_YH<<8)|P_YL);
+    ss2_perf_work[i][5]=(u16)((ZP(0x8D)<<8)|ZP(0x8C));
+    ss2_perf_work[i][6]=n;
+    ss2_perf_work[i][7]=ss2_present_n;
+    ss2_perf_index=i;
+}
+#endif
 
 /* the frame loop: VBlank, sound, logic, presentation; START+C leaves */
 static void run_loop(void)
@@ -1658,6 +1702,34 @@ static void run_loop(void)
         }
         if (!skip) dma_pending = 1;
         pad = JOY_readJoypad(JOY_1);
+#ifdef SS2_PERF_INPUT
+        /* Diagnostic: input and life refill on simulation ticks, not host
+         * refreshes. Makes before/after CPU workloads comparable. */
+        {
+            u16 t = ss2_loop_n;
+            P_LIFE = R(0x22B9);
+            pad = 0;
+            if (t >=
+#ifdef SS2_PERF_UP
+                1
+#else
+                60
+#endif
+            )
+            {
+                t -= 1;
+#ifdef SS2_PERF_UP
+                pad = (t % 80 < 40) ? BUTTON_UP : BUTTON_DOWN;
+                if (t < 8) pad |= BUTTON_B;
+#else
+                t -= 59;
+                pad = BUTTON_RIGHT;
+                if ((t % 12) < 3) pad |= BUTTON_A;
+                if ((t % 90) >= 30 && (t % 90) < 39) pad |= BUTTON_B;
+#endif
+            }
+        }
+#endif
 #ifdef SS2_PROF
         /* fixed workload by logic tick (not wall time): walk right, attack
          * every 12 ticks, jump every 90; frozen after 1200 ticks */
@@ -1728,6 +1800,9 @@ static void run_loop(void)
 #endif
 #ifdef SS2_STACKCHK
         { void ss2_stack_check(void); if (!(ss2_loop_n & 15)) ss2_stack_check(); }
+#endif
+#ifdef SS2_PERF_INPUT
+        perf_work_done();
 #endif
         PROF(7);
 #ifdef SS2_PROF

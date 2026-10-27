@@ -49,7 +49,10 @@ _Vecteurs_68K:
         dc.l    _INT,_INT,_INT,_INT,_INT,_INT,_INT,_INT
 
 rom_header:
-        .incbin "out/rom_head.bin", 0, 0x100
+#ifndef ROM_HEADER_BIN
+#define ROM_HEADER_BIN "out/rom_head.bin"
+#endif
+        .incbin ROM_HEADER_BIN, 0, 0x100
 
 _Entry_Point:
 * disable interrupts
@@ -65,11 +68,9 @@ _Entry_Point:
         move.w  %d0,(%a0)           /* HALT Z80 */
         move.w  %d0,0x0100(%a0)     /* END RESET Z80 */
 
-        tst.l   0xa10008
-        bne.s   SkipInit
-
-        tst.w   0xa1000c
-        bne.s   SkipInit
+* Flashcart launches can inherit nonzero I/O registers and uninitialized RAM.
+* Always unlock TMSS and use full RAM/data initialization, including reset.
+* main() does not depend on retained RAM or the hardReset flag; saves use SRAM.
 
 * Check Version Number
         move.b  -0x10ff(%a0),%d0
@@ -82,8 +83,6 @@ _Entry_Point:
 NoTMSS:
         jmp     _start_entry
 
-SkipInit:
-        jmp     _reset_entry
 
 
 *------------------------------------------------
