@@ -69,10 +69,6 @@ int main(bool hardReset)
 
         /* SELECT GAME: SONSON goes on to the ARCADE/HOME selector below;
          * SON SON II runs its port and comes back here when it ends. */
-#ifdef SONSON2_STANDALONE
-        /* Standalone cartridge: START+C restarts SonSon II's title. */
-        ss2_run();
-#else
         if (game_select_run() == GAME_SONSON2)
         {
             ss2_run();                    /* returns on START+C */
@@ -108,7 +104,6 @@ int main(bool hardReset)
             title_attract_run(g_mode);
             game_run();
         } while (g_mode == MODE_ARCADE);
-#endif
 
     }
     return 0;
