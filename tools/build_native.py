@@ -8,10 +8,13 @@ group.add_argument("--lto",dest="lto",action="store_true",help="Optimize native 
 group.add_argument("--no-lto",dest="lto",action="store_false",help="Build the comparison baseline without cross-module optimization")
 parser.set_defaults(lto=True)
 parser.add_argument("-D",dest="defines",action="append",default=[],help="Extra preprocessor define (diagnostic builds)")
+parser.add_argument("--game", choices=("collection", "sonson2"), default="collection", help="Cartridge frontend to build")
 parser.add_argument("--out",default="out",help="Output directory")
 parser.add_argument("--cflag",action="append",default=[],help="Extra compiler flag, also applied at the LTO link (experiments)")
 parser.add_argument("--opt",choices=("2","3","s"),default="3",help="Native optimization level")
 args=parser.parse_args()
+if args.game == "sonson2":
+    args.defines.append("SONSON2_STANDALONE")
 root=pathlib.Path(__file__).resolve().parents[1]
 os.chdir(root)
 version = re.search(r'#define SONSON_VERSION "([0-9]+\.[0-9]+(?:\.[0-9]+)?)"', (root/"inc/release_version.h").read_text()).group(1)
@@ -65,9 +68,9 @@ assert not new, 'auto-increment hazard in project code (see tools/check_autoinc_
 b=bytearray((out/'rom.bin').read_bytes());
 assert len(b)<=0x400000, 'Linear 4 MiB cartridge window exceeded; review ROM hardware profile'
 b.extend(bytes((-len(b))%131072)); b[0x1a4:0x1a8]=(len(b)-1).to_bytes(4,'big'); b[0x18e:0x190]=(sum(int.from_bytes(b[i:i+2],'big') for i in range(0x200,len(b),2))&65535).to_bytes(2,'big'); (out/'rom.bin').write_bytes(b)
-(out/'build-manifest.json').write_text(json.dumps({'version':version,'sdk':str(sdk),'compiler':compiler,'sdk_library_sha256':hashlib.sha256((sdk/'lib/libmd.a').read_bytes()).hexdigest(),'symbols_sha256':hashlib.sha256((out/'symbol.txt').read_bytes()).hexdigest(),'source_sha256':{str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for d in ['src','inc'] for p in sorted((root/d).rglob('*')) if p.is_file()},'flags':flags,'rom_sha256':hashlib.sha256(b).hexdigest()},indent=2)+'\n')
-if args.out=='out' and not args.defines:
-    (root/'dist').mkdir(exist_ok=True); release = root/'dist'/('SonSonCollection-v'+version+'.bin')
+(out/'build-manifest.json').write_text(json.dumps({'version':version,'game':args.game,'sdk':str(sdk),'compiler':compiler,'sdk_library_sha256':hashlib.sha256((sdk/'lib/libmd.a').read_bytes()).hexdigest(),'symbols_sha256':hashlib.sha256((out/'symbol.txt').read_bytes()).hexdigest(),'source_sha256':{str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for d in ['src','inc'] for p in sorted((root/d).rglob('*')) if p.is_file()},'flags':flags,'rom_sha256':hashlib.sha256(b).hexdigest()},indent=2)+'\n')
+if (args.out=='out' or args.game=='sonson2') and not [d for d in args.defines if d!='SONSON2_STANDALONE']:
+    (root/'dist').mkdir(exist_ok=True); release = root/'dist'/(('SonSonII' if args.game=='sonson2' else 'SonSonCollection')+'-v'+version+'.bin')
     release.write_bytes(b)
     print('Copied',release)
 print('Built',out/'rom.bin',len(b),'bytes')

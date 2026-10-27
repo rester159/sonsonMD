@@ -10,7 +10,7 @@ Palette ownership (Genesis CRAM lines):
   2, 3  sprites + HUD (PCE sprite palettes and HUD BG palettes 0-4)
 PCE and Genesis share 3-bit RGB channels, so kept colours are exact.
 """
-import os, sys, hashlib
+import os, sys, hashlib, re
 sys.setrecursionlimit(10000)
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -110,7 +110,7 @@ def fit_lines(weights, nlines):
     return assign, maps, lines
 
 
-def build_stage(s):
+def build_stage(s, fitted_lines=None):
     words, attr = level.world_tilemap(ROM, s)
     tiles = level.stage_tiles(ROM, s)
     pals = stage_bg_palettes(s)
@@ -124,7 +124,11 @@ def build_stage(s):
                         w = weights.setdefault(p, {})
                         col = pals[p][c]
                         w[col] = w.get(col, 0) + 1
-    assign, maps, lines = fit_lines(weights, 2)
+    if fitted_lines is None:
+        assign, maps, lines = fit_lines(weights, 2)
+    else:
+        lines = fitted_lines
+        maps = []
     bank = TileBank()
     bank.add([[0] * 8] * 8)                     # tile 0: blank (index 0)
     cache = {}
@@ -133,8 +137,23 @@ def build_stage(s):
         if e in cache:
             return cache[e]
         p, t = e >> 12, e & 0xFFF
-        li = assign.get(p, 0)
-        px = remap(tiles[t], lambda c: maps[li][pals[p][c]], lines[li])
+        # A VDP tile may select either BG line. Palette-wide assignment
+        # needlessly recoloured tiles whose colours fit the other line better.
+        # Resolve each source colour to the nearest retained colour, too:
+        # agglomerative merge ancestry need not be the nearest final colour.
+        counts = {}
+        for row in tiles[t]:
+            for c in row:
+                if c: counts[c] = counts.get(c, 0) + 1
+        choices = []
+        for li, line in enumerate(lines):
+            cmap = {c: min(line.colours[1:],
+                          key=lambda kept: (palfit.dist(pals[p][c], kept), kept))
+                    for c in counts}
+            error = sum(counts[c] * palfit.dist(pals[p][c], cmap[c]) for c in counts)
+            choices.append((error, li, cmap))
+        _, li, cmap = min(choices, key=lambda choice: choice[:2])
+        px = remap(tiles[t], lambda c: cmap[c], lines[li])
         idx, flags = bank.add(px)
         w = (li << 13) | flags | idx
         cache[e] = w
@@ -461,8 +480,47 @@ def write_rom():
     import gen_rom
     gen_rom.main()
 
+def rebuild_backgrounds():
+    """Re-map BG tiles using the checked-in CRAM allocation; retain sprites/HUD.
+
+    This bounded rebuild does not need the research sprite-census caches.
+    Full generation still calculates that same allocation from source weights.
+    """
+    path = os.path.join(ROOT, 'src', 'ss2_data.c')
+    text = open(path).read()
+    for s in range(NSTAGES):
+        name = 'ss2_s%d' % s
+        body = re.search(r'const u16 '+name+r'_palette\[64\] = \{(.*?)\};', text, re.S).group(1)
+        words = [int(v, 16) for v in re.findall(r'0x[0-9A-Fa-f]+', body)]
+        lines = []
+        for li in range(2):
+            colours = [((w >> 1) & 7) << 3 | ((w >> 5) & 7) << 6 | ((w >> 9) & 7)
+                       for w in words[li*16+1:li*16+16]]
+            line = LinePalette(set(colours))
+            # Keep existing indices, including padding (opaque black).
+            line.colours = [0] + colours
+            line.index = {c: i for i, c in enumerate(line.colours)}
+            lines.append(line)
+        st = build_stage(s, lines)
+        hud = int(re.search(name+r'_hud_tiles, (\d+),', text).group(1))
+        spr = int(re.search(name+r'_spr_tiles, (\d+),', text).group(1))
+        assert len(st['bank'].tiles) + hud + 16 + spr <= TILE_BUDGET
+        for suffix, typ, data, perline, fmt in (
+                ('tiles','u32',st['bank'].words(),8,'0x%08X'),
+                ('meta','u16',st['meta'],16,'0x%04X')):
+            pattern = r'const '+typ+' '+name+'_'+suffix+r'\[\d+\] = \{.*?\};\n*'
+            text, n = re.subn(pattern, c_array(name+'_'+suffix,typ,data,perline,fmt)+'\n',text,flags=re.S)
+            assert n == 1
+        text, n = re.subn('('+name+'_palette, '+name+r'_tiles, )\d+',
+                          lambda m:m[1]+str(len(st['bank'].tiles)),text)
+        assert n == 1
+        print('stage',s+1,'BG tiles',len(st['bank'].tiles),flush=True)
+    open(path,'w').write(text)
+
 if __name__ == '__main__':
-    if '--rom-only' in sys.argv:
+    if '--background-only' in sys.argv:
+        rebuild_backgrounds()
+    elif '--rom-only' in sys.argv:
         write_rom()
     else:
         main()

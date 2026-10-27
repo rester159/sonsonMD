@@ -88,8 +88,22 @@ static u16 world_tile(u16 tx, u16 ty)
 static void draw_column(s16 tx, s16 ty0)
 {
     u16 i, py = (u16)(ty0 & 31), n1;
-    for (i = 0; i < NROWS; i++)
-        linebuf[i] = world_tile((u16)tx, (u16)(ty0 + i));
+    /* Decode each four-tile metatile column once, as draw_row does for
+     * horizontal groups. Read the live map so destructible terrain stays live. */
+    u16 x = (u16)tx & 255, y = (u16)ty0 & 255;
+    u16 base = (u16)((x >> 5) * 64 + ((x >> 2) & 7));
+    i = 0;
+    while (i < NROWS)
+    {
+        u16 row = y & 3;
+        u8 m = R(0x3000 + base + (y >> 5) * 512 + ((y >> 2) & 7) * 8);
+        const u16 *tiles = gfx->meta + (u16)m * 16 + (x & 3);
+        do
+        {
+            linebuf[i++] = (u16)((tiles[row++ * 4] + BG_TILE) | TILE_ATTR_PRIORITY_MASK);
+            y = (y + 1) & 255;
+        } while (row < 4 && i < NROWS);
+    }
     n1 = (u16)(32 - py);
     if (n1 > NROWS) n1 = NROWS;
     VDP_setTileMapDataColumn(BG_A, linebuf, (u16)(tx & 63), py, n1, 1, CPU);
