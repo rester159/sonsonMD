@@ -22,6 +22,21 @@ extern u8 ss2_ram[0x2000];
 /* struct-of-arrays field `a` of slot x (x <= $FF never leaves the image) */
 #define O(a, x)     (ss2_ram[(u16)((a) - 0x2000) + (u8)(x)])
 
+/* Assemble the source's split-byte words without two zero extensions and
+ * an OR on the 68000. Each operand is read once; no alignment assumption.
+ * The C oracle remains available to host builds. */
+static inline u16 ss2_word(u8 hi, u8 lo)
+{
+#ifdef SS2_HOST
+    return (u16)(((u16)hi << 8) | lo);
+#else
+    u16 word;
+    __asm__("move.b %1,%0\n\tlsl.w #8,%0\n\tmove.b %2,%0"
+            : "=&d" (word) : "dmi" (hi), "dmi" (lo) : "cc");
+    return word;
+#endif
+}
+
 /* ---- zero page ---- */
 #define Z_FRAME     ZP(0x12)    /* frame counter                          */
 #define Z_PAD       ZP(0x16)    /* held: L D R U Run Sel II I (bit7..0)   */

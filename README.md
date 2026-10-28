@@ -1,7 +1,7 @@
 # SonSon Native (Sega Genesis)
 
-**The SonSon Collection v1.4** (SonSon + SonSon II): run `./build.sh` to create
-`dist/SonSonCollection-v1.4.bin`. See the [v1.4 validation and change notes](docs/releases/1.4-validation.md).
+**The SonSon Collection v1.5** (SonSon + SonSon II): run `./build.sh` to create
+`dist/SonSonCollection-v1.5.bin`. See the [v1.5 validation and change notes](docs/releases/1.5-validation.md).
 
 **Arcade parity rebuild in progress.** The earlier native release contains simplified gameplay. Performance checks do not establish 1:1 logic. See [the parity audit](tools/ARCADE_PARITY.md) for verified corrections and remaining work.
 

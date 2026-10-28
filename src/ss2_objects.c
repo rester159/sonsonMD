@@ -23,8 +23,8 @@
 
 #define OX16(x)     ((u16)((O(0x247A, x) << 8) | O(0x249A, x)))
 #define OY16(x)     ((u16)((O(0x24DA, x) << 8) | O(0x24FA, x)))
-#define PX16        ((u16)((P_XH << 8) | P_XL))
-#define PY16        ((u16)((P_YH << 8) | P_YL))
+#define PX16        ((u16)ss2_word(P_XH, P_XL))
+#define PY16        ((u16)ss2_word(P_YH, P_YL))
 
 u8 ss2_mpr6 = 9;
 
@@ -113,10 +113,18 @@ static u8 shots_live;
 static void camera_shift(u8 x)
 {
     u8 *const o = &ss2_ram[x];
-    u16 v = (u16)(((OF(0x247A) << 8) | OF(0x249A)) + cam_dx);
-    OF(0x247A) = (u8)(v >> 8); OF(0x249A) = (u8)v;
-    v = (u16)(((OF(0x24DA) << 8) | OF(0x24FA)) + cam_dy);
-    OF(0x24DA) = (u8)(v >> 8); OF(0x24FA) = (u8)v;
+    /* A stationary axis leaves these bytes unchanged. In a vertical climb
+     * only Y needs rebasing; while jumping on logs neither axis may move. */
+    if (cam_dx)
+    {
+        u16 v = (u16)(ss2_word(OF(0x247A), OF(0x249A)) + cam_dx);
+        OF(0x247A) = (u8)(v >> 8); OF(0x249A) = (u8)v;
+    }
+    if (cam_dy)
+    {
+        u16 v = (u16)(ss2_word(OF(0x24DA), OF(0x24FA)) + cam_dy);
+        OF(0x24DA) = (u8)(v >> 8); OF(0x24FA) = (u8)v;
+    }
 }
 
 /* bank 3 $8428/$8436: free slot searched upward from 0 / downward from 31
@@ -246,8 +254,8 @@ static u8 collide(u8 x)
     {
         /* the slot fields read once: each zero-page byte store below would
          * otherwise make the compiler reload them (char aliasing) */
-        const u16 ox = (u16)((OF(0x247A) << 8) | OF(0x249A));
-        const u16 oy = (u16)((OF(0x24DA) << 8) | OF(0x24FA));
+        const u16 ox = (u16)ss2_word(OF(0x247A), OF(0x249A));
+        const u16 oy = (u16)ss2_word(OF(0x24DA), OF(0x24FA));
         const s8 ax = (s8)OF(0x2ADA), ay = (s8)OF(0x2AFA);
         if (!(OF(0x269A) & 0x20))
         {
@@ -391,7 +399,7 @@ void ss2_obj_common(u8 x)
     if (!--OF(0x267A))
     {
         /* $EE82: next script command */
-        u16 p = (u16)((OF(0x293A) << 8) | OF(0x295A));
+        u16 p = (u16)ss2_word(OF(0x293A), OF(0x295A));
         u8 c = rd6(p), b;
         ZP(0x3A) = (u8)p; ZP(0x3B) = (u8)(p >> 8);
         if (c == 0xFF) { OF(0x245A) = 0; return; }
@@ -399,14 +407,14 @@ void ss2_obj_common(u8 x)
         {
             OF(0x295A) = rd6((u16)(p + 1));
             OF(0x293A) = rd6((u16)(p + 2));
-            p = (u16)((OF(0x293A) << 8) | OF(0x295A));
+            p = (u16)ss2_word(OF(0x293A), OF(0x295A));
             ZP(0x3A) = (u8)p; ZP(0x3B) = (u8)(p >> 8);
         }
         OF(0x267A) = rd6(p);
         b = rd6((u16)(p + 1));
         if (!(OF(0x269A) & 0x20))
         {
-            u16 an = (u16)((OF(0x27BA) << 8) | OF(0x27DA));
+            u16 an = (u16)ss2_word(OF(0x27BA), OF(0x27DA));
             ZP(0x28) = (u8)an; ZP(0x29) = (u8)(an >> 8);
             if (b == 0xFF)
             {
@@ -457,8 +465,8 @@ void ss2_obj_common(u8 x)
 #endif
     if (OF(0x269A) & 0x08)
     {
-        u16 t = (u16)(((u16)((OF(0x247A) << 8) | OF(0x249A))) + 0x60);
-        if (t >= 0x1A0 || ((u16)((OF(0x24DA) << 8) | OF(0x24FA))) >= 0x130) { kill_spawned(x); return; }
+        u16 t = (u16)(((u16)ss2_word(OF(0x247A), OF(0x249A))) + 0x60);
+        if (t >= 0x1A0 || ((u16)ss2_word(OF(0x24DA), OF(0x24FA))) >= 0x130) { kill_spawned(x); return; }
     }
     if (collide(x)) ss2_obj_common(x);     /* item handler: PLA PLA PLX JMP $EE67 */
 }
@@ -499,11 +507,11 @@ void ss2_obj_update(u8 x)
     }
     if (OF(0x245A) != 0x20)
     {
-        run_handler(x, (u16)((OF(0x28BA) << 8) | OF(0x28DA)));
+        run_handler(x, (u16)ss2_word(OF(0x28BA), OF(0x28DA)));
         return;
     }
 hit:
-    run_handler(x, (u16)((OF(0x28FA) << 8) | OF(0x291A)));
+    run_handler(x, (u16)ss2_word(OF(0x28FA), OF(0x291A)));
 }
 
 /* bank 0 $ED0D: update every live slot */
@@ -550,7 +558,7 @@ void ss2_spawn_scan(void)
     if (row == 3) return;
     ZP(0xE3) = row;
     ZP(0xE2) = 0;
-    cx = (u16)(((Z_CAMX_HI << 8) | Z_CAMX_LO) - 0x60);
+    cx = (u16)(ss2_word(Z_CAMX_HI, Z_CAMX_LO) - 0x60);
     ZP(0xE5) = (u8)cx;
     ZP(0xE4) = (u8)(cx >> 8);
     for (;;)
@@ -578,7 +586,7 @@ void ss2_spawn_scan(void)
                 z26 = d;
                 if (d < 0x1A0)
                 {
-                    d = (u16)(((ZP(0x3F) << 8) | B8((u16)(rec + 1))) - ((Z_CAMY_HI << 8) | Z_CAMY_LO));
+                    d = (u16)(((ZP(0x3F) << 8) | B8((u16)(rec + 1))) - ss2_word(Z_CAMY_HI, Z_CAMY_LO));
                     z26 = d;
                     if (d < 0x130)
                     {

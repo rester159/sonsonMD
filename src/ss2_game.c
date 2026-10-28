@@ -84,10 +84,10 @@ static void spark(void)
     if (R(0x2455))
     {
         R(0x2455)--;
-        d = (u16)(((ZP(0x4B) << 8) | ZP(0x4C)) - ((Z_CAMX_HI << 8) | Z_CAMX_LO));
+        d = (u16)(((ZP(0x4B) << 8) | ZP(0x4C)) - ss2_word(Z_CAMX_HI, Z_CAMX_LO));
         v = (u16)(((R(0x2456) << 8) | R(0x2457)) + d);
         R(0x2457) = (u8)v; R(0x2456) = (u8)(v >> 8);
-        d = (u16)(((ZP(0x4E) << 8) | ZP(0x4F)) - ((Z_CAMY_HI << 8) | Z_CAMY_LO));
+        d = (u16)(((ZP(0x4E) << 8) | ZP(0x4F)) - ss2_word(Z_CAMY_HI, Z_CAMY_LO));
         v = (u16)(((R(0x2458) << 8) | R(0x2459)) + d);
         R(0x2459) = (u8)v; R(0x2458) = (u8)(v >> 8);
     }
@@ -119,9 +119,9 @@ static void sat_object(u8 x)
     ZP(0x38)++;
     lo = OF(0x255A);
     if (OF(0x283A)) lo |= 0x0F;
-    sat_put((u16)((((OF(0x24DA) << 8) | OF(0x24FA)) + 0x40)),
-            (u16)((((OF(0x247A) << 8) | OF(0x249A)) + 0x20)),
-            (u16)((OF(0x257A) << 8) | OF(0x259A)),
+    sat_put((u16)((ss2_word(OF(0x24DA), OF(0x24FA)) + 0x40)),
+            (u16)((ss2_word(OF(0x247A), OF(0x249A)) + 0x20)),
+            (u16)ss2_word(OF(0x257A), OF(0x259A)),
             (u16)((OF(0x253A) << 8) | lo));
 }
 
@@ -145,7 +145,14 @@ static CompList *comp_hint[32]; /* last decoded list for each object slot; key-c
 
 static const u8 *rom_page(u16 a)
 {
+#ifdef SS2_HOST
     return ss2_page[a >> 13];
+#else
+    /* Same page-pointer addressing as ss2_rom_byte: a 16-bit rotate
+     * replaces the expensive shift-by-13 on the 68000. */
+    u16 off = (u16)((u16)((a << 5) | (a >> 11)) & 0x1C);
+    return *(const u8 *const *)((const u8 *)ss2_page + off);
+#endif
 }
 
 /* the source loop ($89D2), parts n.. from list/an */
@@ -156,9 +163,9 @@ static void comp_parts_rom(const u8 *o, u16 list, u16 an, u8 n)
     {
         u16 sy, sx, pat;
         u8 f, lo;
-        sy = (u16)(((OF(0x24DA) << 8) | OF(0x24FA)) + (s8)ss2_rom_byte((u16)(list + y)) + 0x40);
+        sy = (u16)(ss2_word(OF(0x24DA), OF(0x24FA)) + (s8)ss2_rom_byte((u16)(list + y)) + 0x40);
         y++;
-        sx = (u16)(((OF(0x247A) << 8) | OF(0x249A)) + (s8)ss2_rom_byte((u16)(list + y)) + 0x20);
+        sx = (u16)(ss2_word(OF(0x247A), OF(0x249A)) + (s8)ss2_rom_byte((u16)(list + y)) + 0x20);
         y++;
         f = ss2_rom_byte((u16)(list + y));
         if (f == 0xFF) pat = 0x0090;
@@ -220,22 +227,27 @@ static const CompList *comp_lookup(u16 list, u16 an, u8 n, u8 slot)
  * every part. Preserve the source's 64-entry wrap and 8-bit counters. */
 static void comp_parts_cached(const u8 *o, const CompList *c, u8 n)
 {
-    u16 y0 = (u16)(((OF(0x24DA) << 8) | OF(0x24FA)) + 0x40);
-    u16 x0 = (u16)(((OF(0x247A) << 8) | OF(0x249A)) + 0x20);
-    u8 lo = OF(0x255A), k, cursor = sat_i, hi = ss2_sat_hi;
+    u16 y0 = (u16)(ss2_word(OF(0x24DA), OF(0x24FA)) + 0x40);
+    u16 x0 = (u16)(ss2_word(OF(0x247A), OF(0x249A)) + 0x20);
+    const s8 *dy = c->dy, *dx = c->dx;
+    const u32 *pattern = c->pattern_attr;
+    u16 lo = OF(0x255A), left = n;
+    u16 slot = sat_i & 63, hi = ss2_sat_hi;
+    u16 *e = &ss2_sat[slot * 4];
     if (OF(0x283A)) lo |= 0x0F;
-    for (k = 0; k < n; k++, cursor++)
+    while (left--)
     {
-        u8 slot = (u8)(cursor & 63);
-        u16 *e = &ss2_sat[slot * 4];
-        u16 y = (u16)(y0 + c->dy[k]);
+        u16 y = (u16)(y0 + *dy++);
         e[0] = y;
-        e[1] = (u16)(x0 + c->dx[k]);
-        *((u32 *)&e[2]) = c->pattern_attr[k] | lo;
-        if ((y & 0x3FF) && slot + 1 > hi) hi = (u8)(slot + 1);
+        e[1] = (u16)(x0 + *dx++);
+        *((u32 *)&e[2]) = *pattern++ | lo;
+        slot++;
+        if ((y & 0x3FF) && slot > hi) hi = slot;
+        if (slot == 64) { slot = 0; e = ss2_sat; }
+        else e += 4;
     }
-    sat_i = cursor;
-    ss2_sat_hi = hi;
+    sat_i = (u8)(sat_i + n);
+    ss2_sat_hi = (u8)hi;
     ZP(0x38) = (u8)(ZP(0x38) + n);
 }
 
@@ -252,10 +264,10 @@ static void sat_composite(u8 x)
     if (OF(0x245A) != 0x40 && !OF(0x26BA) && ZP(0x71) && ZP(0x71) < 0x28 && !(ZP(0x71) & 4))
         return;
     ss2_map6(OF(0x275A));
-    list = (u16)((OF(0x257A) << 8) | OF(0x259A));
+    list = (u16)ss2_word(OF(0x257A), OF(0x259A));
     n = ss2_rom_byte((u16)(list + 1));
     if (!n) return;
-    an = (u16)((OF(0x27BA) << 8) | OF(0x27DA));
+    an = (u16)ss2_word(OF(0x27BA), OF(0x27DA));
 #ifdef SS2_TPROF
     { extern u16 ss2_tc_now[4]; ss2_tc_now[2] = (u16)(ss2_tc_now[2] + n); }   /* composite parts per pass */
 #endif
@@ -421,8 +433,8 @@ static void build_sat(void)
     {
         u16 pat = 0x0200;
         if (P_HURT && !(P_HITOBJ | P_C4) && (P_HURT & 2)) pat = 0x0090;
-        sat_put((u16)(((P_YH << 8) | P_YL) + 0x40), (u16)(((P_XH << 8) | P_XL) + 0x20), pat,
-                (u16)((P_ATTRH << 8) | P_ATTRL));
+        sat_put((u16)(ss2_word(P_YH, P_YL) + 0x40), (u16)(ss2_word(P_XH, P_XL) + 0x20), pat,
+                (u16)ss2_word(P_ATTRH, P_ATTRL));
         ZP(0x38)++;
     }
     {

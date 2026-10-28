@@ -871,27 +871,40 @@ static void cache_reset(void)
 
 /* one 16x16 PCE cell (3 planes + zero plane, rows of 16 px) -> 4 Genesis
  * tiles TL BL TR BR through colour map cm */
+/* A six-bit key describes two adjacent pixels from three bitplanes.
+ * Palette maps are immutable ROM data; keep the last 64-byte translation
+ * so a cache miss decodes pairs instead of shifting each pixel separately. */
+static const u8 *conv_map;
+static u8 conv_pairs[64];
 static void conv_cell(u8 bank, u16 src, const u8 *cm, u32 *out)
 {
     const u8 *p = ss2_banks[bank & 0x1F] + (src & 0x1FFF);
-    u8 r, x;
+    u16 r, half, x;
     if ((src & 0x1FFF) > 0x2000 - 0x60) { memset(out, 0, 32 * 4); return; }
-    for (r = 0; r < 16; r++)
+    if (conv_map != cm)
     {
-        u16 w0 = (u16)(p[r * 2] | (p[r * 2 + 1] << 8));
-        u16 w1 = (u16)(p[32 + r * 2] | (p[33 + r * 2] << 8));
-        u16 w2 = (u16)(p[64 + r * 2] | (p[65 + r * 2] << 8));
-        u32 lo = 0, hi = 0;
-        for (x = 0; x < 16; x++)
+        for (x = 0; x < 64; x++)
         {
-            u8 b = (u8)(15 - x);
-            u8 c = (u8)(((w0 >> b) & 1) | (((w1 >> b) & 1) << 1) | (((w2 >> b) & 1) << 2));
-            u32 v = c ? (u32)(cm[c] & 15) : 0;
-            if (x < 8) lo = (lo << 4) | v; else hi = (hi << 4) | v;
+            u8 hi = (u8)(((x >> 1) & 1) | ((x >> 2) & 2) | ((x >> 3) & 4));
+            u8 lo = (u8)((x & 1) | ((x >> 1) & 2) | ((x >> 2) & 4));
+            conv_pairs[x] = (u8)(((hi ? cm[hi] & 15 : 0) << 4) | (lo ? cm[lo] & 15 : 0));
         }
-        out[(r >> 3) * 8 + (r & 7)] = lo;           /* TL / BL */
-        out[16 + (r >> 3) * 8 + (r & 7)] = hi;      /* TR / BR */
+        conv_map = cm;
     }
+    for (r = 0; r < 16; r++)
+        for (half = 0; half < 2; half++)
+        {
+            u16 off = (u16)(r * 2 + 1 - half);
+            u8 a = p[off], b = p[32 + off], c = p[64 + off];
+            u32 pixels = 0;
+            for (x = 0; x < 4; x++)
+            {
+                u16 key = (u16)((a >> 6) | ((b >> 4) & 12) | ((c >> 2) & 48));
+                pixels = (pixels << 8) | conv_pairs[key];
+                a <<= 2; b <<= 2; c <<= 2;
+            }
+            out[half * 16 + r] = pixels;
+        }
 }
 
 /* a scene's own sprite colour map (title, ending picture), else 0 */
@@ -1107,17 +1120,48 @@ static void draw_sprites(void)
     {
         const u16 *e = &ss2_sat[i * 4];
         s16 sx, sy;
-        u16 attr = e[3], cell = (u16)((e[2] >> 1) & 0x3FF);
+        u16 attr, cell;
         u8 cw, ch, pal, line, key, memo, ok = 1, rec, ci;
         SprMemo *mm = 0;
         if (!(e[0] & 0x3FF)) continue;
         last = (u8)(i + 1);
-        memo = (u8)(ending && memo_words[i] == (((u32)e[2] << 16) | attr));
         sx = (s16)((e[1] & 0x3FF) - 32);
         sy = (s16)((e[0] & 0x3FF) - 64 - 8);
+        if (sx <= -32 || sx >= 256 || sy <= -64 || sy >= 224) continue;
+        if (!ending && !spr_nomemo)
+        {
+            mm = &spr_memo[i];
+            if (mm->gen == spr_gen && mm->cepoch == cache_epoch && mm->key == *((const u32 *)&e[2]))
+            {
+                u16 count = nspr, rows = mm->n, row;
+                VDPSprite *dst = &vdpSpriteCache[count];
+                s16 x = (s16)(sx + 128), y = (s16)(sy + 128);
+                for (row = 0; row < rows; row++)
+                {
+                    if (mm->cidx[row] != 0xFF) cache_ent(mm->cidx[row])->last = cache_clock;
+                    if (count < 64)
+                    {
+                        dst->y = (s16)(y + mm->yoff[row]);
+                        dst->size = mm->size[row];
+                        dst->link = (u8)++count;
+                        dst->attribut = mm->attr[row];
+                        dst->x = x;
+                        dst++;
+                    }
+                }
+                nspr = (u8)count;
+                continue;
+            }
+            mm->gen = 0;
+            mm->n = 0;
+            rec = 1;
+        }
+        else rec = 0;
+        attr = e[3];
+        cell = (u16)((e[2] >> 1) & 0x3FF);
+        memo = (u8)(ending && memo_words[i] == *((const u32 *)&e[2]));
         cw = (attr & 0x0100) ? 2 : 1;
         ch = (u8)(((attr >> 12) & 3) == 0 ? 1 : (((attr >> 12) & 3) == 1 ? 2 : 4));
-        if (sx <= -32 || sx >= 256 || sy <= -64 || sy >= 224) continue;
         if (cw == 2) cell &= (u16)~1;
         if (ch == 2) cell &= (u16)~2;
         if (ch == 4) cell &= (u16)~6;
@@ -1126,23 +1170,6 @@ static void draw_sprites(void)
             player_sprite(sx, sy, attr);
             continue;
         }
-        if (!ending && !spr_nomemo)
-        {
-            mm = &spr_memo[i];
-            if (mm->gen == spr_gen && mm->cepoch == cache_epoch && mm->key == (((u32)e[2] << 16) | attr))
-            {
-                for (r = 0; r < mm->n; r++)
-                {
-                    if (mm->cidx[r] != 0xFF) cache_ent(mm->cidx[r])->last = cache_clock;
-                    put_sprite(sx, (s16)(sy + mm->yoff[r]), mm->size[r], mm->attr[r]);
-                }
-                continue;
-            }
-            mm->gen = 0;
-            mm->n = 0;
-            rec = 1;
-        }
-        else rec = 0;
         pal = (u8)(attr & 15);
         key = (pal == 13 && ss2_pal13_variant < 8) ? (u8)(16 + ss2_pal13_variant) : pal;
         for (r = 0; r < ch; r++)
@@ -1615,6 +1642,19 @@ static void perf_work_done(void)
 }
 #endif
 
+#ifdef SS2_TPROF_LIGHT
+/* Low-overhead whole-pass timing. Unlike SS2_TPROF this adds no calls to
+ * individual hot routines. Excludes the scheduler's wait for VBlank. */
+volatile u16 ss2_tp_last[24];
+volatile u16 ss2_tc_last[4];
+static u32 light_start;
+static u32 light_time(void)
+{
+    u16 v = (u16)GET_VCOUNTER;
+    return vtimer * 262 + (v >= 224 ? v - 224 : v + 38);
+}
+#endif
+
 /* the frame loop: VBlank, sound, logic, presentation; START+C leaves */
 static void run_loop(void)
 {
@@ -1670,6 +1710,9 @@ static void run_loop(void)
         t0 = vtimer;
         v0 = (u16)GET_VCOUNTER;
         prof_last = v0;
+#endif
+#ifdef SS2_TPROF_LIGHT
+        light_start = light_time();
 #endif
         /* presentation of the state the previous tick left (drawn first, so
          * it is queued early in the frame; see pipe_dma) */
@@ -1740,7 +1783,10 @@ static void run_loop(void)
 #endif
                 if ((t % 48) < 8) pad |= BUTTON_B;
 #elif defined(SS2_PERF_UP)
-                pad = (t % 80 < 40) ? BUTTON_UP : BUTTON_DOWN;
+#ifndef SS2_PERF_UP_PERIOD
+#define SS2_PERF_UP_PERIOD 80
+#endif
+                pad = (t % SS2_PERF_UP_PERIOD < SS2_PERF_UP_PERIOD / 2) ? BUTTON_UP : BUTTON_DOWN;
                 if (t < 8) pad |= BUTTON_B;
 #else
                 t -= 59;
@@ -1826,9 +1872,19 @@ static void run_loop(void)
         { void ss2_stack_check(void); if (!(ss2_loop_n & 15)) ss2_stack_check(); }
 #endif
 #ifdef SS2_PERF_INPUT
+#ifdef SS2_PERF_SPARSE
+        if (!(ss2_loop_n & 63))
+#endif
         perf_work_done();
 #endif
         PROF(7);
+#ifdef SS2_TPROF_LIGHT
+        ss2_tp_last[23] = (u16)(light_time() - light_start);
+        ss2_tc_last[0] = skip ? 0 : conv_n;
+        ss2_tc_last[1] = nspr;
+        ss2_tc_last[2] = skip;
+        ss2_tc_last[3] = ss2_sprite_misses;
+#endif
 #ifdef SS2_PROF
         prof_end(t0, v0);
 #endif
