@@ -137,11 +137,11 @@ typedef struct
     u16 list, an;
     u8 n;
     s8 dy[COMP_MAX], dx[COMP_MAX];
-    u8 ahi[COMP_MAX];
-    u16 pat[COMP_MAX];
+    u32 pattern_attr[COMP_MAX]; /* pattern high word, attribute high byte */
 } CompList;
 static CompList comp_cache[8];
 static u8 comp_next;
+static CompList *comp_hint[32]; /* last decoded list for each object slot; key-checked */
 
 static const u8 *rom_page(u16 a)
 {
@@ -176,19 +176,23 @@ static void comp_parts_rom(const u8 *o, u16 list, u16 an, u8 n)
     }
 }
 
-static const CompList *comp_lookup(u16 list, u16 an, u8 n)
+static const CompList *comp_lookup(u16 list, u16 an, u8 n, u8 slot)
 {
     const u8 *lp = rom_page(list), *ap = rom_page(an);
     u8 k;
     CompList *c;
     if (n > COMP_MAX || (u16)((list & 0x1FFF) + 2 + 4 * n) > 0x2000 || (an & 0x1FFF) == 0x1FFF)
         return 0;
+    c = comp_hint[slot];
+    if (c && c->lp == lp && c->ap == ap && c->list == list && c->an == an && c->n == n) return c;
     for (k = 0; k < 8; k++)
     {
         c = &comp_cache[k];
-        if (c->lp == lp && c->ap == ap && c->list == list && c->an == an && c->n == n) return c;
+        if (c->lp == lp && c->ap == ap && c->list == list && c->an == an && c->n == n)
+        { comp_hint[slot] = c; return c; }
     }
     c = &comp_cache[comp_next];
+    comp_hint[slot] = c;
     comp_next = (u8)((comp_next + 1) & 7);
     c->lp = lp; c->ap = ap; c->list = list; c->an = an; c->n = n;
     {
@@ -199,16 +203,40 @@ static const CompList *comp_lookup(u16 list, u16 an, u8 n)
             u8 f = l[2];
             c->dy[k] = (s8)l[0];
             c->dx[k] = (s8)l[1];
-            if (f == 0xFF) c->pat[k] = 0x0090;
+            if (f == 0xFF) c->pattern_attr[k] = 0x00900000;
             else
             {
                 u16 t = (u16)(f + a1);
-                c->pat[k] = (u16)((u8)t | ((u8)(a0 + (t >> 8)) << 8));
+                c->pattern_attr[k] = (u32)(u16)((u8)t | ((u8)(a0 + (t >> 8)) << 8)) << 16;
             }
-            c->ahi[k] = l[3];
+            c->pattern_attr[k] |= (u16)(l[3] << 8);
         }
     }
     return c;
+}
+
+/* Build a cached composite in one pass. These stores only touch the SAT;
+ * publish its cursor/count once, avoiding alias-driven RAM reloads for
+ * every part. Preserve the source's 64-entry wrap and 8-bit counters. */
+static void comp_parts_cached(const u8 *o, const CompList *c, u8 n)
+{
+    u16 y0 = (u16)(((OF(0x24DA) << 8) | OF(0x24FA)) + 0x40);
+    u16 x0 = (u16)(((OF(0x247A) << 8) | OF(0x249A)) + 0x20);
+    u8 lo = OF(0x255A), k, cursor = sat_i, hi = ss2_sat_hi;
+    if (OF(0x283A)) lo |= 0x0F;
+    for (k = 0; k < n; k++, cursor++)
+    {
+        u8 slot = (u8)(cursor & 63);
+        u16 *e = &ss2_sat[slot * 4];
+        u16 y = (u16)(y0 + c->dy[k]);
+        e[0] = y;
+        e[1] = (u16)(x0 + c->dx[k]);
+        *((u32 *)&e[2]) = c->pattern_attr[k] | lo;
+        if ((y & 0x3FF) && slot + 1 > hi) hi = (u8)(slot + 1);
+    }
+    sat_i = cursor;
+    ss2_sat_hi = hi;
+    ZP(0x38) = (u8)(ZP(0x38) + n);
 }
 
 #ifdef SS2_COMPCHECK
@@ -231,46 +259,27 @@ static void sat_composite(u8 x)
 #ifdef SS2_TPROF
     { extern u16 ss2_tc_now[4]; ss2_tc_now[2] = (u16)(ss2_tc_now[2] + n); }   /* composite parts per pass */
 #endif
-    c = comp_lookup(list, an, n);
+    c = comp_lookup(list, an, n, x);
 #ifdef SS2_COMPCHECK
     {
         static u16 sat_a[64 * 4];
-        u8 i0 = sat_i, z0 = ZP(0x38), hi0 = ss2_sat_hi, i1, z1, bad = 0;
+        u8 i0 = sat_i, z0 = ZP(0x38), hi0 = ss2_sat_hi, i1, z1, hi1, bad = 0;
         u16 k;
         comp_parts_rom(o, list, an, n);
         memcpy(sat_a, ss2_sat, sizeof sat_a);
-        i1 = sat_i; z1 = ZP(0x38);
+        i1 = sat_i; z1 = ZP(0x38); hi1 = ss2_sat_hi;
         sat_i = i0; ZP(0x38) = z0; ss2_sat_hi = hi0;
-        if (c)
-        {
-            u16 y0 = (u16)(((OF(0x24DA) << 8) | OF(0x24FA)) + 0x40), x0 = (u16)(((OF(0x247A) << 8) | OF(0x249A)) + 0x20);
-            u8 lo = OF(0x255A);
-            if (OF(0x283A)) lo |= 0x0F;
-            for (k = 0; k < n; k++)
-            {
-                sat_put((u16)(y0 + c->dy[k]), (u16)(x0 + c->dx[k]), c->pat[k], (u16)((c->ahi[k] << 8) | lo));
-                ZP(0x38)++;
-            }
-        }
+        if (c) comp_parts_cached(o, c, n);
         else comp_parts_rom(o, list, an, n);
         for (k = 0; k < 64 * 4; k++) bad |= (u8)(sat_a[k] != ss2_sat[k]);
-        bad |= (u8)(i1 != sat_i) | (u8)(z1 != ZP(0x38));
+        bad |= (u8)(i1 != sat_i) | (u8)(z1 != ZP(0x38)) | (u8)(hi1 != ss2_sat_hi);
         ss2_compchk[0]++;
         if (bad) ss2_compchk[1]++;
         return;
     }
 #endif
     if (!c) { comp_parts_rom(o, list, an, n); return; }
-    {
-        u16 y0 = (u16)(((OF(0x24DA) << 8) | OF(0x24FA)) + 0x40), x0 = (u16)(((OF(0x247A) << 8) | OF(0x249A)) + 0x20);
-        u8 lo = OF(0x255A), k;
-        if (OF(0x283A)) lo |= 0x0F;
-        for (k = 0; k < n; k++)
-        {
-            sat_put((u16)(y0 + c->dy[k]), (u16)(x0 + c->dx[k]), c->pat[k], (u16)((c->ahi[k] << 8) | lo));
-            ZP(0x38)++;
-        }
-    }
+    comp_parts_cached(o, c, n);
 }
 
 /* $8732's RAM side inside the main body ($ED5E): $89D2 maps the bank of

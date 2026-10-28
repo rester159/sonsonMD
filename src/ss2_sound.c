@@ -134,7 +134,12 @@ static void ymq_begin(void)
     vu8 *z = (vu8 *) Z80_RAM;
     for (;;)
     {
+        /* VInt can flush a completed picture while sound is prepared.
+         * Do not let it observe a request before the Z80 acknowledges it:
+         * its DMA helper must see our ownership and leave the bus held. */
+        u16 mask = SYS_getAndSetInterruptMaskLevel(7);
         Z80_requestBus(TRUE);
+        SYS_setInterruptMaskLevel(mask);
         if (!z[0x1000]) break;
         Z80_releaseBus();
     }

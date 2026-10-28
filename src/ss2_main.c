@@ -1732,7 +1732,14 @@ static void run_loop(void)
             )
             {
                 t -= 1;
-#ifdef SS2_PERF_UP
+#ifdef SS2_PERF_CLIMB
+#ifdef SS2_PERF_CLIMB_MOVE
+                /* Exercise horizontal movement and falls around the logs. */
+                if ((t % 192) < 12) pad = BUTTON_LEFT;
+                else if ((t % 192) >= 96 && (t % 192) < 108) pad = BUTTON_RIGHT;
+#endif
+                if ((t % 48) < 8) pad |= BUTTON_B;
+#elif defined(SS2_PERF_UP)
                 pad = (t % 80 < 40) ? BUTTON_UP : BUTTON_DOWN;
                 if (t < 8) pad |= BUTTON_B;
 #else
@@ -1788,13 +1795,16 @@ static void run_loop(void)
         }
 #endif
         band_idle = 1;                          /* the logic touches no VDP port */
+        /* Presentation buffers are complete. Input and sound update no
+         * VDP data/controls or queued sources, so VInt can commit here too.
+         * DMA_flushQueue preserves an already-owned Z80 bus. */
+        logic_phase = pipe_ok;
         ss2_game_vblank(pce_pad(pad));
         PROF(0);
 #ifndef SS2_SOUND_LATE
         sound_irq();
 #endif
         PROF(0);
-        logic_phase = pipe_ok;                  /* the VInt may send the queued picture */
         ss2_game_frame();
         logic_phase = 0;
         PROF(8);
